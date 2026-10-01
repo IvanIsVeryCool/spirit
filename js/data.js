@@ -5,7 +5,7 @@ export const CONFIG = {
   // The ID from your Google Sheet's link: docs.google.com/spreadsheets/d/<THIS PART>/edit
   sheetId: '1cFKxVMGLDuZeS974UUVzH-Oa57sHUe9tHMFCUkwM0r0',
   // Your school's name. Leave '' to show only "Spirit Team".
-  schoolName: '',
+  schoolName: 'Nueva',
   // How often open pages check the sheet for new points, in seconds.
   refreshSeconds: 60
 };

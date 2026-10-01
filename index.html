@@ -3,10 +3,10 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>Class Spirit Standings</title>
+<title>Nueva Spirit</title>
 <meta name="description" content="Live class spirit standings for Seniors, Juniors, Sophomores and Freshmen.">
 <meta name="theme-color" content="#04081A">
-<meta property="og:title" content="Class Spirit Standings">
+<meta property="og:title" content="Nueva Spirit">
 <meta property="og:description" content="Live class spirit standings, updated after every spirit event.">
 <meta property="og:image" content="share.png">
 <link rel="icon" type="image/png" href="favicon-64.png">
@@ -61,7 +61,8 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
 .nav a::after{content:"";position:absolute;left:0;right:0;bottom:-6px;height:1px;background:var(--ink);transform:scaleX(0);transform-origin:right;transition:transform .5s var(--ease)}
 .nav a:hover,.nav a.active{color:var(--ink)}
 .nav a:hover::after,.nav a.active::after{transform:scaleX(1);transform-origin:left}
-@media (max-width:760px){.nav{display:none}}
+@media (max-width:760px){.nav{gap:16px}.nav a{font-size:11px}.brand-text span{display:none}}
+@media (max-width:400px){.brand-text{display:none}}
 .sound{display:flex;align-items:center;gap:10px;font-family:var(--mono);font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);padding:8px 0;transition:color .3s}
 .sound:hover{color:var(--ink)}
 .bars{display:flex;align-items:flex-end;gap:2px;height:14px}
@@ -167,7 +168,9 @@ main{position:relative;z-index:2}
 .enter-btn:hover::before{transform:none}
 .quiet-btn{font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);padding:6px;transition:color .3s}
 .quiet-btn:hover{color:var(--ink)}
-.gate-note{font-size:12px;color:var(--faint);max-width:30ch}
+.gate-q{font-family:var(--display);font-weight:500;font-size:clamp(20px,3vw,28px);letter-spacing:-.01em}
+.gate-btns{display:flex;gap:12px;flex-wrap:wrap;justify-content:center;margin-top:8px}
+.gate-btns .enter-btn{min-width:150px}
 #loader.out{animation:loaderOut 1.1s var(--ease) forwards}
 @keyframes loaderOut{to{clip-path:inset(0 0 100% 0)}}
 
@@ -191,13 +194,15 @@ body.static .res.pending{opacity:1;transform:none}
 
 <div id="loader" role="dialog" aria-label="Loading">
   <span class="logo-img" aria-hidden="true"></span>
-  <div class="load-title" id="load-title">Spirit</div>
+  <div class="load-title" id="load-title">Nueva Spirit</div>
   <div class="load-bar"><i id="load-bar"></i></div>
   <div class="load-pct mono" id="load-pct">0%</div>
   <div class="gate" id="gate">
-    <button class="enter-btn" id="enter-sound" type="button">Enter with sound</button>
-    <button class="quiet-btn" id="enter-quiet" type="button">Enter without sound</button>
-    <p class="gate-note">Best with headphones. You can turn sound off anytime.</p>
+    <p class="gate-q">Enter with sound?</p>
+    <div class="gate-btns">
+      <button class="enter-btn" id="enter-sound" type="button">With sound</button>
+      <button class="enter-btn" id="enter-quiet" type="button">Without</button>
+    </div>
   </div>
 </div>
 
@@ -214,10 +219,10 @@ body.static .res.pending{opacity:1;transform:none}
 <main>
   <section class="sec intro" id="intro" data-i="0">
     <p class="kicker mono" id="season-line"></p>
-    <h1 id="hero-title" aria-label="Class Spirit">Class Spirit</h1>
+    <h1 id="hero-title" aria-label="Nueva Spirit">Nueva Spirit</h1>
     <div class="intro-row">
       <p class="status" id="status">Loading the latest standings…</p>
-      <div class="cue mono"><i aria-hidden="true"></i>Scroll</div>
+      <a class="cue mono" href="#standings" data-link><i aria-hidden="true"></i>See standings</a>
     </div>
   </section>
 

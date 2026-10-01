@@ -19,7 +19,9 @@ const SEC_NAMES = ['Intro', 'Standings', 'Results', 'Keep up'];
 })();
 
 /* ---------- static text ---------- */
-$('brand-name').textContent = school || 'Spirit Team';
+const TITLE = (school || 'Class') + ' Spirit';
+$('brand-name').textContent = TITLE;
+$('hero-title').textContent = TITLE; $('hero-title').setAttribute('aria-label', TITLE);
 $('brand-season').textContent = season() + ' season';
 $('season-line').textContent = '01 · ' + season() + ' Spirit Competition';
 $('end-school').textContent = (school ? school + ' ' : '') + 'Spirit Team · ' + season();
@@ -310,7 +312,7 @@ async function boot() {
     if (shown.v < 99.5) requestAnimationFrame(animPct); else { pct.textContent = '100%'; bar.style.transform = 'scaleX(1)'; }
   };
   requestAnimationFrame(animPct);
-  scramble($('load-title'), school ? school.toUpperCase() : 'SPIRIT', { duration: 900, ticks: false });
+  scramble($('load-title'), TITLE.toUpperCase(), { duration: 900, ticks: false });
 
   const fonts = Promise.race([document.fonts ? document.fonts.ready : Promise.resolve(), new Promise(r => setTimeout(r, 2500))]).then(tick);
   const stage = (async () => {
@@ -347,7 +349,7 @@ function enter(withSound) {
     entered = true; active = -1;
     setSection(currentSection(), true);
     scene.morphTo(targetFor(active), { duration: 2.8, scatter: 2.2 });
-    scramble($('hero-title'), 'Class Spirit', { duration: 1300, delay: 350 });
+    scramble($('hero-title'), TITLE, { duration: 1300, delay: 350 });
   } else {
     loader.remove(); entered = true; setSection(currentSection(), true);
     seen.add(1); seen.add(2);
