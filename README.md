@@ -1,34 +1,36 @@
-# Spirit Points website
+# Nueva Spirit Cabinet website
 
-A scroll-driven 3D site for the class spirit competition. Scores come live from the
-"Spirit Points Scores" Google Sheet, so updating points never needs a code change.
+- `/` is the homescreen: a 3D train pulls into the station and each car's door is a
+  section of the Spirit Cabinet.
+- `/points/` is the live Spirit Points standings (scroll-driven 3D, scores from the Google Sheet).
 
-## Updating scores
-Add one row per event to the sheet:
+## Adding or opening a train car
+Edit `hub/doors.js`. Each entry is one car, front to back:
+
+```js
+{ id: 'newsletter', title: 'Weekly Newsletter', sub: 'What happened this week in spirit', status: 'Coming soon' }
+```
+
+A car with no `href` shows a "coming soon" panel. Give it an `href` (a page in this
+site such as `/newsletter/`, or any link like a Google Doc) to make its door lead there,
+and change `status` to something like 'Live' or 'New'.
+
+## Updating spirit points
+Add one row per event to the "Spirit Points Scores" Google Sheet:
 
 | Date | Challenge | Seniors | Juniors | Sophomores | Freshmen |
 |---|---|---|---|---|---|
 | 10/3/2026 | Tug of war | 50 | 100 | 25 | 75 |
 
-- Leave a class blank if it got no points. Use a minus sign to take points away.
-- Keep the header row as it is.
-- Open pages pick up changes within about a minute.
-- The sheet must be shared as "Anyone with the link: Viewer".
-
-## Settings
-In `js/data.js`, at the top under SETTINGS:
-- `sheetId`: which Google Sheet the site reads.
-- `schoolName`: shown in the header, loader and footer.
-- `refreshSeconds`: how often open pages check for new points.
+Leave a class blank for 0. The sheet must be shared as "Anyone with the link: Viewer".
+Settings for the points page (sheet ID, school name, refresh rate) are at the top of
+`points/js/data.js`.
 
 ## Files
-- `index.html`: page structure and styles.
-- `js/app.js`: page flow, scroll sections, text effects, live updates.
-- `js/scene.js`: the WebGL particle scene (logo, crystal pillars, results spiral, footer words).
-- `js/sound.js`: all sound, synthesized in the browser with the Web Audio API (no audio files).
-- `js/data.js`: settings and reading the Google Sheet.
-- `vendor/three.module.min.js`: three.js r160 (MIT license, see `vendor/THREE-LICENSE.txt`).
-- `assets/logo.png`: the logo the particles are sampled from.
+- `index.html`, `hub/`: the train station (`station.js` 3D scene, `audio.js` sounds, `hub.js` page logic, `doors.js` the cars).
+- `points/`: the Spirit Points page and its scripts.
+- `vendor/`: three.js r160 and its bloom/environment add-ons (MIT license, see `vendor/THREE-LICENSE.txt`).
+- `assets/logo.png`, icons and `share.png`: shared by both pages.
 
-Visitors with "reduce motion" turned on, or browsers without WebGL, get a calm static
-version of the same content.
+All sound on both pages is synthesized live in the browser; there are no audio files.
+People with "reduce motion" turned on, or browsers without WebGL, get simple static versions.

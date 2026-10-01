@@ -498,7 +498,7 @@ async function boot() {
     try {
       const { Scene } = await import('./scene.js');
       const s = new Scene($('gl'), { mobile });
-      await s.loadLogo('assets/logo.png');
+      await s.loadLogo('/assets/logo.png');
       scene = s; buildTargets();
       scene.onLand = () => sound.shimmer(active === 1 ? 6 : 4);
     } catch (e) { scene = null; }
@@ -508,8 +508,21 @@ async function boot() {
   if (!scene) document.body.classList.add('static');
   if (scene) buildTargets();
 
+  // coming through a train door: skip the gate; sound wakes on the first tap or key if it was on
+  let fromHub = false;
+  try { fromHub = Date.now() - Number(sessionStorage.getItem('spirit-door') || 0) < 15000; sessionStorage.removeItem('spirit-door'); } catch (e) {}
   const ready = () => {
     if (!scene) { enter(false); return; }
+    if (fromHub) {
+      let wantSound = false; try { wantSound = sessionStorage.getItem('spirit-sound') === '1'; } catch (e) {}
+      enter(false);
+      if (wantSound) {
+        $('sound-label').textContent = 'Tap for sound';
+        const wake = () => { removeEventListener('pointerdown', wake); removeEventListener('keydown', wake); setSound(true); };
+        addEventListener('pointerdown', wake); addEventListener('keydown', wake);
+      }
+      return;
+    }
     $('gate').classList.add('ready');
     $('enter-sound').focus({ preventScroll: true });
   };

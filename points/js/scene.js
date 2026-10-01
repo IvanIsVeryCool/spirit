@@ -1,4 +1,4 @@
-import * as THREE from '../vendor/three.module.min.js';
+import * as THREE from '/vendor/three.module.min.js';
 
 const VERT = /* glsl */`
 attribute vec3 aFrom; attribute vec3 aTo; attribute vec3 aCFrom; attribute vec3 aCTo; attribute vec3 aOffset;
