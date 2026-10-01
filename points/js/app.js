@@ -514,13 +514,15 @@ async function boot() {
   const ready = () => {
     if (!scene) { enter(false); return; }
     if (fromHub) {
-      let wantSound = false; try { wantSound = sessionStorage.getItem('spirit-sound') === '1'; } catch (e) {}
-      enter(false);
-      if (wantSound) {
+      // sound comes on by itself; if the browser holds it back, the first tap, key or swipe starts it
+      enter(true);
+      setTimeout(() => {
+        if (sound.ctx && sound.ctx.state === 'running') return;
         $('sound-label').textContent = 'Tap for sound';
-        const wake = () => { removeEventListener('pointerdown', wake); removeEventListener('keydown', wake); setSound(true); };
-        addEventListener('pointerdown', wake); addEventListener('keydown', wake);
-      }
+        const evs = ['pointerdown', 'keydown', 'touchend'];
+        const wake = () => { evs.forEach(ev => removeEventListener(ev, wake, true)); setSound(true); };
+        evs.forEach(ev => addEventListener(ev, wake, true));
+      }, 400);
       return;
     }
     $('gate').classList.add('ready');

@@ -1,7 +1,8 @@
 # Nueva Spirit Cabinet website
 
-- `/` is the homescreen: a 3D train pulls into the station and each car's door is a
-  section of the Spirit Cabinet.
+- `/` is the homescreen: a red-and-silver commuter train pulls into a golden-hour
+  platform and each car's door is a section of the Spirit Cabinet. The LED departure
+  board lists the same cars.
 - `/points/` is the live Spirit Points standings (scroll-driven 3D, scores from the Google Sheet).
 
 ## Adding or opening a train car
@@ -27,7 +28,7 @@ Settings for the points page (sheet ID, school name, refresh rate) are at the to
 `points/js/data.js`.
 
 ## Files
-- `index.html`, `hub/`: the train station (`station.js` 3D scene, `audio.js` sounds, `hub.js` page logic, `doors.js` the cars).
+- `index.html`, `hub/`: the train station (`station.js` 3D scene, `audio.js` sounds, `hub.js` page logic and departure board, `doors.js` the cars).
 - `points/`: the Spirit Points page and its scripts.
 - `vendor/`: three.js r160 and its bloom/environment add-ons (MIT license, see `vendor/THREE-LICENSE.txt`).
 - `assets/logo.png`, icons and `share.png`: shared by both pages.
