@@ -74,7 +74,7 @@ const limb = (a, b, r, m) => {
 let PHONE_SCREEN = null;
 
 // A figure facing -z (toward the train). pose: 'sit' | 'stand'; hands: 'lap' | 'phone' | 'pockets' | 'book'
-function person({ pose = 'sit', hands = 'lap', top, pants, skin, hair, hat = null, bag = false, longHair = false, scale = 1 }) {
+export function person({ pose = 'sit', hands = 'lap', top, pants, skin, hair, hat = null, bag = false, longHair = false, headphones = false, scale = 1 }) {
   const g = new THREE.Group(), body = new THREE.Group(); g.add(body);
   const M = { top: mat(top), pants: mat(pants, .9), skin: mat(skin, .6), hair: mat(hair, .7), shoe: mat(0xefece6, .7), sole: mat(0x2a2a2e, .9) };
   const sit = pose === 'sit';
@@ -130,7 +130,15 @@ function person({ pose = 'sit', hands = 'lap', top, pants, skin, hair, hat = nul
     const cuff = new THREE.Mesh(new THREE.TorusGeometry(.104, .022, 6, 18), mat(hat, .9)); cuff.position.y = .2; cuff.rotation.x = Math.PI / 2; head.add(cuff);
   } else {
     const hr = new THREE.Mesh(new THREE.SphereGeometry(.119, 16, 10, 0, Math.PI * 2, 0, Math.PI * .5), M.hair); hr.position.set(0, .18, .016); hr.rotation.x = .38; head.add(hr); // swept back, face left clear
+    const nape = new THREE.Mesh(new THREE.SphereGeometry(.105, 14, 10), M.hair); nape.position.set(0, .15, .032); nape.scale.set(.96, .86, .82); head.add(nape); // the back of the head
     if (longHair) { const lh = limb(V(0, .2, .06), V(0, .02, .08), .085, M.hair); lh.scale.x = 1.1; head.add(lh); }
+  }
+  if (headphones) { // a band over the top and two padded cups
+    const band = new THREE.Mesh(new THREE.TorusGeometry(.128, .014, 6, 20, Math.PI), mat(0x1d1f26, .5)); band.position.set(0, .175, .01); head.add(band);
+    [-1, 1].forEach(sd => {
+      const cup = new THREE.Mesh(new THREE.CylinderGeometry(.052, .052, .045, 18), mat(0xc9272c, .45)); cup.rotation.z = Math.PI / 2; cup.position.set(sd * .118, .165, .01); head.add(cup);
+      const pad = new THREE.Mesh(new THREE.CylinderGeometry(.045, .045, .02, 16), mat(0x1d1f26, .8)); pad.rotation.z = Math.PI / 2; pad.position.set(sd * .097, .165, .01); head.add(pad);
+    });
   }
   g.scale.setScalar(scale);
   g.traverse(o => { if (o.isMesh) o.userData.cast = true; });
@@ -161,6 +169,10 @@ export function addPeople(st) {
     if (p.phone || p.reading) p.head.rotation.x = -p.lookPitch;
     st.scene.add(p.g); people.push(p);
   });
+  // you, from the opening: still on the middle bench once the camera pulls away, headphones on, nodding along
+  const me = person({ pose: 'sit', hands: 'phone', top: 0x2b3352, pants: 0x34405e, skin: 0xc98a64, hair: 0x16110e, headphones: true });
+  me.g.position.set(0, FLOOR, benchZ); Object.assign(me, { yaw0: 0, seed: 0, look: 0, lookPitch: .3, music: true });
+  st.scene.add(me.g); people.push(me); st.listener = me;
   st.people = people;
   return people;
 }
@@ -170,6 +182,11 @@ export function mergePeople(st) { st.people.forEach(p => { mergeStatic(p.g); mer
 export function updatePeople(st, t, dt) {
   const moving = st.trainX > .5, nose = st.cars[0].position.x + st.trainX - st.CAR_L / 2 - st.NOSE_L;
   st.people.forEach(p => {
+    if (p.music) { // nods on the beat (about 100 bpm), sways every two
+      const beat = t * 1.68, ph = beat % 1, nod = Math.exp(-ph * 7) - .5 * Math.exp(-(1 - ph) * 9), sway = Math.sin(beat * Math.PI);
+      p.head.rotation.set(-(p.lookPitch + nod * .1), sway * .1, sway * .05);
+      p.g.rotation.z = sway * .012; return;
+    }
     const wp = p.g.position;
     let yaw, pitch = p.lookPitch;
     if (moving && st.trainX < 60) { // watch the front of the train

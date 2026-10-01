@@ -72,12 +72,48 @@ let firstToday = true; try { firstToday = localStorage.getItem('spirit-hub-day')
 if (!firstToday && !reduce) $('loader').classList.add('quick');
 let station = null, entered = false, doorsOpen = false, focus = 0, hover = -1, boarding = false;
 
-/* departure board */
-function statusOf(d) { return d.href ? (doorsOpen ? 'BOARDING' : 'ARRIVING') : 'SOON'; }
-function renderBoard() {
-  $('rows').innerHTML = DOORS.map((d, i) => `<button class="row${i === focus && mobile && doorsOpen ? ' on' : ''}" type="button" data-i="${i}" aria-label="Car ${no(i)}: ${esc(d.title)}, ${d.href ? 'open' : 'coming soon'}"><span class="c">${no(i)}</span><span class="d">${esc(d.title.toUpperCase())}</span><span class="s${d.href ? (doorsOpen ? ' live' : ' due') : ''}">${statusOf(d)}</span></button>`).join('');
+/* departure board: split-flap letters that clatter round to their new value */
+const FLAP_CH = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+function flap(el, text, delay = 0) {
+  while (el.children.length < text.length) el.appendChild(document.createElement('i'));
+  let changed = 0;
+  [...text].forEach((ch, i) => {
+    const c = el.children[i], v = ch === ' ' ? '' : ch; if (c.dataset.v === v) return; c.dataset.v = v; changed++;
+    if (reduce) { c.textContent = v; return; }
+    let n = 2 + (Math.random() * 5 | 0); const tok = c._tok = (c._tok || 0) + 1;
+    const step = () => {
+      if (c._tok !== tok) return; // a newer value took over
+      c.classList.remove('go'); void c.offsetWidth; c.classList.add('go');
+      c.textContent = n-- > 0 ? FLAP_CH[Math.random() * FLAP_CH.length | 0] : v;
+      if (n >= 0) setTimeout(step, 65);
+    };
+    setTimeout(step, delay + i * 22);
+  });
+  return changed;
 }
-function tickClock() { $('clock').textContent = new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }).toUpperCase(); }
+const pad = (t, n) => t.length >= n ? t.slice(0, n) : t + ' '.repeat(n - t.length);
+const DEST_W = Math.max(...DOORS.map(d => d.title.length));
+// the timetable's departure times, set once when you arrive
+const TIMES = DOORS.map((d, i) => { const t = new Date(Date.now() + (4 + i * 7) * 60000); return pad(t.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true }).replace(/\s?[AP]M/, '').padStart(5, ' '), 5); });
+function statusOf(d) { return d.href ? (doorsOpen ? 'BOARDING' : 'ARRIVING') : 'SOON'; }
+function renderBoard(fresh) {
+  const rows = $('rows');
+  if (!rows.children.length) rows.innerHTML = DOORS.map((d, i) => `<button class="row" type="button" data-i="${i}"><span class="tm flap" aria-hidden="true"></span><span class="d flap" aria-hidden="true"></span><span class="c flap" aria-hidden="true"></span><span class="s flap" aria-hidden="true"></span></button>`).join('');
+  let changed = 0;
+  DOORS.forEach((d, i) => {
+    const r = rows.children[i], st = statusOf(d);
+    r.setAttribute('aria-label', `Car ${no(i)}: ${d.title}, ${d.href ? 'open' : 'coming soon'}`);
+    r.classList.toggle('on', i === focus && mobile && doorsOpen);
+    if (fresh) r.querySelectorAll('i').forEach(c => { c.dataset.v = ''; c.textContent = ''; });
+    const delay = i * 90;
+    changed += flap(r.querySelector('.tm'), TIMES[i], delay) + flap(r.querySelector('.d'), pad(d.title.toUpperCase(), DEST_W), delay) + flap(r.querySelector('.c'), no(i), delay) + flap(r.querySelector('.s'), pad(st, 8), delay);
+    r.querySelector('.s').className = 's flap ' + (d.href ? (doorsOpen ? 'live' : 'due') : 'soon');
+  });
+  if (changed && $('board').classList.contains('show')) audio.clatter();
+}
+// the board slides in and its letters flip round from blank
+function showBoard() { const b = $('board'); if (b.classList.contains('show')) return; b.classList.add('show'); setTimeout(() => renderBoard(true), 250); }
+function tickClock() { flap($('clock'), pad(new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }).replace(/\s?[AP]M/, '').padStart(5, ' '), 5)); }
 tickClock(); setInterval(tickClock, 15000);
 renderBoard();
 
@@ -103,7 +139,7 @@ function choose(i) {
     if (!station || !doorsOpen) { location.href = d.href; return; }
     boarding = true; audio.board(); document.body.classList.add('boarding');
     try { sessionStorage.setItem('spirit-door', String(Date.now())); } catch (e) {}
-    setTimeout(() => $('flash').classList.add('on'), 1150);
+    setTimeout(() => $('flash').classList.add('on'), 1500);
     station.board(i, () => { location.href = d.href; });
     return;
   }
@@ -139,13 +175,18 @@ $('station').addEventListener('pointerup', e => {
   if (i >= 0) choose(i);
 });
 
-/* sound toggle */
-function setSound(on) {
+/* sound toggle: on unless you've turned it off yourself */
+let soundPref = true; try { soundPref = localStorage.getItem('spirit-sound') !== 'off'; } catch (e) {}
+function setSound(on, remember) {
   audio.setEnabled(on);
+  if (remember) try { if (on) localStorage.removeItem('spirit-sound'); else localStorage.setItem('spirit-sound', 'off'); } catch (e) {}
   $('sound-btn').classList.toggle('on', on); $('sound-btn').setAttribute('aria-pressed', String(on));
   $('sound-label').textContent = on ? 'Sound on' : 'Sound off';
 }
-$('sound-btn').addEventListener('click', () => { setSound(!audio.enabled); audio.tick(); });
+$('sound-btn').addEventListener('click', () => { setSound(!audio.enabled, true); audio.tick(); });
+// browsers hold audio until the first tap or key press, so start it then
+const unlockAudio = () => { if (audio.enabled && audio.ctx && audio.ctx.state === 'suspended') audio.ctx.resume().then(() => audio.setEnabled(true)); };
+['pointerdown', 'keydown', 'touchend'].forEach(ev => addEventListener(ev, unlockAudio, { capture: true, passive: true }));
 
 /* arrival */
 function arrived() {
@@ -208,10 +249,10 @@ function enter(withSound) {
   setTimeout(() => { tk.classList.add('stamped'); audio.punch(); }, 280);
   setTimeout(() => loader.classList.add('out'), 700);
   setTimeout(() => loader.remove(), 2900);
-  if (!station) { document.body.classList.remove('pre'); $('board').classList.add('show'); doorsOpen = true; renderBoard(); return; }
+  if (!station) { document.body.classList.remove('pre'); showBoard(); doorsOpen = true; renderBoard(); return; }
   document.body.classList.remove('pre');
   if (reduce) { // reduced motion: just the quick arrival
-    setTimeout(() => $('board').classList.add('show'), 1300);
+    setTimeout(() => showBoard(), 1300);
     setTimeout(() => { station.arrive(6, arrived); audio.arrive(6); }, 700);
     return;
   }
@@ -223,9 +264,10 @@ function quickEnter() {
   const loader = $('loader');
   loader.classList.add('out'); setTimeout(() => loader.remove(), 2900);
   document.body.classList.remove('pre'); document.body.classList.add('entered');
-  if (!station) { $('board').classList.add('show'); doorsOpen = true; renderBoard(); return; }
+  if (soundPref) setSound(true);
+  if (!station) { showBoard(); doorsOpen = true; renderBoard(); return; }
   station.park(); arrived();
-  setTimeout(() => $('board').classList.add('show'), 700);
+  setTimeout(() => showBoard(), 700);
 }
 // you're sitting on the bench, ticket in hand, and the train pulls in
 function playIntro() {
@@ -233,13 +275,13 @@ function playIntro() {
   station.startIntro(ticketCanvas(), {
     sit: () => audio.sit(), paper: () => audio.paper(), bells: () => audio.bells(8.5),
     arrive: skipped => { if (!skipped) audio.arrive(6, { bells: false }); },
-    stop: arrived, stand: () => audio.stand(), end: endIntro
+    stop: arrived, end: endIntro
   });
 }
 function endIntro() {
   if (!introPlaying) return; introPlaying = false; document.body.classList.add('entered');
   document.body.classList.remove('intro');
-  setTimeout(() => $('board').classList.add('show'), 600);
+  setTimeout(() => showBoard(), 600);
 }
 // watch the opening again, any time
 $('replay-btn').addEventListener('click', () => {

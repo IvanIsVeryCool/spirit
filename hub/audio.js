@@ -165,6 +165,12 @@ export class StationAudio {
     this._click(t + .62, .3); this._click(t + 1.02, .22);                 // two footsteps
   }
   // UI
+  // the departures board: a soft patter of split-flap leaves settling
+  clatter(dur = .7) {
+    if (!this.live) return;
+    const t0 = this.ctx.currentTime, n = 14 + (Math.random() * 8 | 0);
+    for (let i = 0; i < n; i++) { const t = t0 + Math.pow(Math.random(), 1.4) * dur; this._noise(t, .025, 'bandpass', 2600 + Math.random() * 1600, 2000, 5, .02 + Math.random() * .02, .002, -.5 + Math.random() * .3); }
+  }
   tick() {
     if (!this.live) return;
     const t = this.ctx.currentTime; this._noise(t, .045, 'bandpass', 3400, 2600, 6, .06, .003, 0);

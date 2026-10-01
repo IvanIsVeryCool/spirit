@@ -5,7 +5,8 @@ import { RenderPass } from '/vendor/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from '/vendor/jsm/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from '/vendor/jsm/postprocessing/OutputPass.js';
 import { mergeStatic, addPeople, mergePeople, updatePeople, addPlatformProps, addBackground, updateBackground } from './scenery.js';
-import { CAR_L, GAP, W, H, BASE, FLOOR, DOOR_W, DOOR_H, NOSE_L, bodyGeometry, capGeometry, noseGeometry, nosePoint, paintBody, paintNose, windowTexture, interiorTexture, windowSlots } from './train.js';
+import { CAR_L, GAP, W, H, BASE, FLOOR, DOOR_W, DOOR_H, NOSE_L, bodyGeometry, capGeometry, noseGeometry, nosePoint, paintBody, paintNose, windowTexture, windowSlots } from './train.js';
+import { buildInterior } from './interior.js';
 
 // A golden-hour Peninsula platform and a red-and-silver double-decker commuter train.
 const COL = {
@@ -246,7 +247,6 @@ export class Station {
     };
     const winT = windowTexture();
     M.window = new THREE.MeshPhysicalMaterial({ map: winT, emissiveMap: winT, emissive: 0xffffff, emissiveIntensity: .3, roughness: .12, metalness: 0, clearcoat: .6, clearcoatRoughness: .1, envMapIntensity: .3, alphaTest: .5 });
-    this.interior = interiorTexture();
     const shell = bodyGeometry(), cap = capGeometry();
     this.cars = []; this.doors = [];
     for (let i = 0; i < this.count; i++) {
@@ -286,9 +286,9 @@ export class Station {
           const wheel = new THREE.Mesh(new THREE.CylinderGeometry(.27, .27, .1, 20), M.dark); wheel.rotation.x = Math.PI / 2; wheel.position.set(dx, .27, dz * .9); g.add(wheel);
           const rim = new THREE.Mesh(new THREE.TorusGeometry(.2, .025, 6, 20), M.steel); rim.position.set(dx, .27, dz * .9 + Math.sign(dz) * .055); g.add(rim);
           const box = new THREE.Mesh(new THREE.BoxGeometry(.24, .2, .16), M.gray); box.position.set(dx, .3, dz + Math.sign(dz) * .1); g.add(box);
-          const spring = new THREE.Mesh(new THREE.CylinderGeometry(.07, .07, .2, 8), M.steel); spring.position.set(dx, .48, dz); g.add(spring);
+          const spring = new THREE.Mesh(new THREE.CylinderGeometry(.07, .07, .12, 8), M.steel); spring.position.set(dx, .36, dz); g.add(spring); // kept below the lower deck's floor
         });
-        const damper = new THREE.Mesh(new THREE.CylinderGeometry(.04, .04, .5, 8), M.yellow); damper.rotation.z = Math.PI / 2.6; damper.position.set(0, .42, dz + Math.sign(dz) * .1); g.add(damper);
+        const damper = new THREE.Mesh(new THREE.CylinderGeometry(.04, .04, .5, 8), M.yellow); damper.rotation.z = Math.PI / 2.6; damper.position.set(0, .28, dz + Math.sign(dz) * .1); g.add(damper);
       });
       car.add(g);
     });
@@ -303,10 +303,9 @@ export class Station {
     const side = (geo, mat, x, y, dz = 0) => { const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z + dz); car.add(m); return m; };
     // flush tinted windows, set into the painted gaskets
     windowSlots().forEach(w => side(new THREE.PlaneGeometry(w.w, w.h), M.window, w.x, w.y, .004));
-    // door: recess, interior, sliding stainless leaves with tall windows, grab handles, status lights, step
-    side(new THREE.BoxGeometry(DOOR_W + .1, DOOR_H + .06, .02), M.dark, 0, FLOOR + DOOR_H / 2, -.006);
-    const lightMat = new THREE.MeshBasicMaterial({ map: this.interior, color: 0x000000 }); lightMat.toneMapped = false;
-    side(new THREE.PlaneGeometry(DOOR_W - .04, DOOR_H - .04), lightMat, 0, FLOOR + DOOR_H / 2, .006);
+    // door: a frame around the real opening, sliding stainless leaves with tall windows, grab handles, status lights, step
+    [-1, 1].forEach(sd => side(new THREE.BoxGeometry(.05, DOOR_H + .05, .03), M.dark, sd * (DOOR_W / 2 + .025), FLOOR + DOOR_H / 2 + .025, .005));
+    side(new THREE.BoxGeometry(DOOR_W + .1, .05, .03), M.dark, 0, FLOOR + DOOR_H + .025, .005);
     const leaves = [-1, 1].map(sd => {
       const leaf = new THREE.Group();
       leaf.add(new THREE.Mesh(new THREE.BoxGeometry(DOOR_W / 2, DOOR_H, .045), M.door));
@@ -326,13 +325,16 @@ export class Station {
     const ledMat = new THREE.MeshBasicMaterial({ map: tex }); ledMat.toneMapped = false;
     side(new THREE.BoxGeometry(2.1, .6, .04), M.dark, 0, 3.08, .005);
     side(new THREE.PlaneGeometry(2, .5), ledMat, 0, 3.08, .03);
-    side(new THREE.PlaneGeometry(.5, .25), new THREE.MeshBasicMaterial({ map: this._plate(String(i + 1).padStart(2, '0')), transparent: true }), CAR_L / 2 - .55, 3.3, .005);
+    const plateMat = new THREE.MeshBasicMaterial({ map: this._plate(String(i + 1).padStart(2, '0')), transparent: true });
+    side(new THREE.PlaneGeometry(.5, .25), plateMat, CAR_L / 2 - .55, 3.3, .005);
+    // the vestibule, stairs and seats behind the door, lit by baked light
+    const inside = buildInterior(car, { ledMat, plateMat, idx: i });
     const spill = new THREE.Mesh(new THREE.PlaneGeometry(1.7, 2.6), new THREE.MeshBasicMaterial({ color: COL.warm, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, map: this._spillTex() }));
     spill.rotation.x = -Math.PI / 2; spill.position.set(0, FLOOR + .012, z + 1.35); spill.userData.noShadow = true; spill.userData.keep = true; car.add(spill);
     let pl = null; if (!this.mobile) { pl = new THREE.PointLight(COL.warm, 0, 6, 1.6); pl.position.set(0, 1.6, z + .7); car.add(pl); }
     const hit = new THREE.Mesh(new THREE.BoxGeometry(DOOR_W + .6, DOOR_H + 1, .8), new THREE.MeshBasicMaterial({ visible: false }));
     hit.position.set(0, FLOOR + DOOR_H / 2 + .3, z + .2); hit.userData.door = i; hit.userData.keep = true; hit.userData.noShadow = true; car.add(hit);
-    this.doors.push({ leaves, lightMat, spill, pl, hit, statusMats, open: 0, target: 0, hover: 0, led: { ctx: cv.getContext('2d'), tex, mat: ledMat, page: 0, key: '' } });
+    this.doors.push({ leaves, inside, spill, pl, hit, statusMats, open: 0, target: 0, hover: 0, led: { ctx: cv.getContext('2d'), tex, mat: ledMat, page: 0, key: '' } });
     this.drawSign(i);
   }
   _gangway(x) {
@@ -457,7 +459,7 @@ export class Station {
   }
   startIntro(ticketCanvas, cb = {}) {
     if (!this.introGroup) this._rig(ticketCanvas);
-    this.introGroup.visible = true;
+    this.introGroup.visible = true; this._me(false);
     this.trainX = 70; this.arrival = null;
     this.flight = null; this.doors.forEach(d => { d.target = 0; d.open = 0; });
     this.intro = { t0: this.clock.elapsedTime, cb, fired: {} };
@@ -468,23 +470,25 @@ export class Station {
   }
   skipIntro() {
     const I = this.intro; if (!I) return;
-    this.intro = null; this.introGroup.visible = false;
+    this.intro = null; this.introGroup.visible = false; this._me(true);
     if (!I.fired.arrive) { I.fired.arrive = 1; I.cb.arrive && I.cb.arrive(true); }
     if (this.arrival || this.trainX > 0) { const stop = (this.arrival && this.arrival.onStop) || I.cb.stop; this.park(); stop && stop(); }
     this.blendUntil = this.clock.elapsedTime + 2.5;
     I.cb.end && I.cb.end();
   }
+  _me(on) { if (this.listener) this.listener.g.visible = on; }
   _introFrame(t, dt) {
     const I = this.intro, e = t - I.t0, cb = I.cb;
     const fire = (k, at, fn) => { if (e >= at && !I.fired[k]) { I.fired[k] = 1; fn && fn(); } };
     fire('sit', .25, cb.sit); fire('paper', 2.5, cb.paper); fire('bells', 3.4, cb.bells);
     fire('arrive', 5.2, () => { this.arrive(6, cb.stop); cb.arrive && cb.arrive(false); });
-    fire('stand', 12.1, cb.stand);
-    // where the eyes are: sit down, breathe, then stand up when the doors open
-    const stand0 = new THREE.Vector3(0, 2.86, this.seat.z + .75), up = new THREE.Vector3(-.4, 3.0, this.seat.z + 1.1), c = this.camera;
+    // when the doors open, the view lifts out of your head and pulls back: you stay on the bench, headphones on
+    fire('leave', 12.1, () => { this.introGroup.visible = false; this._me(true); });
+    // where the eyes are: sit down, breathe, then rise up and back
+    const stand0 = new THREE.Vector3(0, 2.86, this.seat.z + .75), back = new THREE.Vector3(.5, 2.4, this.seat.z + 2.3), c = this.camera;
     if (e < 1.3) c.position.lerpVectors(stand0, this.seat, easeInOut(e / 1.3));
     else if (e < 12.1) c.position.copy(this.seat);
-    else c.position.lerpVectors(this.seat, up, easeInOut(Math.min(1, (e - 12.1) / 1.2)));
+    else { const u = easeInOut(Math.min(1, (e - 12.1) / 1.5)); c.position.lerpVectors(this.seat, back, u); c.position.y += Math.sin(Math.PI * Math.min(1, u * 1.4)) * .3; } // up over your head, then back
     c.position.y += Math.sin(t * 1.7) * .005 + (e > 1.1 && e < 1.5 ? -Math.sin((e - 1.1) / .4 * Math.PI) * .03 : 0);
     // where the attention goes: down at the ticket, up, a look left down the platform, then the horn pulls it right to the train
     const front = this.cars[0].position.x + this.trainX - CAR_L / 2 - NOSE_L + .3, tgt = new THREE.Vector3();
@@ -495,13 +499,13 @@ export class Station {
     else if (e < 5.9) tgt.set(-12, 2.25, 0);       // the bells: down the platform to the left
     else if (e < 6.4) tgt.set(-3, 2.1, 0);         // the horn: back toward it
     else if (e < 11.4) { tgt.set(Math.max(-2.5, Math.min(18, front)), 2.0, 0); tracking = true; }
-    else tgt.set(-1.6, 2.25, 0);
+    else tgt.set(-1.2, 1.95, 0);
     this._head(tgt, t, dt, tracking, reading);
     // the ticket gets a small fidget, then the hands drop away as you stand
     const fid = e > 2.5 && e < 3.3 ? Math.sin((e - 2.5) / .8 * Math.PI) : 0;
     this.rig.quaternion.copy(this.rigBase); this.rig.rotateZ(fid * .12); this.rig.rotateX(Math.sin(t * 1.7) * .02);
-    this.rig.position.copy(this.rigPos); if (e > 12.1) this.rig.position.y -= Math.pow(Math.min(1, (e - 12.1) / .6), 2) * .6;
-    if (e > 13.3) { this.intro = null; this.introGroup.visible = false; this.blendUntil = t + 2.8; cb.end && cb.end(); }
+    this.rig.position.copy(this.rigPos);
+    if (e > 13.6) { this.intro = null; this.introGroup.visible = false; this._me(true); this.blendUntil = t + 2.8; cb.end && cb.end(); }
   }
 
   // A first-person head: springs on yaw and pitch (a quick start, a soft landing, a hint of overshoot),
@@ -558,7 +562,7 @@ export class Station {
   board(i, done) {
     const x = this.doorX(i), z = W / 2 + .05;
     this.flight = { t0: this.clock.elapsedTime, p0: this.camera.position.clone(), l0: this.look.clone(),
-      p1: new THREE.Vector3(x, 1.75, z + 3.4), p2: new THREE.Vector3(x, 1.65, z + .2), l1: new THREE.Vector3(x, 1.65, 0), done };
+      p1: new THREE.Vector3(x, 1.75, z + 3.4), p2: new THREE.Vector3(x, 1.62, .35), l1: new THREE.Vector3(x, 1.6, -1.4), done };
     this.doors[i].target = 1.25;
   }
   resize() {
@@ -591,8 +595,9 @@ export class Station {
         l.userData.btn.material.color.setRGB(.36 * (.2 + o * 2.2), 1 * (.2 + o * 2.2), .56 * (.2 + o * 2.2));
       });
       d.hover += ((this.hover === i ? 1 : 0) - d.hover) * Math.min(1, dt * 6);
-      const k = o * (1.1 + d.hover * 1.0);
-      d.lightMat.color.setScalar(k + .02);
+      // the interior lights come up as the doors open, and glow warmer while you point at the door
+      const lit = (.3 + .7 * o) * (1 + d.hover * .45);
+      d.inside.base.color.setScalar(lit); d.inside.seat.color.setScalar(lit); d.inside.glow.color.setRGB(1.6, 1.35, 1.02).multiplyScalar(lit * (1 + d.hover * .4));
       d.statusMats.forEach(m => m.color.setRGB(o > .05 ? .36 * 3 : 1 * .4, o > .05 ? 1 * 3 : .64 * .4, o > .05 ? .56 * 3 : .12 * .4));
       d.spill.material.opacity = o * (.28 + d.hover * .3);
       if (d.pl) d.pl.intensity = o * (5 + d.hover * 6);
@@ -602,9 +607,10 @@ export class Station {
     const c = this.camera;
     if (this.intro) { this._introFrame(t, dt); }
     else if (this.flight) {
-      const f = this.flight, p = Math.min(1, (t - f.t0) / 1.6);
-      if (p < .55) { const u = easeInOut(p / .55); c.position.lerpVectors(f.p0, f.p1, u); this.look.lerpVectors(f.l0, f.l1, u); }
-      else { const u = Math.pow((p - .55) / .45, 2); c.position.lerpVectors(f.p1, f.p2, u); this.look.copy(f.l1); }
+      // line up in front of the door, then glide through it into the vestibule
+      const f = this.flight, p = Math.min(1, (t - f.t0) / 1.9);
+      if (p < .5) { const u = easeInOut(p / .5); c.position.lerpVectors(f.p0, f.p1, u); this.look.lerpVectors(f.l0, f.l1, u); }
+      else { const u = easeInOut((p - .5) / .5); c.position.lerpVectors(f.p1, f.p2, u); this.look.copy(f.l1); }
       if (p >= 1 && !f.fired) { f.fired = true; f.done && f.done(); }
     } else {
       this.parkedPose(false); this.par.lerp(this.mouse, .05);

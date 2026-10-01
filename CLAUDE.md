@@ -12,7 +12,7 @@ The README covers the owner-facing basics: how to add a car and how to update sc
 - **`/` (hub):** a 3D golden-hour train platform.
   - **First visit of the day:** a paper ticket loader ("Board with sound" or "Board without sound").
     Then a first-person cutscene: you sit on a bench holding the ticket and look around, and a red-and-silver double-deck commuter train pulls in.
-  - **Train cars:** each car's door is a section of the cabinet. An LED departures board lists the same cars.
+  - **Train cars:** each car's door is a section of the cabinet. A split-flap departures board (a station-hall timetable: time, destination, car, status) lists the same cars.
   - **Spirit Points:** only this car is live (`/points/`).
     Weekly Newsletter, Events and Meet the Cabinet show a "coming soon" notice.
 - **`/points/`:** the live Spirit Points leaderboard.
@@ -38,11 +38,12 @@ The README covers the owner-facing basics: how to add a car and how to update sc
 ## Files
 | File | What it does |
 |---|---|
-| `index.html` | Hub markup and all hub CSS. It contains the ticket loader (`#loader`, with a `.quick` variant for repeat visits), the HUD (`.sign`, `#replay-btn`, `#sound-btn`), the headline, the departures board (`#board`), the coming-soon notice and the skip button. |
+| `index.html` | Hub markup and all hub CSS. It contains the ticket loader (`#loader`, with a `.quick` variant for repeat visits), the HUD (`.sign`, `#replay-btn`, `#sound-btn`), the headline, the split-flap departures board (`#board`, `.flap` cells with the split line and a flip animation), the coming-soon notice and the skip button. |
 | `hub/doors.js` | `DOORS`, the list of cars (`id`, `title`, `sub`, `status`, optional `href`), plus `SITE`. Adding an `href` makes a car live. |
 | `hub/hub.js` | Page logic: ticket fill-in, loader progress, `boot()` (fonts, then the scene, then `station.warm()`), `enter()`, `quickEnter()`, `playIntro()`, replay, board rendering, boarding flight, keyboard and pointer handling, and the daily reset. |
 | `hub/station.js` | The 3D scene (`Station` class): sky shader and PMREM environment, hills, trees, tracks, platform, overhead wires, lamps and benches, the train (built from `train.js`), the cutscene rig (simple hands holding the ticket, knees, sneakers), the cutscene timeline (`_introFrame`) with the spring-driven head (`_head`), the arrival, door animation, camera choreography, `warm()` and adaptive resolution (`_adapt`). |
-| `hub/train.js` | The train's shape and paint. Body cross-section is a superellipse sampled by arc length (`arcRing`, `vOfY`). Also the lofted nose (`noseGeometry`, `nosePoint`), window slots, and canvas-painted textures (`paintBody`, `paintNose`, `windowTexture`, `interiorTexture`). Constants: `CAR_L = 8`, `GAP = .36`, `W = 2.9`, `H = 4.05`, `FLOOR = .55`, `DOOR_W = 1.3`, `DOOR_H = 2.1`, `NOSE_L = 2.6`. |
+| `hub/train.js` | The train's shape and paint. Body cross-section is a superellipse sampled by arc length (`arcRing`, `vOfY`). `shellRing()` is that ring with vertices pinned exactly to the door and window edges (both sides); `bodyGeometry()` uses it to cut the real doorway on the platform side. Also the lofted nose (`noseGeometry`, `nosePoint`), window slots, and canvas-painted textures (`paintBody`, `paintNose`, `windowTexture`). Constants: `CAR_L = 8`, `GAP = .36`, `W = 2.9`, `H = 4.05`, `FLOOR = .55`, `DOOR_W = 1.3`, `DOOR_H = 2.1`, `NOSE_L = 2.6`. |
+| `hub/interior.js` | `buildInterior(car, …)`: the 3D inside of each car behind its door. A lining (the body section offset 7 cm inward, with the doorways and windows cut out), a platform-level vestibule with the far-side doors, an LED display and grab poles, stairs up to the upper deck on the left (far side), a step down to the lower deck on the right, seats with moquette, and one seated passenger per car (built with `person()` and baked in). All lighting is baked into vertex colours by `bake()` from the `LIGHTS` list (each light only reaches its own room box); no real-time lights. Per car it's about 5 draw calls: baked surfaces, seats, light panels, steel, and window glass. |
 | `hub/scenery.js` | `mergeStatic()`, which merges static meshes into one draw call per material (skips `userData.keep`). Also the passengers (`addPeople` and `updatePeople`: heads glance around and watch the train), platform props (bins, ticket validators, planters, door markers), and the background (hillside houses with lit windows, a radio mast, road traffic, clouds, birds). |
 | `hub/audio.js` | `StationAudio`: all sound is synthesized with Web Audio (crossing bells, horn, motor, brakes, door chime, birds, foley). There are no audio files. |
 | `points/index.html`, `points/js/app.js` | The Spirit Points page and its logic: sections, leaderboard, results deck, detail panel, live refresh and toasts. |
@@ -54,6 +55,11 @@ The README covers the owner-facing basics: how to add a car and how to update sc
 - **Warm-up (`Station.warm`)** runs behind the loading screen.
   - It builds the cutscene rig, compiles every shader, and renders every object once (frustum culling off, train in view, camera on the bench).
   - Without this the train stutters as it first enters the view. Anything new added to the scene is warmed automatically, as long as it exists before `warm()` runs.
+- **Car interiors (`interior.js`):** built inside `_side()`, so they exist before merging and `warm()`.
+  - Each car gets its own copy of the `base`, `seat` and `glow` materials; `render()` scales their colour with the door's opening and hover (`d.inside`), so the lights come up as the doors open and warm up on hover.
+  - The car-end gangway blocks reach 15 cm into each car, so the interior ends at `END = CAR_L / 2 - .22`.
+  - The bogies sit under the lower deck. The springs and dampers were lowered (invisible from outside) so the lower floor (`LOWER = .43`) clears them; keep bogie parts below that.
+  - Window and far-door glass is a shared transparent material with a warm gradient, so the evening outside shows through softened.
 - **Merging:** after the scene is built, `mergeStatic()` collapses each car, the props, people and wires.
   - Anything animated, or referenced later, must have `userData.keep = true` so it isn't merged.
     Examples: door leaves, door hit boxes, light spill, nose mesh, headlight beam, people's heads.
@@ -63,15 +69,18 @@ The README covers the owner-facing basics: how to add a car and how to update sc
   - Sit down at 0.25. Look at the ticket until 3.6.
   - Look up and right, then left down the platform with the crossing bells at 3.4.
   - The train starts arriving at 5.2 (a 6-second arrival). The head then tracks the train's nose.
-  - Stand up at 12.1, and hand off to the platform view at 13.3.
+  - At 12.1 the first-person rig is swapped for the seated listener (`st.listener`, you with red headphones), and the camera lifts up over your head and pulls back behind the bench (1.5 s). Hand-off to the platform view at 13.6.
+  - The listener is hidden during the cutscene (`_me(false)`) and shown again at 12.1, on skip and at the end. His head nods on the beat in `updatePeople` (`p.music`); no music is played.
 - **Head motion:** `_head` uses critically damped and slightly underdamped springs on yaw and pitch.
   On top of that: small random glances while holding a look, a slight dip during big turns, tilt into turns, and a breathing sway.
 - **Daily flow:**
   - **First visit:** `firstToday` is true, so the ticket loader shows, and `enter()` writes the date and plays the cutscene.
   - **Later visits that day:** `#loader.quick` shows only the logo and a progress line, then `quickEnter()` parks the train and opens the doors.
+  - **Sound:** on by default on later visits, unless you turned it off with the sound button (`localStorage['spirit-sound'] = 'off'`). Browsers hold audio until the first tap or key press, so `unlockAudio` resumes it then. The first visit's ticket still offers both choices.
+  - **Departures board (`hub.js`):** `renderBoard()` builds the rows once, then `flap()` flips only the cells whose letter changed (each cell cycles a few random letters, with a per-cell token so overlapping updates can't land out of order). `showBoard()` slides it in and flips everything from blank; `audio.clatter()` is the flap sound. Departure times are set once on load. Phones hide the time and car columns.
   - **Replay:** `#replay-btn` (shown once `body.entered` is set) replays the cutscene.
   - **Reduced motion or no WebGL:** a static version.
-- **Boarding a live car:** a camera flight into the door, a flash, then navigation.
+- **Boarding a live car:** a 1.9 s camera flight (`board()`): it lines up in front of the door, then glides through the doorway into the vestibule (ends at z = .35, inside the car). The flash starts at 1.5 s (`hub.js`), then navigation.
   The `sessionStorage['spirit-door']` handoff makes Spirit Points turn sound on when you arrive from the train.
 - **Layout:**
   - Platform edge `front = W/2 + .12`. Benches at `z = front + 5.8` and `x = 0, ±2P` (P = CAR_L + GAP); you sit on the middle bench in the cutscene.
@@ -93,12 +102,9 @@ The README covers the owner-facing basics: how to add a car and how to update sc
   The status line just says who leads (for example "Seniors lead by 40"). Section kickers are just numbers.
 
 ## Next up (requested, not built yet)
-1. **3D train interior.** When a car's doors open, the view inside is currently a flat painted texture (`interiorTexture()` on a plane in `_side`).
-   Make it real 3D: a vestibule with stairs up and down to the two decks, seats, grab poles, lighting and maybe a passenger or two.
-   Keep it cheap (merged geometry) and warmed up. The boarding camera flies into this space.
-2. **Life on the platform and in the background.** People walking by, someone biking, an e-bike or scooter rider, and so on.
+1. **Life on the platform and in the background.** People walking by, someone biking, an e-bike or scooter rider, and so on.
    Moving people need a simple walk cycle (swing the limbs). Put them in groups that aren't merged, so they can animate.
    Good paths are along the back of the platform (`z ≈ front + 8…12`) and on the road behind the fence (the cars there already loop).
    They must not walk through the door columns while doors are open, or block the parked desktop view of the train.
-3. The coming-soon sections (Weekly Newsletter, Events, Meet the Cabinet) don't have pages yet.
+2. The coming-soon sections (Weekly Newsletter, Events, Meet the Cabinet) don't have pages yet.
    Add them as `/newsletter/` etc. with an `href` in `doors.js`.

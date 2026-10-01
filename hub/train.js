@@ -43,10 +43,11 @@ export function vOfY(y) {
   return (ARC.L[lo] + (ARC.L[hi] - ARC.L[lo]) * f) / ARC.total;
 }
 
-function ringGeometry(rings) { // rings: [{x, pts:[[z,y]...], u}]
+function ringGeometry(rings, skip) { // rings: [{x, pts:[[z,y,v?]...], u}]; skip(i, j) leaves a quad out
   const pos = [], uv = [], idx = [], R = rings[0].pts.length;
-  rings.forEach(r => r.pts.forEach(([z, y], j) => { pos.push(r.x, y, z); uv.push(r.u, j / (R - 1)); }));
+  rings.forEach(r => r.pts.forEach(([z, y, v], j) => { pos.push(r.x, y, z); uv.push(r.u, v ?? j / (R - 1)); }));
   for (let i = 0; i < rings.length - 1; i++) for (let j = 0; j < R - 1; j++) {
+    if (skip && skip(i, j)) continue;
     const a = i * R + j, b = a + R; idx.push(a, b, a + 1, b, b + 1, a + 1);
   }
   const g = new THREE.BufferGeometry();
@@ -55,10 +56,32 @@ function ringGeometry(rings) { // rings: [{x, pts:[[z,y]...], u}]
 }
 function ringPts(hw, yc, hh) { const p = []; for (let j = 0; j <= M; j++) p.push(sectionPoint(thetaOfV(j / M), hw, yc, hh)); return p; }
 
+// the point at arc-length parameter v
+function arcPoint(v) {
+  const t = v * ARC.total; let lo = 0, hi = ARC.K;
+  while (hi - lo > 1) { const m = (lo + hi) >> 1; if (ARC.L[m] < t) lo = m; else hi = m; }
+  const f = (t - ARC.L[lo]) / ((ARC.L[hi] - ARC.L[lo]) || 1), a = ARC.pts[lo], b = ARC.pts[hi];
+  return [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f];
+}
+// The body's cross-section ring, with vertices pinned exactly to the edges of the door (both sides)
+// and the windows, so openings can be cut cleanly. pin(y, side) gives the ring index at that height.
+export const WIN_Y = [1.06, 1.78, 2.48, 3.2];
+export function shellRing() {
+  const R = 180, pts = arcRing(R).map((p, j) => [p[0], p[1], j / R]), pins = {};
+  [1, -1].forEach(sd => [FLOOR, FLOOR + DOOR_H, ...WIN_Y].forEach(y => {
+    const v = sd > 0 ? vOfY(y) : 1 - vOfY(y), j = Math.round(v * R);
+    pts[j] = [...arcPoint(v), v]; pins[sd + ':' + y.toFixed(3)] = j;
+  }));
+  const pin = (y, sd = 1) => pins[sd + ':' + y.toFixed(3)];
+  return { pts, R, pin, pinned: new Set(Object.values(pins)) };
+}
 export function bodyGeometry() {
-  const p = arcRing(180), rings = [];
-  for (let i = 0; i <= 8; i++) rings.push({ x: -CAR_L / 2 + CAR_L * i / 8, pts: p, u: i / 8 });
-  return ringGeometry(rings);
+  const { pts, pin } = shellRing(), xs = [-DOOR_W / 2, DOOR_W / 2];
+  for (let i = 0; i <= 8; i++) xs.push(-CAR_L / 2 + CAR_L * i / 8);
+  xs.sort((a, b) => a - b);
+  const jb = pin(FLOOR), jt = pin(FLOOR + DOOR_H);
+  // the doorway on the platform side is a real opening, so the 3D vestibule behind it shows through
+  return ringGeometry(xs.map(x => ({ x, pts, u: (x + CAR_L / 2) / CAR_L })), (i, j) => Math.abs((xs[i] + xs[i + 1]) / 2) < DOOR_W / 2 && j >= jb && j < jt);
 }
 export function capGeometry() {
   const sh = new THREE.Shape(); arcRing(180).forEach(([z, y], j) => j ? sh.lineTo(z, y) : sh.moveTo(z, y));
@@ -171,24 +194,6 @@ export function windowTexture() {
   x.fillStyle = 'rgba(20,16,20,.55)'; x.beginPath(); x.arc(126, 92, 15, 0, 7); x.fill(); x.fillRect(110, 104, 32, 60);
   x.restore(); return tex(c);
 }
-// what you see through an open door: a warm vestibule with stairs, seats and grab poles
-export function interiorTexture() {
-  const c = canvas(256, 420), x = c.getContext('2d'), w = 256, h = 420;
-  const g = x.createLinearGradient(0, 0, 0, h); g.addColorStop(0, '#f3ece0'); g.addColorStop(.55, '#d9cdbb'); g.addColorStop(1, '#a89884');
-  x.fillStyle = g; x.fillRect(0, 0, w, h);
-  x.fillStyle = '#fffaf0'; x.fillRect(16, 6, w - 32, 12);
-  const s = x.createLinearGradient(0, 120, 0, 210); s.addColorStop(0, '#8a7bc0'); s.addColorStop(1, '#ffb88a');
-  x.fillStyle = '#2f2c30'; x.fillRect(66, 112, 124, 100); x.fillStyle = s; x.fillRect(72, 118, 112, 88);
-  for (let i = 0; i < 5; i++) { x.fillStyle = '#8b8f97'; x.fillRect(0, 300 - i * 34, 74 - i * 11, 34); x.fillStyle = '#e8b923'; x.fillRect(0, 300 - i * 34, 74 - i * 11, 4); }
-  for (let i = 0; i < 4; i++) { x.fillStyle = '#6a6e76'; x.fillRect(w - 66 + i * 12, 330 + i * 18, 66 - i * 12, 18); x.fillStyle = '#e8b923'; x.fillRect(w - 66 + i * 12, 330 + i * 18, 66 - i * 12, 3); }
-  x.fillStyle = '#3b4252'; x.beginPath(); x.roundRect(98, 242, 62, 68, 8); x.fill(); x.fillStyle = '#4a5266'; x.fillRect(102, 248, 54, 9);
-  x.fillStyle = '#c3c7ce'; x.fillRect(86, 20, 7, 380); x.fillStyle = 'rgba(255,255,255,.6)'; x.fillRect(87, 20, 2, 380);
-  x.fillStyle = '#56565c'; x.fillRect(0, 384, w, 36); x.fillStyle = '#e8b923'; x.fillRect(0, 404, w, 5);
-  const v = x.createRadialGradient(w / 2, h / 2, 40, w / 2, h / 2, 260); v.addColorStop(0, 'rgba(0,0,0,0)'); v.addColorStop(1, 'rgba(50,30,15,.4)');
-  x.fillStyle = v; x.fillRect(0, 0, w, h);
-  return tex(c);
-}
-
 // the nose: glossy red paint, a wraparound windshield with a destination display, side cab windows,
 // headlight housings, a white pinstripe and the logo; plus a glow map for the lights
 export function paintNose(logo, ledDraw) {
