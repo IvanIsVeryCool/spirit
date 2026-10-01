@@ -83,7 +83,7 @@ The README covers the owner-facing basics: how to add a car and how to update sc
 - **Look:** polished and professional, nothing that looks "vibe coded". Smooth, real animations.
   Keep the golden-hour station look, which the owner likes. Only the necessary text: the owner asked twice to cut extra copy.
 - **Workflow:** push changes live, meaning commit to `main` and push. The owner asks for "push" when they want it on the site.
-  Commit as `git -c user.name="Ivan Cui" -c user.email="ivancui211@gmail.com" commit`.
+  Commit with your own git identity (whatever is set up on your computer).
 - **Train:** keep it an original red-and-silver "Nueva Spirit Line" design.
   The owner asked for a copy of Caltrain's actual train (livery and design); that was declined because the design and branding belong to Caltrain and its manufacturer. Don't recreate it.
 - **Hands:** the cutscene uses the original simple hands, with no thumbs (the owner's choice).
