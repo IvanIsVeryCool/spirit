@@ -239,7 +239,7 @@ export class Station {
       yellow: new THREE.MeshStandardMaterial({ color: 0xe8b923, roughness: .5 })
     };
     const winT = windowTexture();
-    M.window = new THREE.MeshPhysicalMaterial({ map: winT, emissiveMap: winT, emissive: 0xffffff, emissiveIntensity: .22, roughness: .04, metalness: 0, clearcoat: 1, clearcoatRoughness: .02, envMapIntensity: 1.6, alphaTest: .5 });
+    M.window = new THREE.MeshPhysicalMaterial({ map: winT, emissiveMap: winT, emissive: 0xffffff, emissiveIntensity: .3, roughness: .12, metalness: 0, clearcoat: .6, clearcoatRoughness: .1, envMapIntensity: .3, alphaTest: .5 });
     this.interior = interiorTexture();
     const shell = bodyGeometry(), cap = capGeometry();
     this.cars = []; this.doors = [];

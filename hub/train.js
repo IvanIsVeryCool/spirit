@@ -12,10 +12,35 @@ export function sectionPoint(theta, hw = HW, yc = YC, hh = HH, n = N_EXP) {
   return [hw * Math.sign(c) * Math.pow(Math.abs(c), 2 / n), yc + hh * Math.sign(s) * Math.pow(Math.abs(s), 2 / n)];
 }
 const thetaOfV = v => v * Math.PI * 2 - Math.PI / 2;
-// v on the right-hand side for a given height on the body
-export function vOfY(y) {
+// The nose keeps the angle parameter (its paint is laid out for it); this is v for a height there.
+function vOfYTheta(y) {
   const k = Math.max(-1, Math.min(1, (y - YC) / HH)), th = Math.asin(Math.sign(k) * Math.pow(Math.abs(k), N_EXP / 2));
   return (th + Math.PI / 2) / (Math.PI * 2);
+}
+// The car body is sampled evenly by arc length instead, so its flat sides get their fair share of
+// vertices and of the painted texture (by angle, the whole side would squeeze into a sliver of v).
+const ARC = (() => {
+  const K = 8192, pts = [], L = [0];
+  for (let i = 0; i <= K; i++) pts.push(sectionPoint(thetaOfV(i / K)));
+  for (let i = 1; i <= K; i++) L.push(L[i - 1] + Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]));
+  return { pts, L, total: L[K], K };
+})();
+function arcRing(n) {
+  const out = []; let k = 0;
+  for (let j = 0; j <= n; j++) {
+    const t = j / n * ARC.total; while (k < ARC.K - 1 && ARC.L[k + 1] < t) k++;
+    const a = ARC.pts[k], b = ARC.pts[k + 1], f = Math.min(1, (t - ARC.L[k]) / ((ARC.L[k + 1] - ARC.L[k]) || 1));
+    out.push([a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f]);
+  }
+  return out;
+}
+// v on the right-hand (+z) side of the body for a given height
+export function vOfY(y) {
+  let lo = 0, hi = ARC.K / 2; // heights rise steadily from the bottom centre to the roof centre
+  if (y <= ARC.pts[0][1]) return 0; if (y >= ARC.pts[hi][1]) return .5;
+  while (hi - lo > 1) { const m = (lo + hi) >> 1; if (ARC.pts[m][1] < y) lo = m; else hi = m; }
+  const f = (y - ARC.pts[lo][1]) / ((ARC.pts[hi][1] - ARC.pts[lo][1]) || 1);
+  return (ARC.L[lo] + (ARC.L[hi] - ARC.L[lo]) * f) / ARC.total;
 }
 
 function ringGeometry(rings) { // rings: [{x, pts:[[z,y]...], u}]
@@ -31,12 +56,12 @@ function ringGeometry(rings) { // rings: [{x, pts:[[z,y]...], u}]
 function ringPts(hw, yc, hh) { const p = []; for (let j = 0; j <= M; j++) p.push(sectionPoint(thetaOfV(j / M), hw, yc, hh)); return p; }
 
 export function bodyGeometry() {
-  const p = ringPts(HW, YC, HH), rings = [];
+  const p = arcRing(180), rings = [];
   for (let i = 0; i <= 8; i++) rings.push({ x: -CAR_L / 2 + CAR_L * i / 8, pts: p, u: i / 8 });
   return ringGeometry(rings);
 }
 export function capGeometry() {
-  const sh = new THREE.Shape(); ringPts(HW, YC, HH).forEach(([z, y], j) => j ? sh.lineTo(z, y) : sh.moveTo(z, y));
+  const sh = new THREE.Shape(); arcRing(180).forEach(([z, y], j) => j ? sh.lineTo(z, y) : sh.moveTo(z, y));
   return new THREE.ShapeGeometry(sh, 4);
 }
 
@@ -79,7 +104,7 @@ export const windowSlots = () => {
 // the side of a car: brushed stainless, a red lower band with a white pinstripe, a grey band between
 // the decks, window gaskets, panel seams and rivets, and road grime toward the bottom
 export function paintBody(logo) {
-  const TW = 2048, TH = 1024, X = x => (x + CAR_L / 2) / CAR_L * TW, R = v => (1 - v) * TH;
+  const TW = 2048, TH = 2048, X = x => (x + CAR_L / 2) / CAR_L * TW, R = v => (1 - v) * TH;
   const both = (y0, y1, fill, xa = -CAR_L / 2, xb = CAR_L / 2, ctx) => {
     const a = R(vOfY(y1)), b = R(vOfY(y0)); ctx.fillStyle = fill; ctx.fillRect(X(xa), a, X(xb) - X(xa), b - a);
     const a2 = R(1 - vOfY(y0)), b2 = R(1 - vOfY(y1)); ctx.fillRect(X(xa), a2, X(xb) - X(xa), b2 - a2);
@@ -88,7 +113,7 @@ export function paintBody(logo) {
   const g = x.createLinearGradient(0, R(vOfY(H)), 0, R(vOfY(BASE))); g.addColorStop(0, '#e4e7ec'); g.addColorStop(.5, '#cdd1d7'); g.addColorStop(1, '#b3b8c0');
   x.fillStyle = g; x.fillRect(0, 0, TW, TH);
   for (let i = 0; i < 1400; i++) { x.fillStyle = Math.random() < .5 ? 'rgba(255,255,255,.07)' : 'rgba(60,66,76,.06)'; x.fillRect(Math.random() * TW, Math.random() * TH, 40 + Math.random() * 260, 1); }
-  x.fillStyle = '#8f949c'; x.fillRect(0, R(.5) - 70, TW, 140); // roof
+  x.fillStyle = '#8f949c'; x.fillRect(0, R(.62), TW, R(.38) - R(.62)); // roof
   both(BASE, .78, '#c3262c', undefined, undefined, x);
   both(.8, .84, '#f4f1ea', undefined, undefined, x);
   both(2.0, 2.27, '#5f656e', undefined, undefined, x);
@@ -111,9 +136,13 @@ export function paintBody(logo) {
   // lettering on the band between the decks
   [-1, 1].forEach(sd => {
     const cx = X(sd * (CAR_L / 2 - 1.15)), cy = (R(vOfY(2.27)) + R(vOfY(2.0))) / 2;
-    if (logo) x.drawImage(logo, cx - 112, cy - 22, 44, 44);
-    x.fillStyle = '#fff'; x.font = '900 34px Archivo, Arial, sans-serif'; x.textBaseline = 'middle'; x.fillText('NUEVA', cx - 60, cy - 6);
-    x.font = '700 15px Archivo, Arial, sans-serif'; x.fillText('SPIRIT LINE', cx - 58, cy + 18);
+    // texture pixels are taller than they are wide here, so squash the lettering to keep it in proportion
+    const k = (TH / ARC.total) / (TW / CAR_L);
+    x.save(); x.translate(cx, cy); x.scale(1, k);
+    if (logo) x.drawImage(logo, -112, -22, 44, 44);
+    x.fillStyle = '#fff'; x.font = '900 34px Archivo, Arial, sans-serif'; x.textBaseline = 'middle'; x.fillText('NUEVA', -60, -6);
+    x.font = '700 15px Archivo, Arial, sans-serif'; x.fillText('SPIRIT LINE', -58, 18);
+    x.restore();
   });
   // grime: dirt rising from the bottom, streaks under the windows
   const gb = x.createLinearGradient(0, R(vOfY(1.5)), 0, R(vOfY(BASE))); gb.addColorStop(0, 'rgba(70,52,40,0)'); gb.addColorStop(1, 'rgba(70,52,40,.45)');
@@ -171,7 +200,7 @@ export function paintNose(logo, ledDraw) {
   // dark skirt along the bottom
   x.fillStyle = '#2a2c31'; x.fillRect(0, R(.05), TW, R(0) - R(.05)); x.fillRect(0, R(1), TW, R(.95) - R(1));
   // pinstripe continuing from the body
-  const vp = vOfY(.82); x.fillStyle = '#f4f1ea'; x.fillRect(0, R(vp + .006), U(.8), 8); x.fillRect(0, R(1 - vp + .006), U(.8), 8);
+  const vp = vOfYTheta(.82); x.fillStyle = '#f4f1ea'; x.fillRect(0, R(vp + .006), U(.8), 8); x.fillRect(0, R(1 - vp + .006), U(.8), 8);
   // windshield
   const ws = (s0, s1, v0, v1, r) => { x.beginPath(); x.roundRect(U(s0), R(v1), U(s1) - U(s0), R(v0) - R(v1), r); };
   x.fillStyle = '#16171c'; ws(.47, .87, .29, .71, 30); x.fill();
