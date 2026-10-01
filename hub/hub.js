@@ -146,7 +146,6 @@ $('sound-btn').addEventListener('click', () => { setSound(!audio.enabled); audio
 /* arrival */
 function arrived() {
   if (doorsOpen) return;
-  $('kicker').textContent = 'Platform 1 · Doors open';
   audio.chime();
   setTimeout(() => {
     doorsOpen = true; renderBoard(); setFocus(focus);
@@ -169,8 +168,8 @@ async function boot() {
   let done = 0; const total = 3, shown = { v: 0 };
   const anim = () => {
     shown.v += ((done / total) * 100 - shown.v) * .1;
-    bar.style.transform = `scaleX(${shown.v / 100})`; dot.style.left = `calc(6px + (100% - 12px) * ${shown.v / 100})`; pct.textContent = Math.round(shown.v) + '%';
-    if (shown.v < 99.5) requestAnimationFrame(anim); else { pct.textContent = '100%'; bar.style.transform = 'scaleX(1)'; dot.style.left = 'calc(100% - 6px)'; }
+    bar.style.transform = `scaleX(${shown.v / 100})`; dot.style.left = `calc((100% - 58px) * ${shown.v / 100})`; pct.textContent = Math.round(shown.v) + '%';
+    if (shown.v < 99.5) requestAnimationFrame(anim); else { pct.textContent = '100%'; bar.style.transform = 'scaleX(1)'; dot.style.left = 'calc(100% - 58px)'; }
   };
   requestAnimationFrame(anim);
   const fonts = Promise.race([document.fonts ? document.fonts.ready : Promise.resolve(), new Promise(r => setTimeout(r, 2500))]).then(() => done++);
@@ -186,12 +185,11 @@ async function boot() {
   await Promise.all([fonts, stage]);
   if (station) station.redrawSigns(); // once the LED font has loaded
   if (station) { // get everything onto the graphics card now, so the train doesn't stutter as it pulls in
-    $('load-state').textContent = 'Warming up the engine\u2026';
     await new Promise(r => setTimeout(r, 50));
     try { await station.warm(ticketCanvas()); } catch (e) { console.warn(e); }
   }
   done++;
-  $('load-state').textContent = 'Ready to board \u00b7 your train is on time';
+  $('tk-status').classList.add('done');
   if (!station) { document.body.classList.add('static'); enter(false); return; }
   setTimeout(() => { $('gate').classList.add('ready'); $('enter-sound').focus({ preventScroll: true }); }, 350);
 }

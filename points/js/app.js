@@ -8,7 +8,7 @@ const school = (CONFIG.schoolName || '').trim();
 const sound = new Sound();
 const $ = id => document.getElementById(id);
 const SHORT = { sr: 'Seniors', jr: 'Juniors', so: 'Sophs', fr: 'Frosh' };
-const SEC_NAMES = ['Intro', 'Standings', 'Results', 'Keep up'];
+const SEC_NAMES = ['Intro', 'Leaderboard', 'Results', 'More'];
 
 /* ---------- film grain texture, made once ---------- */
 (() => {
@@ -23,7 +23,7 @@ const TITLE = 'Spirit Points';
 $('brand-name').textContent = TITLE;
 $('hero-title').textContent = TITLE; $('hero-title').setAttribute('aria-label', TITLE);
 $('brand-season').textContent = season() + ' season';
-$('season-line').textContent = '01 · ' + season() + ' Spirit Competition';
+$('season-line').textContent = season();
 $('end-school').textContent = (school ? school + ' ' : '') + 'Spirit Team · ' + season();
 
 /* ---------- data ---------- */
@@ -73,14 +73,14 @@ function countTo(el, from, to, { duration = 1300, delay = 0, ticks = true } = {}
 /* ---------- rendering the content ---------- */
 function statusLine(entries, r) {
   if (!entries.length) {
-    if (state.error) return 'The standings couldn’t load. Check your connection and refresh.';
-    if (!state.loaded) return 'Loading the latest standings…';
-    return 'Every class starts at zero. Standings appear after the first spirit event.';
+    if (state.error) return 'Couldn’t load the scores. Refresh to try again.';
+    if (!state.loaded) return 'Loading…';
+    return 'No events yet.';
   }
   const top = r.filter(x => x.rank === 1);
-  if (top.length > 1) return `<b>${top.map(x => x.name).join(' and ')}</b> are tied for first with <b class="num">${fmt(top[0].pts)}</b> points.`;
+  if (top.length > 1) return `<b>${top.map(x => x.name).join(' and ')}</b> tied at <b class="num">${fmt(top[0].pts)}</b>`;
   const d = r[0].pts - r[1].pts;
-  return `<b>${r[0].name}</b> lead the ${r[1].name} by <b class="num">${fmt(d)}</b> point${d === 1 ? '' : 's'} after ${entries.length} event${entries.length === 1 ? '' : 's'}.`;
+  return `<b>${r[0].name}</b> lead by <b class="num">${fmt(d)}</b>`;
 }
 
 let rows = ranked([]);
@@ -89,9 +89,9 @@ function renderContent({ fresh = [] } = {}) {
   const started = entries.length > 0;
   $('status').innerHTML = statusLine(entries, rows);
   const t = state.checkedAt ? new Date(state.checkedAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : null;
-  $('st-note').textContent = started ? `${entries.length} event${entries.length === 1 ? '' : 's'} · ${fmt(Object.values(totals(entries)).reduce((a, b) => a + b, 0))} points awarded` : 'No events yet';
-  $('live-text').textContent = t ? 'Live · ' + t : 'Live';
-  $('end-note').textContent = t ? 'Scores checked every minute · last at ' + t : 'Scores are posted by the spirit team after each event';
+  if ($('st-note')) $('st-note').textContent = started ? `${entries.length} event${entries.length === 1 ? '' : 's'} · ${fmt(Object.values(totals(entries)).reduce((a, b) => a + b, 0))} points awarded` : 'No events yet';
+  $('live-text').textContent = 'Live';
+  $('end-note').textContent = t ? 'Updated ' + t : '';
 
   // standings list (desktop side column)
   $('board').innerHTML = rows.map(x => `<li class="${started && x.rank === 1 ? 'lead' : ''}" data-id="${x.id}"><span class="rk mono">${started ? String(x.rank).padStart(2, '0') : '–'}</span><span class="nm">${x.name}</span><span class="pt num" data-pts="${x.pts}">${fmt(x.pts)}</span></li>`).join('');
@@ -135,7 +135,7 @@ function renderResults(fresh = []) {
 function updateSummary() {
   const es = state.entries;
   if (!es.length) { $('f-summary').textContent = ''; return; }
-  if (!filterId) { $('f-summary').innerHTML = `<b>${es.length}</b> event${es.length === 1 ? '' : 's'} · <b>${fmt(Object.values(totals(es)).reduce((a, b) => a + b, 0))}</b> points awarded`; return; }
+  if (!filterId) { $('f-summary').textContent = ''; return; }
   const st = classStats(filterId), g = GRADES.find(x => x.id === filterId);
   $('f-summary').innerHTML = `<b>${g.name}</b> · ${fmt(st.tot)} pts · ${st.wins} win${st.wins === 1 ? '' : 's'}${st.best ? ` · best: ${esc(st.best.name)} (+${fmt(st.best.p)})` : ''}`;
 }

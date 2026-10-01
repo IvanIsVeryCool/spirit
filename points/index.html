@@ -287,7 +287,7 @@ body.static .card{position:relative}
 
 <header class="hud hud-top">
   <a class="brand" href="#intro" data-link><span class="logo-img" aria-hidden="true"></span><span class="brand-text"><b id="brand-name">Spirit Team</b><span id="brand-season"></span></span></a>
-  <nav class="nav" aria-label="Main"><a class="back" href="/">← Cabinet</a><a href="#standings" data-link data-sec="1">Standings</a><a href="#results" data-link data-sec="2">Results</a></nav>
+  <nav class="nav" aria-label="Main"><a class="back" href="/">← Cabinet</a><a href="#standings" data-link data-sec="1">Leaderboard</a><a href="#results" data-link data-sec="2">Results</a></nav>
   <button class="sound" id="sound-btn" type="button" aria-pressed="false"><span class="bars" aria-hidden="true"><i></i><i></i><i></i><i></i></span><span id="sound-label">Sound off</span></button>
 </header>
 <div class="hud hud-bottom mono">
@@ -300,39 +300,38 @@ body.static .card{position:relative}
     <p class="kicker mono" id="season-line"></p>
     <h1 id="hero-title" aria-label="Spirit Points">Spirit Points</h1>
     <div class="intro-row">
-      <p class="status" id="status">Loading the latest standings…</p>
-      <a class="cue mono" href="#standings" data-link><i aria-hidden="true"></i>See standings</a>
+      <p class="status" id="status">Loading…</p>
+      <a class="cue mono" href="#standings" data-link><i aria-hidden="true"></i>Leaderboard</a>
     </div>
   </section>
 
   <section class="sec standings" id="standings" data-i="1">
     <div class="sticky">
       <div>
-        <p class="kicker mono">02 · Standings</p>
-        <h2 id="st-title">The Race</h2>
+        <p class="kicker mono">02</p>
+        <h2 id="st-title">Leaderboard</h2>
         <ol class="board" id="board"></ol>
       </div>
-      <div class="st-foot mono"><span id="st-note"></span></div>
     </div>
   </section>
 
   <section class="sec results" id="results" data-i="2">
     <div class="res-sticky">
-      <div class="res-head"><div><p class="kicker mono">03 · Results</p><h2 id="rs-title">Every Event</h2></div>
+      <div class="res-head"><div><p class="kicker mono">03</p><h2 id="rs-title">Results</h2></div>
         <div><div class="filters" id="filters" role="group" aria-label="Highlight a class"></div><p class="f-summary" id="f-summary"></p></div></div>
       <div class="deck-wrap" id="deck-wrap"><div class="deck" id="deck"></div></div>
-      <div class="res-hint mono"><span id="res-hint">Scroll to flip through · click a card for the full breakdown</span><span class="dots" id="dots"></span></div>
+      <div class="res-hint mono"><span id="res-hint">Scroll · tap a card</span><span class="dots" id="dots"></span></div>
     </div>
   </section>
 
   <section class="sec end" id="end" data-i="3">
-    <p class="kicker mono">04 · Keep up</p>
+    <p class="kicker mono">04</p>
     <nav class="end-links" aria-label="Footer">
-      <a href="#standings" data-link data-morph="STANDINGS"><span>01</span>Standings</a>
+      <a href="#standings" data-link data-morph="LEADERBOARD"><span>01</span>Leaderboard</a>
       <a href="#results" data-link data-morph="RESULTS"><span>02</span>Results</a>
       <a href="#intro" data-link data-morph="TOP"><span>03</span>Back to top</a>
     </nav>
-    <div class="end-meta mono"><span id="end-school">Spirit Team</span><span id="end-note">Scores are posted by the spirit team after each event</span><span>Sound generated live in your browser</span></div>
+    <div class="end-meta mono"><span id="end-school">Spirit Team</span><span id="end-note"></span></div>
   </section>
 </main>
 
