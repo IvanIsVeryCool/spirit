@@ -1,2 +1,15 @@
 [build]
   publish = "."
+
+# notes for developers stay in the repo, not on the website
+[[redirects]]
+  from = "/CLAUDE.md"
+  to = "/404"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/README.md"
+  to = "/404"
+  status = 404
+  force = true
