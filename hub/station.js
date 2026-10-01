@@ -4,7 +4,6 @@ import { EffectComposer } from '/vendor/jsm/postprocessing/EffectComposer.js';
 import { RenderPass } from '/vendor/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from '/vendor/jsm/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from '/vendor/jsm/postprocessing/OutputPass.js';
-import { buildHand, loadPhotoHand, photoHand } from './hands.js';
 import { CAR_L, GAP, W, H, BASE, FLOOR, DOOR_W, DOOR_H, NOSE_L, bodyGeometry, capGeometry, noseGeometry, nosePoint, paintBody, paintNose, windowTexture, interiorTexture, windowSlots } from './train.js';
 
 // A golden-hour Peninsula platform and a red-and-silver double-decker commuter train.
@@ -44,7 +43,6 @@ function grilleTex() {
 export class Station {
   constructor(canvas, { mobile, doors, logo }) {
     this.mobile = mobile; this.data = doors; this.count = doors.length; this.logo = logo;
-    this.hands = null; loadPhotoHand().then(h => { this.hands = h; }).catch(() => {}); // the photo-textured hands for the opening; drawn ones if they don't arrive
     const r = this.renderer = new THREE.WebGLRenderer({ canvas, antialias: !mobile, powerPreference: 'high-performance' });
     r.setPixelRatio(Math.min(devicePixelRatio || 1, mobile ? 1.5 : 1.75));
     r.toneMapping = THREE.ACESFilmicToneMapping; r.toneMappingExposure = 1.0;
@@ -416,9 +414,28 @@ export class Station {
     pg.computeVertexNormals();
     rig.add(new THREE.Mesh(pg, new THREE.MeshStandardMaterial({ map: tt, roughness: .85, side: THREE.DoubleSide, alphaTest: .5 })));
     const along = (mesh, a, b) => { const v = new THREE.Vector3().subVectors(b, a); mesh.position.copy(a).addScaledVector(v, .5); mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), v.clone().normalize()); return v.length(); };
-    if (this.hands) rig.add(photoHand(this.hands, 1), photoHand(this.hands, -1, { watch: true }));
-    else rig.add(buildHand(1), buildHand(-1, { watch: true }));
-    const fillL = new THREE.PointLight(0xffd2a8, .05, 1.2, 2); fillL.position.set(.1, .2, .5); rig.add(fillL); // a little light on your hands
+    const skin = new THREE.MeshStandardMaterial({ color: 0xc98a64, roughness: .6 });
+    const sleeve = new THREE.MeshStandardMaterial({ color: 0x2b3352, roughness: .92 });
+    const cuff = new THREE.MeshStandardMaterial({ color: COL.red, roughness: .9 });
+    [-1, 1].forEach(sd => {
+      const h = new THREE.Group(); h.position.set(sd * .15, -.005, 0);
+      const palm = new THREE.Mesh(new THREE.SphereGeometry(1, 20, 14), skin); palm.scale.set(.036, .05, .022); palm.position.set(sd * .022, 0, -.02); h.add(palm);
+      for (let k = 0; k < 4; k++) { // fingers curl behind the ticket
+        const f = new THREE.Mesh(new THREE.CapsuleGeometry(.0105, .042, 4, 10), skin);
+        f.position.set(-sd * .012, .034 - k * .021, -.026); f.rotation.z = sd * Math.PI / 2; h.add(f);
+      }
+      const thumb = new THREE.Mesh(new THREE.CapsuleGeometry(.0125, .036, 4, 10), skin); // thumb pinches the front
+      thumb.position.set(-sd * .018, .012, .012); thumb.rotation.z = sd * .75; h.add(thumb);
+      const nail = new THREE.Mesh(new THREE.SphereGeometry(1, 10, 8), new THREE.MeshStandardMaterial({ color: 0xe8b8a0, roughness: .3 }));
+      nail.scale.set(.007, .009, .003); nail.position.set(-sd * .03, .024, .023); nail.rotation.z = sd * .75; h.add(nail);
+      // wrist and sleeve run back toward you
+      const wristA = new THREE.Vector3(sd * .045, -.02, -.01), wristB = new THREE.Vector3(sd * .09, -.12, .13);
+      const wrist = new THREE.Mesh(new THREE.CylinderGeometry(.024, .026, 1, 12), skin); wrist.scale.y = along(wrist, wristA, wristB); h.add(wrist);
+      const c = new THREE.Mesh(new THREE.CylinderGeometry(.036, .036, .03, 16), cuff); along(c, wristB, wristB.clone().add(new THREE.Vector3(sd * .012, -.03, .04))); h.add(c);
+      const slA = wristB.clone().add(new THREE.Vector3(sd * .01, -.02, .03)), slB = new THREE.Vector3(sd * .17, -.42, .55);
+      const sl = new THREE.Mesh(new THREE.CylinderGeometry(.04, .052, 1, 14), sleeve); sl.scale.y = along(sl, slA, slB); h.add(sl);
+      rig.add(h);
+    });
     rig.position.set(0, 1.33, z0 - (this.mobile ? .38 : .32)); rig.lookAt(this.seat); rig.rotateX(-.12);
     if (this.mobile) rig.scale.setScalar(.62); // a narrow screen sees less, so hold it a little further off
     this.rig = rig; this.rigBase = rig.quaternion.clone(); this.rigPos = rig.position.clone();
