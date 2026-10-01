@@ -14,7 +14,7 @@ Open the "Spirit Points Scores" Google Sheet and add one row per challenge:
 ## Settings
 At the top of the script in `index.html` (search for SETTINGS):
 - `sheetId`: which Google Sheet the site reads.
-- `schoolName`: shown in the menu bar and the intro.
+- `schoolName`: shown in the header, footer and intro.
 - `refreshSeconds`: how often open pages check for new points.
 
 The sheet must be shared as "Anyone with the link: Viewer", or the site can't read it.
