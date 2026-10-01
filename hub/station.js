@@ -4,9 +4,10 @@ import { EffectComposer } from '/vendor/jsm/postprocessing/EffectComposer.js';
 import { RenderPass } from '/vendor/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from '/vendor/jsm/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from '/vendor/jsm/postprocessing/OutputPass.js';
+import { buildHand } from './hands.js';
+import { CAR_L, GAP, W, H, BASE, FLOOR, DOOR_W, DOOR_H, NOSE_L, bodyGeometry, capGeometry, noseGeometry, nosePoint, paintBody, paintNose, windowTexture, interiorTexture, windowSlots } from './train.js';
 
 // A golden-hour Peninsula platform and a red-and-silver double-decker commuter train.
-const CAR_L = 7.2, GAP = .36, W = 2.9, H = 4.05, BASE = .3, FLOOR = .55, DOOR_W = 1.3, DOOR_H = 2.1;
 const COL = {
   skyTop: '#1c2a66', skyMid: '#7468ab', horizon: '#ffb07a', sun: '#ffd08e',
   body: 0xc8ccd3, red: 0xc9272c, dark: 0x16181f, concrete: 0x8d857a, warm: 0xffc58a
@@ -36,52 +37,8 @@ function drawLED(ctx, lines, { lit = '#ffad1f', dim = '#2b1a05', CW = 160, CH = 
 }
 
 /* painted textures for the train */
-function windowTex() {
-  return canvasTex(128, 128, (x, w, h) => {
-    const g = x.createLinearGradient(0, 0, 0, h); g.addColorStop(0, '#2a2f45'); g.addColorStop(.55, '#6a4a3a'); g.addColorStop(1, '#b97a4a');
-    x.fillStyle = g; x.fillRect(0, 0, w, h);
-    x.fillStyle = 'rgba(255,214,160,.55)'; x.fillRect(0, 6, w, 5); // ceiling light strip inside
-    x.fillStyle = '#23324f'; // seat backs
-    [[6, 62], [46, 66], [86, 62]].forEach(([sx, sy]) => { x.beginPath(); x.roundRect(sx, sy, 34, 44, 7); x.fill(); x.fillStyle = '#2d3f63'; x.fillRect(sx + 4, sy + 4, 26, 6); x.fillStyle = '#23324f'; });
-    x.fillStyle = 'rgba(30,20,28,.55)'; x.beginPath(); x.arc(70, 70, 10, 0, 7); x.fill(); x.fillRect(60, 80, 20, 30); // a rider
-    const r = x.createLinearGradient(0, 0, w, h); r.addColorStop(0, 'rgba(255,255,255,0)'); r.addColorStop(.42, 'rgba(255,255,255,0)'); r.addColorStop(.5, 'rgba(255,236,220,.28)'); r.addColorStop(.6, 'rgba(255,255,255,0)');
-    x.fillStyle = r; x.fillRect(0, 0, w, h);
-  });
-}
-function interiorTex() {
-  return canvasTex(256, 420, (x, w, h) => {
-    const g = x.createLinearGradient(0, 0, 0, h); g.addColorStop(0, '#fff3dc'); g.addColorStop(.5, '#ffd9a6'); g.addColorStop(1, '#c98b55');
-    x.fillStyle = g; x.fillRect(0, 0, w, h);
-    x.fillStyle = '#fffaf0'; x.fillRect(20, 8, w - 40, 10); // ceiling light
-    // far-side window showing the sunset sky
-    const s = x.createLinearGradient(0, 120, 0, 210); s.addColorStop(0, '#8a7bc0'); s.addColorStop(1, '#ffb88a');
-    x.fillStyle = '#3a2c30'; x.fillRect(64, 112, 128, 104); x.fillStyle = s; x.fillRect(70, 118, 116, 92);
-    // stairs: up on the left, down on the right
-    x.fillStyle = '#7a8496';
-    for (let i = 0; i < 5; i++) { x.fillRect(0, 300 - i * 34, 70 - i * 10, 34); }
-    x.fillStyle = '#5c6474';
-    for (let i = 0; i < 4; i++) { x.fillRect(w - 64 + i * 12, 330 + i * 18, 64 - i * 12, 18); }
-    // seats
-    x.fillStyle = '#2b3d66'; x.beginPath(); x.roundRect(96, 240, 64, 70, 8); x.fill();
-    x.fillStyle = '#34497a'; x.fillRect(100, 246, 56, 10);
-    // yellow grab pole and floor
-    x.fillStyle = '#e8b923'; x.fillRect(84, 20, 9, 380);
-    x.fillStyle = '#4a4a52'; x.fillRect(0, 380, w, 40);
-    x.fillStyle = '#e8b923'; x.fillRect(0, 404, w, 6); // yellow step edge
-    const v = x.createRadialGradient(w / 2, h / 2, 40, w / 2, h / 2, 260); v.addColorStop(0, 'rgba(0,0,0,0)'); v.addColorStop(1, 'rgba(60,30,10,.35)');
-    x.fillStyle = v; x.fillRect(0, 0, w, h);
-  });
-}
 function grilleTex() {
   return canvasTex(64, 64, (x, w, h) => { x.fillStyle = '#7c838d'; x.fillRect(0, 0, w, h); x.fillStyle = '#4c525b'; for (let i = 2; i < h; i += 6) x.fillRect(4, i, w - 8, 3); });
-}
-function wordmarkTex(logoImg) {
-  return canvasTex(512, 128, (x, w, h) => {
-    x.clearRect(0, 0, w, h);
-    if (logoImg) x.drawImage(logoImg, 6, 14, 100, 100);
-    x.fillStyle = '#fff'; x.font = '900 64px "Archivo", Arial, sans-serif'; x.textBaseline = 'middle'; x.fillText('NUEVA', 120, 58);
-    x.font = '700 26px "Archivo", Arial, sans-serif'; x.fillText('SPIRIT LINE', 124, 102);
-  });
 }
 
 export class Station {
@@ -212,7 +169,7 @@ export class Station {
     strip.rotation.x = -Math.PI / 2; strip.position.set(0, FLOOR + .005, front + .3); s.add(strip);
     const line = new THREE.Mesh(new THREE.PlaneGeometry(400, .1), new THREE.MeshStandardMaterial({ color: 0xf2efe8, roughness: .6 }));
     line.rotation.x = -Math.PI / 2; line.position.set(0, FLOOR + .006, front + 1.2); s.add(line);
-    const joints = new THREE.InstancedMesh(new THREE.BoxGeometry(.03, .01, 40), new THREE.MeshStandardMaterial({ color: 0x9e958a }), 70), m = new THREE.Matrix4();
+    const joints = new THREE.InstancedMesh(new THREE.BoxGeometry(.03, .01, 40), new THREE.MeshStandardMaterial({ color: 0x766e64, roughness: .95 }), 70), m = new THREE.Matrix4();
     for (let i = 0; i < 70; i++) { m.makeTranslation(-140 + i * 4, FLOOR + .004, front + 21.6); joints.setMatrixAt(i, m); } s.add(joints);
   }
   _wires() {
@@ -238,7 +195,8 @@ export class Station {
   _props() {
     const s = this.scene, metal = new THREE.MeshStandardMaterial({ color: 0x1f2a26, metalness: .5, roughness: .55 });
     const z = this.front;
-    [-22.4, -7.4, 7.4, 22.4].forEach(x => { // lamp posts, placed between the doors
+    const P = CAR_L + GAP;
+    [-3 * P, -P, P, 3 * P].forEach(x => { // lamp posts, placed between the doors
       const g = new THREE.Group();
       const pole = new THREE.Mesh(new THREE.CylinderGeometry(.05, .07, 4.6, 8), metal); pole.position.y = 2.3; g.add(pole);
       const arm = new THREE.Mesh(new THREE.BoxGeometry(.06, .06, .9), metal); arm.position.set(0, 4.55, -.42); g.add(arm);
@@ -246,7 +204,7 @@ export class Station {
       const lamp = new THREE.Mesh(new THREE.BoxGeometry(.26, .02, .42), glow(COL.warm, 3.2)); lamp.position.set(0, 4.43, -.8); g.add(lamp);
       g.position.set(x, FLOOR, z + 7.2); g.traverse(o => { if (o.isMesh) o.userData.cast = true; }); s.add(g);
     });
-    [-15, 0, 15].forEach(x => { // benches
+    [-2 * P, 0, 2 * P].forEach(x => { // benches (you sit on the middle one in the opening)
       const g = new THREE.Group();
       const seat = new THREE.Mesh(new THREE.BoxGeometry(2.2, .08, .5), metal); seat.position.y = .48; g.add(seat);
       const back = new THREE.Mesh(new THREE.BoxGeometry(2.2, .5, .06), metal); back.position.set(0, .8, .24); g.add(back);
@@ -265,44 +223,36 @@ export class Station {
   /* ---------- the train ---------- */
   _train() {
     const train = this.train = new THREE.Group(); this.scene.add(train);
+    const paint = paintBody(this.logo);
     const M = this.mats = {
-      body: new THREE.MeshStandardMaterial({ color: COL.body, metalness: .5, roughness: .42, envMapIntensity: .6 }),
-      red: new THREE.MeshStandardMaterial({ color: COL.red, metalness: .3, roughness: .35, envMapIntensity: .7 }),
+      body: new THREE.MeshPhysicalMaterial({ map: paint.map, roughnessMap: paint.mr, metalnessMap: paint.mr, roughness: 1, metalness: 1, clearcoat: .35, clearcoatRoughness: .25, envMapIntensity: 1 }),
+      cap: new THREE.MeshStandardMaterial({ color: 0xaeb3bb, metalness: .7, roughness: .4 }),
       dark: new THREE.MeshStandardMaterial({ color: COL.dark, metalness: .4, roughness: .6 }),
       under: new THREE.MeshStandardMaterial({ color: 0x24272e, metalness: .5, roughness: .7 }),
       steel: new THREE.MeshStandardMaterial({ color: 0x8a9099, metalness: .85, roughness: .35 }),
       gray: new THREE.MeshStandardMaterial({ color: 0x6d737c, metalness: .5, roughness: .5 }),
-      roof: new THREE.MeshStandardMaterial({ color: 0x9da2ab, metalness: .6, roughness: .45 }),
+      roof: new THREE.MeshStandardMaterial({ color: 0x8f949c, metalness: .6, roughness: .5 }),
       grille: new THREE.MeshStandardMaterial({ map: grilleTex(), metalness: .5, roughness: .6 }),
       gasket: new THREE.MeshStandardMaterial({ color: 0x0c0d11, roughness: .8 }),
-      door: new THREE.MeshStandardMaterial({ color: 0xd3d7de, metalness: .55, roughness: .3, envMapIntensity: .8 }),
-      yellow: new THREE.MeshStandardMaterial({ color: 0xe8b923, roughness: .5 }),
-      seam: new THREE.MeshStandardMaterial({ color: 0x9aa0a8, metalness: .5, roughness: .5 })
+      door: new THREE.MeshPhysicalMaterial({ color: 0xc9ced5, metalness: .8, roughness: .3, clearcoat: .3 }),
+      yellow: new THREE.MeshStandardMaterial({ color: 0xe8b923, roughness: .5 })
     };
-    const winT = windowTex();
-    M.window = new THREE.MeshStandardMaterial({ map: winT, emissiveMap: winT, emissive: 0xffffff, emissiveIntensity: .42, metalness: .3, roughness: .08, envMapIntensity: .7 });
-    M.leafGlass = M.window;
-    const wm = this.logo ? wordmarkTex(this.logo) : null;
-    M.word = wm ? new THREE.MeshBasicMaterial({ map: wm, transparent: true }) : null;
-    this.interior = interiorTex();
-
-    // body cross-section: flat floor, straight sides, rounded roof
-    const hw = W / 2, rr = .55, br = .12, sh = new THREE.Shape();
-    sh.moveTo(-hw + br, BASE); sh.lineTo(hw - br, BASE); sh.quadraticCurveTo(hw, BASE, hw, BASE + br); sh.lineTo(hw, H - rr);
-    sh.quadraticCurveTo(hw, H, hw - rr, H); sh.lineTo(-hw + rr, H); sh.quadraticCurveTo(-hw, H, -hw, H - rr); sh.lineTo(-hw, BASE + br); sh.quadraticCurveTo(-hw, BASE, -hw + br, BASE);
-    const shell = new THREE.ExtrudeGeometry(sh, { depth: CAR_L, bevelEnabled: true, bevelSize: .04, bevelThickness: .04, bevelSegments: 2, curveSegments: 10 });
-    shell.rotateY(Math.PI / 2); shell.translate(-CAR_L / 2, 0, 0);
+    const winT = windowTexture();
+    M.window = new THREE.MeshPhysicalMaterial({ map: winT, emissiveMap: winT, emissive: 0xffffff, emissiveIntensity: .22, roughness: .04, metalness: 0, clearcoat: 1, clearcoatRoughness: .02, envMapIntensity: 1.6, alphaTest: .5 });
+    this.interior = interiorTexture();
+    const shell = bodyGeometry(), cap = capGeometry();
     this.cars = []; this.doors = [];
     for (let i = 0; i < this.count; i++) {
       const car = new THREE.Group(); car.position.x = (i - (this.count - 1) / 2) * (CAR_L + GAP);
       const body = new THREE.Mesh(shell, M.body); body.userData.cast = true; car.add(body);
+      [-1, 1].forEach(sd => { if (i === 0 && sd < 0) return; const c = new THREE.Mesh(cap, M.cap); c.rotation.y = sd * Math.PI / 2; c.position.x = sd * CAR_L / 2; car.add(c); });
       this._roof(car); this._under(car); this._side(car, i);
       train.add(car); this.cars.push(car);
     }
     this._cab(); this._pantograph();
     for (let i = 0; i < this.count - 1; i++) this._gangway(this.cars[i].position.x + CAR_L / 2 + GAP / 2);
     const last = this.cars[this.count - 1];
-    [-.85, .85].forEach(dz => { const t = new THREE.Mesh(new THREE.BoxGeometry(.04, .12, .22), glow(0xff2a2a, 3)); t.position.set(CAR_L / 2 + .06, 1.1, dz); last.add(t); });
+    [-.85, .85].forEach(dz => { const t = new THREE.Mesh(new THREE.BoxGeometry(.04, .12, .22), glow(0xff2a2a, 3)); t.position.set(CAR_L / 2 + .02, 1.1, dz); last.add(t); });
   }
   _roof(car) {
     const M = this.mats;
@@ -342,53 +292,34 @@ export class Station {
     const tank = new THREE.Mesh(new THREE.CylinderGeometry(.16, .16, 1.4, 14), M.gray); tank.rotation.z = Math.PI / 2; tank.position.set(-.1, .14, W / 2 - .55); car.add(tank);
   }
   _side(car, i) {
-    const M = this.mats, z = W / 2 + .05, segL = CAR_L / 2 - DOOR_W / 2 - .12;
+    const M = this.mats, z = W / 2 + .01;
     const side = (geo, mat, x, y, dz = 0) => { const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z + dz); car.add(m); return m; };
-    const segX = (sd, f) => sd * (DOOR_W / 2 + .12 + f * segL);
-    [-1, 1].forEach(sd => {
-      const cx = segX(sd, .5);
-      side(new THREE.BoxGeometry(segL, .42, .02), M.red, cx, BASE + .26);                 // red skirt
-      side(new THREE.BoxGeometry(segL, .035, .022), glow(0xf2f0ea, 1), cx, BASE + .5);    // white pinstripe
-      side(new THREE.BoxGeometry(segL, .28, .015), M.gray, cx, 2.13);                      // band between the decks
-      side(new THREE.BoxGeometry(segL, .07, .02), M.red, cx, 3.62);                       // roofline stripe
-      // windows on both decks: black gasket, then glass showing the lit inside
-      [1.42, 2.84].forEach(y => [.22, .5, .78].forEach(f => {
-        const x = segX(sd, f + (y > 2 ? .04 : 0)), w = segL * .24;
-        side(new THREE.BoxGeometry(w + .08, .8, .02), M.gasket, x, y, .002);
-        side(new THREE.PlaneGeometry(w, .72), M.window, x, y, .014);
-      }));
-      // panel seams
-      [0, .36, .64, 1].forEach(f => side(new THREE.BoxGeometry(.012, 3.1, .016), M.seam, segX(sd, f), 2.05, .004));
-      // Nueva wordmark on the band between the decks, near each end
-      if (M.word) side(new THREE.PlaneGeometry(.92, .23), M.word, segX(sd, .84), 2.13, .012);
-    });
-    // door: frame, interior, sliding leaves with windows, grab handles, status lights, step
-    side(new THREE.BoxGeometry(DOOR_W + .14, DOOR_H + .1, .02), M.dark, 0, FLOOR + DOOR_H / 2, -.01);
+    // flush tinted windows, set into the painted gaskets
+    windowSlots().forEach(w => side(new THREE.PlaneGeometry(w.w, w.h), M.window, w.x, w.y, .004));
+    // door: recess, interior, sliding stainless leaves with tall windows, grab handles, status lights, step
+    side(new THREE.BoxGeometry(DOOR_W + .1, DOOR_H + .06, .02), M.dark, 0, FLOOR + DOOR_H / 2, -.006);
     const lightMat = new THREE.MeshBasicMaterial({ map: this.interior, color: 0x000000 }); lightMat.toneMapped = false;
     side(new THREE.PlaneGeometry(DOOR_W - .04, DOOR_H - .04), lightMat, 0, FLOOR + DOOR_H / 2, .006);
-    const pole = side(new THREE.CylinderGeometry(.025, .025, DOOR_H - .1, 8), M.yellow, -.22, FLOOR + DOOR_H / 2, -.05); pole.visible = true;
     const leaves = [-1, 1].map(sd => {
       const leaf = new THREE.Group();
-      leaf.add(new THREE.Mesh(new THREE.BoxGeometry(DOOR_W / 2, DOOR_H, .05), M.door));
-      const wg = new THREE.Mesh(new THREE.BoxGeometry(DOOR_W / 2 - .16, .86, .02), M.gasket); wg.position.set(0, .32, .026); leaf.add(wg);
-      const w = new THREE.Mesh(new THREE.PlaneGeometry(DOOR_W / 2 - .22, .8), M.leafGlass); w.position.set(0, .32, .038); leaf.add(w);
-      const seal = new THREE.Mesh(new THREE.BoxGeometry(.03, DOOR_H, .03), M.dark); seal.position.set(-sd * (DOOR_W / 4 - .015), 0, .03); leaf.add(seal);
-      const btn = new THREE.Mesh(new THREE.BoxGeometry(.07, .07, .02), glow(0x5dff8f, .2)); btn.position.set(-sd * (DOOR_W / 4 - .1), -.05, .035); leaf.add(btn);
-      leaf.position.set(sd * DOOR_W / 4, FLOOR + DOOR_H / 2, z + .04); leaf.userData.sd = sd; leaf.userData.btn = btn; car.add(leaf); return leaf;
+      leaf.add(new THREE.Mesh(new THREE.BoxGeometry(DOOR_W / 2, DOOR_H, .045), M.door));
+      const wg = new THREE.Mesh(new THREE.BoxGeometry(DOOR_W / 2 - .14, 1.02, .02), M.gasket); wg.position.set(0, .28, .024); leaf.add(wg);
+      const w = new THREE.Mesh(new THREE.PlaneGeometry(DOOR_W / 2 - .2, .96), M.window); w.position.set(0, .28, .036); leaf.add(w);
+      const seal = new THREE.Mesh(new THREE.BoxGeometry(.03, DOOR_H, .03), M.dark); seal.position.set(-sd * (DOOR_W / 4 - .015), 0, .026); leaf.add(seal);
+      const btn = new THREE.Mesh(new THREE.CylinderGeometry(.035, .035, .015, 16), glow(0x5dff8f, .2)); btn.rotation.x = Math.PI / 2; btn.position.set(-sd * (DOOR_W / 4 - .1), -.12, .03); leaf.add(btn);
+      leaf.position.set(sd * DOOR_W / 4, FLOOR + DOOR_H / 2, z + .03); leaf.userData.sd = sd; leaf.userData.btn = btn; car.add(leaf); return leaf;
     });
-    [-1, 1].forEach(sd => side(new THREE.CylinderGeometry(.018, .018, 1.1, 8), M.steel, sd * (DOOR_W / 2 + .1), FLOOR + 1.15, .05));
-    const statusMats = [-1, 1].map(sd => { const m = glow(0xffa31f, .3); side(new THREE.BoxGeometry(.09, .05, .02), m, sd * (DOOR_W / 2 + .1), FLOOR + DOOR_H + .14, .01); return m; });
-    const step = side(new THREE.BoxGeometry(DOOR_W + .1, .04, .22), M.steel, 0, FLOOR - .01, .11);
-    side(new THREE.BoxGeometry(DOOR_W + .1, .045, .04), M.yellow, 0, FLOOR, .21);
+    [-1, 1].forEach(sd => side(new THREE.CylinderGeometry(.018, .018, 1.1, 8), M.steel, sd * (DOOR_W / 2 + .1), FLOOR + 1.15, .04));
+    const statusMats = [-1, 1].map(sd => { const m = glow(0xffa31f, .3); side(new THREE.BoxGeometry(.09, .05, .02), m, sd * (DOOR_W / 2 + .1), FLOOR + DOOR_H + .12, .01); return m; });
+    side(new THREE.BoxGeometry(DOOR_W + .1, .04, .22), M.steel, 0, FLOOR - .01, .1);
+    side(new THREE.BoxGeometry(DOOR_W + .1, .045, .04), M.yellow, 0, FLOOR, .2);
     // LED destination sign over the door
     const cv = document.createElement('canvas'); cv.width = 640; cv.height = 128;
     const tex = new THREE.CanvasTexture(cv); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 4;
     const ledMat = new THREE.MeshBasicMaterial({ map: tex }); ledMat.toneMapped = false;
-    side(new THREE.BoxGeometry(2.1, .6, .04), M.dark, 0, 3.1, .005);
-    side(new THREE.PlaneGeometry(2, .5), ledMat, 0, 3.1, .03);
-    // car number
-    side(new THREE.PlaneGeometry(.5, .25), new THREE.MeshBasicMaterial({ map: this._plate(String(i + 1).padStart(2, '0')), transparent: true }), CAR_L / 2 - .55, 3.32, .01);
-    // warm light spilling onto the platform
+    side(new THREE.BoxGeometry(2.1, .6, .04), M.dark, 0, 3.08, .005);
+    side(new THREE.PlaneGeometry(2, .5), ledMat, 0, 3.08, .03);
+    side(new THREE.PlaneGeometry(.5, .25), new THREE.MeshBasicMaterial({ map: this._plate(String(i + 1).padStart(2, '0')), transparent: true }), CAR_L / 2 - .55, 3.3, .005);
     const spill = new THREE.Mesh(new THREE.PlaneGeometry(1.7, 2.6), new THREE.MeshBasicMaterial({ color: COL.warm, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, map: this._spillTex() }));
     spill.rotation.x = -Math.PI / 2; spill.position.set(0, FLOOR + .012, z + 1.35); spill.userData.noShadow = true; car.add(spill);
     let pl = null; if (!this.mobile) { pl = new THREE.PointLight(COL.warm, 0, 6, 1.6); pl.position.set(0, 1.6, z + .7); car.add(pl); }
@@ -408,56 +339,27 @@ export class Station {
     return canvasTex(128, 64, (x) => { x.fillStyle = '#1b1d24'; x.font = '800 44px "Archivo", Arial, sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(text, 64, 34); });
   }
   _cab() {
-    const M = this.mats, first = this.cars[0], x0 = -CAR_L / 2, bv = .22, depth = W - 2 * bv;
-    const sh = new THREE.Shape();
-    sh.moveTo(.2, BASE + bv); sh.lineTo(-1.55, BASE + bv); sh.quadraticCurveTo(-1.85, BASE + bv, -1.85, .85);
-    sh.lineTo(-1.78, 1.75); sh.lineTo(-.62, 3.5); sh.quadraticCurveTo(-.3, H - bv, .2, H - bv); sh.lineTo(.2, BASE + bv);
-    const geo = new THREE.ExtrudeGeometry(sh, { depth, bevelEnabled: true, bevelSize: bv, bevelThickness: bv, bevelSegments: 5, curveSegments: 12 });
-    geo.translate(0, 0, -depth / 2);
-    const nose = new THREE.Mesh(geo, M.red); nose.position.x = x0; nose.userData.cast = true; first.add(nose);
-    // windshield laid on the sloped face, with a destination sign and wipers
-    const A = new THREE.Vector2(-1.78, 1.75), B = new THREE.Vector2(-.62, 3.5), dir = B.clone().sub(A).normalize(), n = new THREE.Vector2(-dir.y, dir.x);
-    const quad = (u0, u1, off, hz, mat) => {
-      const a = A.clone().addScaledVector(dir, u0).addScaledVector(n, off), b = A.clone().addScaledVector(dir, u1).addScaledVector(n, off);
-      const g = new THREE.BufferGeometry();
-      g.setAttribute('position', new THREE.Float32BufferAttribute([a.x, a.y, -hz, b.x, b.y, -hz, b.x, b.y, hz, a.x, a.y, -hz, b.x, b.y, hz, a.x, a.y, hz], 3));
-      g.setAttribute('uv', new THREE.Float32BufferAttribute([0, 0, 0, 1, 1, 1, 0, 0, 1, 1, 1, 0], 2));
-      g.computeVertexNormals(); const m = new THREE.Mesh(g, mat); m.position.x = x0; first.add(m); return m;
-    };
-    const len = B.distanceTo(A);
-    quad(.14, len - .1, bv + .006, depth / 2 + .06, M.gasket);
-    quad(.2, len - .16, bv + .012, depth / 2 + .02, new THREE.MeshStandardMaterial({ color: 0x0c0f16, metalness: .4, roughness: .04, envMapIntensity: 2, side: THREE.DoubleSide }));
-    const destCv = document.createElement('canvas'); destCv.width = 640; destCv.height = 128;
-    drawLED(destCv.getContext('2d'), ['SPIRIT CABINET', 'EXPRESS']);
-    const destTex = new THREE.CanvasTexture(destCv); destTex.colorSpace = THREE.SRGBColorSpace; this.destTex = destTex; this.destCv = destCv;
-    const destMat = new THREE.MeshBasicMaterial({ map: destTex, side: THREE.DoubleSide }); destMat.toneMapped = false; destMat.color.setScalar(1.3);
-    quad(len - .58, len - .2, bv + .016, depth / 2 - .25, destMat);
-    [-.45, .45].forEach(dz => { // wipers
-      const p = A.clone().addScaledVector(dir, .32).addScaledVector(n, bv + .03);
-      const wiper = new THREE.Mesh(new THREE.BoxGeometry(.02, .02, .7), M.dark);
-      wiper.position.set(x0 + p.x, p.y, dz); wiper.rotation.x = .55 * Math.sign(dz); first.add(wiper);
+    const M = this.mats, first = this.cars[0], x0 = -CAR_L / 2;
+    const nose = new THREE.Mesh(noseGeometry(), new THREE.MeshPhysicalMaterial({ roughness: 1, metalness: 0, clearcoat: 1, clearcoatRoughness: .06, emissive: 0xffffff, emissiveIntensity: 2.2 }));
+    nose.position.x = x0; nose.userData.cast = true; first.add(nose); this.noseMesh = nose;
+    this._paintNose();
+    // wipers resting at the bottom of the windshield
+    [.36, .64].forEach(v => {
+      const th = v * Math.PI * 2 - Math.PI / 2, a = nosePoint(.85, th, .02), b = nosePoint(.7, th - .25, .03);
+      const wp = new THREE.Mesh(new THREE.CylinderGeometry(.012, .012, a.distanceTo(b), 6), M.dark);
+      wp.position.copy(a).add(b).multiplyScalar(.5); wp.position.x += x0; wp.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), b.clone().sub(a).normalize()); first.add(wp);
     });
-    // round headlights in black housings, marker lights, a plow and coupler
-    [-.82, .82].forEach(dz => {
-      const housing = new THREE.Mesh(new THREE.BoxGeometry(.06, .3, .62), M.dark); housing.position.set(x0 - 1.85 - bv - .005, 1.2, dz); first.add(housing);
-      [-.15, .15].forEach(o => { const hl = new THREE.Mesh(new THREE.CylinderGeometry(.1, .1, .04, 16), glow(0xfff4dc, 6)); hl.rotation.z = Math.PI / 2; hl.position.set(x0 - 1.89 - bv, 1.2, dz + o); first.add(hl); });
-      const mk = new THREE.Mesh(new THREE.BoxGeometry(.05, .08, .14), glow(0xffe2a8, 3)); mk.position.set(x0 - 1.82 - bv, 1.6, dz * 1.12); first.add(mk);
-    });
-    const band = new THREE.Mesh(new THREE.BoxGeometry(.05, .1, depth + bv), M.body); band.position.set(x0 - 1.86 - bv, .9, 0); first.add(band);
-    const plow = new THREE.Mesh(new THREE.BoxGeometry(.5, .32, W - .2), M.under); plow.position.set(x0 - 1.85, .2, 0); plow.rotation.z = -.35; first.add(plow);
-    const coupler = new THREE.Mesh(new THREE.BoxGeometry(.5, .16, .28), M.steel); coupler.position.set(x0 - 2.2, .48, 0); first.add(coupler);
-    if (this.logo) { // Nueva logo on the nose
-      const lt = new THREE.CanvasTexture(this.logo); lt.colorSpace = THREE.SRGBColorSpace;
-      const logo = new THREE.Mesh(new THREE.PlaneGeometry(.5, .5), new THREE.MeshBasicMaterial({ map: lt, transparent: true }));
-      logo.rotation.y = -Math.PI / 2; logo.position.set(x0 - 1.85 - bv - .03, 1.55, 0); first.add(logo);
-    }
-    // cab side window and horn
-    [-1, 1].forEach(sd => {
-      const sw = new THREE.Mesh(new THREE.BoxGeometry(.7, .55, .02), M.window); sw.position.set(x0 - .45, 2.85, sd * (W / 2 + .03)); first.add(sw);
-    });
-    const horn = new THREE.Mesh(new THREE.CylinderGeometry(.05, .09, .32, 10), M.steel); horn.rotation.z = Math.PI / 2; horn.position.set(x0 - .1, H + .04, .4); first.add(horn);
+    // plow and coupler under the nose
+    const plow = new THREE.Mesh(new THREE.BoxGeometry(.6, .3, W - .3), M.under); plow.position.set(x0 - NOSE_L + .55, .2, 0); plow.rotation.z = -.4; first.add(plow);
+    const coupler = new THREE.Mesh(new THREE.BoxGeometry(.5, .16, .28), M.steel); coupler.position.set(x0 - NOSE_L + .15, .45, 0); first.add(coupler);
+    const horn = new THREE.Mesh(new THREE.CylinderGeometry(.05, .09, .32, 10), M.steel); horn.rotation.z = Math.PI / 2; horn.position.set(x0 - .2, H + .02, .4); first.add(horn);
     const beam = new THREE.Mesh(new THREE.ConeGeometry(2.4, 14, 24, 1, true), new THREE.MeshBasicMaterial({ color: 0xfff1d6, transparent: true, opacity: .05, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide }));
-    beam.rotation.z = -Math.PI / 2; beam.position.set(x0 - 1.9 - 7, 1.2, 0); beam.userData.noShadow = true; first.add(beam); this.headBeam = beam;
+    beam.rotation.z = -Math.PI / 2; beam.position.set(x0 - NOSE_L - 7, 1.25, 0); beam.userData.noShadow = true; first.add(beam); this.headBeam = beam;
+  }
+  _paintNose() {
+    const p = paintNose(this.logo, ctx => drawLED(ctx, ['SPIRIT CABINET', 'EXPRESS']));
+    const m = this.noseMesh.material; ['map', 'emissiveMap', 'roughnessMap'].forEach(k => m[k] && m[k].dispose());
+    m.map = p.map; m.emissiveMap = p.glow; m.roughnessMap = p.mr; m.needsUpdate = true;
   }
   _pantograph() {
     const M = this.mats, car = this.cars[0];
@@ -498,7 +400,7 @@ export class Station {
   }
   redrawSigns() {
     this.doors.forEach((d, i) => { d.led.key = ''; this.drawSign(i); });
-    if (this.destCv) { drawLED(this.destCv.getContext('2d'), ['SPIRIT CABINET', 'EXPRESS']); this.destTex.needsUpdate = true; }
+    if (this.noseMesh) this._paintNose();
   }
 
   /* ---------- first-person opening: you sit on the bench and wait ---------- */
@@ -512,29 +414,9 @@ export class Station {
     for (let i = 0; i < pp.count; i++) { const x = pp.getX(i); pp.setZ(i, -Math.pow(x / .15, 2) * .014); }
     pg.computeVertexNormals();
     rig.add(new THREE.Mesh(pg, new THREE.MeshStandardMaterial({ map: tt, roughness: .85, side: THREE.DoubleSide, alphaTest: .5 })));
-    const skin = new THREE.MeshStandardMaterial({ color: 0xc98a64, roughness: .6 });
-    const sleeve = new THREE.MeshStandardMaterial({ color: 0x2b3352, roughness: .92 });
-    const cuff = new THREE.MeshStandardMaterial({ color: COL.red, roughness: .9 });
     const along = (mesh, a, b) => { const v = new THREE.Vector3().subVectors(b, a); mesh.position.copy(a).addScaledVector(v, .5); mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), v.clone().normalize()); return v.length(); };
-    [-1, 1].forEach(sd => {
-      const h = new THREE.Group(); h.position.set(sd * .15, -.005, 0);
-      const palm = new THREE.Mesh(new THREE.SphereGeometry(1, 20, 14), skin); palm.scale.set(.036, .05, .022); palm.position.set(sd * .022, 0, -.02); h.add(palm);
-      for (let k = 0; k < 4; k++) { // fingers curl behind the ticket
-        const f = new THREE.Mesh(new THREE.CapsuleGeometry(.0105, .042, 4, 10), skin);
-        f.position.set(-sd * .012, .034 - k * .021, -.026); f.rotation.z = sd * Math.PI / 2; h.add(f);
-      }
-      const thumb = new THREE.Mesh(new THREE.CapsuleGeometry(.0125, .036, 4, 10), skin); // thumb pinches the front
-      thumb.position.set(-sd * .018, .012, .012); thumb.rotation.z = sd * .75; h.add(thumb);
-      const nail = new THREE.Mesh(new THREE.SphereGeometry(1, 10, 8), new THREE.MeshStandardMaterial({ color: 0xe8b8a0, roughness: .3 }));
-      nail.scale.set(.007, .009, .003); nail.position.set(-sd * .03, .024, .023); nail.rotation.z = sd * .75; h.add(nail);
-      // wrist and sleeve run back toward you
-      const wristA = new THREE.Vector3(sd * .045, -.02, -.01), wristB = new THREE.Vector3(sd * .09, -.12, .13);
-      const wrist = new THREE.Mesh(new THREE.CylinderGeometry(.024, .026, 1, 12), skin); wrist.scale.y = along(wrist, wristA, wristB); h.add(wrist);
-      const c = new THREE.Mesh(new THREE.CylinderGeometry(.036, .036, .03, 16), cuff); along(c, wristB, wristB.clone().add(new THREE.Vector3(sd * .012, -.03, .04))); h.add(c);
-      const slA = wristB.clone().add(new THREE.Vector3(sd * .01, -.02, .03)), slB = new THREE.Vector3(sd * .17, -.42, .55);
-      const sl = new THREE.Mesh(new THREE.CylinderGeometry(.04, .052, 1, 14), sleeve); sl.scale.y = along(sl, slA, slB); h.add(sl);
-      rig.add(h);
-    });
+    rig.add(buildHand(1), buildHand(-1, { watch: true }));
+    const fillL = new THREE.PointLight(0xffd2a8, .05, 1.2, 2); fillL.position.set(.1, .2, .5); rig.add(fillL); // a little light on your hands
     rig.position.set(0, 1.33, z0 - (this.mobile ? .38 : .32)); rig.lookAt(this.seat); rig.rotateX(-.12);
     if (this.mobile) rig.scale.setScalar(.62); // a narrow screen sees less, so hold it a little further off
     this.rig = rig; this.rigBase = rig.quaternion.clone(); this.rigPos = rig.position.clone();
@@ -578,7 +460,7 @@ export class Station {
     else c.position.lerpVectors(this.seat, up, easeInOut(Math.min(1, (e - 12.1) / 1.2)));
     c.position.y += Math.sin(t * 1.7) * .005 + (e > 1.1 && e < 1.5 ? -Math.sin((e - 1.1) / .4 * Math.PI) * .03 : 0);
     // where the head turns: down at the ticket, up, a look left down the platform, then the horn pulls it right to the train
-    const front = this.cars[0].position.x + this.trainX - CAR_L / 2 - 1.6, tgt = new THREE.Vector3();
+    const front = this.cars[0].position.x + this.trainX - CAR_L / 2 - NOSE_L + .3, tgt = new THREE.Vector3();
     if (e < 1.0) tgt.set(0, 1.5, this.seat.z - 3.5);
     else if (e < 3.5) tgt.set(.02 + Math.sin(e * .9) * .02, 1.31, this.seat.z - .42);
     else if (e < 4.6) tgt.set(.8, 1.95, 0);
@@ -612,10 +494,10 @@ export class Station {
   parkedPose(snap) {
     const halfV = THREE.MathUtils.degToRad(this.camera.fov / 2), halfH = Math.atan(Math.tan(halfV) * this.camera.aspect);
     if (this.mobile) {
-      const x = this.cars[this.focus].position.x, dist = 4.3 / Math.tan(halfH);
+      const x = this.cars[this.focus].position.x, dist = (CAR_L / 2 + .7) / Math.tan(halfH);
       this.camPos.set(x - 1.3, 2.6, dist); this.camLook.set(x, .5, 0);
     } else {
-      const cx = -1.1, dist = Math.min(52, 19.4 / Math.tan(halfH));
+      const half = (this.count * CAR_L + (this.count - 1) * GAP) / 2 + NOSE_L / 2, cx = -NOSE_L / 2, dist = Math.min(60, (half + 3.2) / Math.tan(halfH));
       this.camPos.set(cx - 1.6, 3.1, dist); this.camLook.set(cx, 2.35, 0);
     }
     if (snap) { this.camera.position.copy(this.camPos); this.look.copy(this.camLook); this.camera.lookAt(this.look); }

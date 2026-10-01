@@ -179,7 +179,7 @@ async function boot() {
     try {
       const { Station } = await import('./station.js');
       const logo = new Image(); logo.src = '/assets/logo.png'; await logo.decode().catch(() => {});
-      station = new Station($('station'), { mobile, doors: DOORS, logo: logo.naturalWidth ? logo : null }); station.render();
+      station = new Station($('station'), { mobile, doors: DOORS, logo: logo.naturalWidth ? logo : null }); if (location.hash === '#debug') window.__st = station; station.render();
     }
     catch (e) { console.warn(e); station = null; }
   })().then(() => done++);
