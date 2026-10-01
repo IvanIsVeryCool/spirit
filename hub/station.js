@@ -7,6 +7,7 @@ import { OutputPass } from '/vendor/jsm/postprocessing/OutputPass.js';
 import { mergeStatic, addPeople, mergePeople, updatePeople, addPlatformProps, addBackground, updateBackground } from './scenery.js';
 import { CAR_L, GAP, W, H, BASE, FLOOR, DOOR_W, DOOR_H, NOSE_L, bodyGeometry, capGeometry, noseGeometry, nosePoint, paintBody, paintNose, windowTexture, windowSlots } from './train.js';
 import { buildInterior } from './interior.js';
+import { Crowd } from './crowd.js';
 
 // A golden-hour Peninsula platform and a red-and-silver double-decker commuter train.
 const COL = {
@@ -71,7 +72,7 @@ export class Station {
 
     Object.assign(this, { FLOOR, CAR_L, NOSE_L, P: CAR_L + GAP });
     this._sky(); this._hills(); this._trees(); this._tracks(); this._platform(); this._wires(); this._props(); this._train(); this._motes();
-    const propGroup = addPlatformProps(this); addPeople(this); addBackground(this);
+    const propGroup = addPlatformProps(this); addPeople(this); addBackground(this); this.crowd = new Crowd(this);
     s.traverse(o => { if (o.isMesh && !o.userData.noShadow) { o.castShadow = !!o.userData.cast; o.receiveShadow = true; } });
     // hundreds of small static parts become one draw call per material
     this.cars.forEach(c => { c.userData.keep = true; }); mergeStatic(this.train);
@@ -561,7 +562,7 @@ export class Station {
   }
   board(i, done) {
     const x = this.doorX(i), z = W / 2 + .05;
-    this.flight = { t0: this.clock.elapsedTime, p0: this.camera.position.clone(), l0: this.look.clone(),
+    this.flight = { x, t0: this.clock.elapsedTime, p0: this.camera.position.clone(), l0: this.look.clone(),
       p1: new THREE.Vector3(x, 1.75, z + 3.4), p2: new THREE.Vector3(x, 1.62, .35), l1: new THREE.Vector3(x, 1.6, -1.4), done };
     this.doors[i].target = 1.25;
   }
@@ -625,7 +626,7 @@ export class Station {
     const pos = this.motes.geometry.attributes.position.array;
     for (let i = 0; i < pos.length; i += 3) { pos[i] -= speed * .003 * (pos[i + 2] < 4 ? 1 : .25) + .004; pos[i + 1] += Math.sin(t * .7 + i) * .0015; if (pos[i] < -35) pos[i] += 70; }
     this.motes.geometry.attributes.position.needsUpdate = true;
-    updatePeople(this, t, dt); updateBackground(this, t, dt);
+    updatePeople(this, t, dt); updateBackground(this, t, dt); this.crowd.update(t, dt);
     this.sky.position.copy(c.position);
     this._adapt();
     this.composer.render();

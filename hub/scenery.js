@@ -61,10 +61,10 @@ export function mergeStatic(root) {
 }
 
 /* ---------- people ---------- */
-const SKIN = [0x8d5a3b, 0xc68863, 0xe0ac8a, 0x6b432b, 0xb57a52, 0xf0c3a2, 0x9b6a48];
-const HAIR = [0x16110e, 0x2b1d14, 0x4a3020, 0x8a6a3a, 0x0e0c0b, 0x5a3a24];
-const TOPS = [0x1f2a4d, 0xc9272c, 0x6d727c, 0x2f4a3a, 0xa8832e, 0xbdb6a8, 0x3a2f4a, 0x8a4a3a, 0x2c3a5a];
-const PANTS = [0x2c3a5a, 0x1d1f26, 0x8a7a5c, 0x3b4e6e, 0x4a4a52];
+export const SKIN = [0x8d5a3b, 0xc68863, 0xe0ac8a, 0x6b432b, 0xb57a52, 0xf0c3a2, 0x9b6a48];
+export const HAIR = [0x16110e, 0x2b1d14, 0x4a3020, 0x8a6a3a, 0x0e0c0b, 0x5a3a24];
+export const TOPS = [0x1f2a4d, 0xc9272c, 0x6d727c, 0x2f4a3a, 0xa8832e, 0xbdb6a8, 0x3a2f4a, 0x8a4a3a, 0x2c3a5a];
+export const PANTS = [0x2c3a5a, 0x1d1f26, 0x8a7a5c, 0x3b4e6e, 0x4a4a52];
 const mats = {};
 const mat = (hex, rough = .85) => mats[hex + '_' + rough] || (mats[hex + '_' + rough] = new THREE.MeshStandardMaterial({ color: hex, roughness: rough }));
 const limb = (a, b, r, m) => {
@@ -145,30 +145,9 @@ export function person({ pose = 'sit', hands = 'lap', top, pants, skin, hair, ha
   return { g, head, phone: hands === 'phone', reading: hands === 'book' };
 }
 
+// The people waiting on the platform, walking by and riding past live in crowd.js. This is just you:
 export function addPeople(st) {
-  const FLOOR = st.FLOOR, front = st.front, P = st.P, benchZ = front + 5.8;
-  const pick = a => a[Math.floor(rand() * a.length)];
-  const spec = [
-    // on the bench down the platform to the left
-    { x: -2 * P - .55, z: benchZ, pose: 'sit', hands: 'phone', bag: 0x2b2f3a },
-    { x: -2 * P + .6, z: benchZ, pose: 'sit', hands: 'lap', longHair: true, scale: .97 },
-    // on the bench to the right
-    { x: 2 * P - .5, z: benchZ, pose: 'sit', hands: 'book', hat: 0x7a2a2a },
-    { x: 2 * P + .62, z: benchZ, pose: 'sit', hands: 'phone', longHair: true, scale: .96 },
-    // standing near the yellow line, between the doors
-    { x: -P - .3, z: front + 2.3, pose: 'stand', hands: 'pockets', bag: 0x1d3a5a, yaw: .3 },
-    { x: P + .4, z: front + 2.6, pose: 'stand', hands: 'phone', yaw: -.2, longHair: true, scale: .96 },
-    { x: -3 * P - 1.6, z: front + 3.2, pose: 'stand', hands: 'pockets', yaw: .9, hat: 0x1f2a4d },
-    { x: 3 * P + 1.8, z: front + 2.9, pose: 'stand', hands: 'phone', yaw: -.5, bag: 0x5a2f2f }
-  ];
-  const people = [];
-  spec.forEach((s, i) => {
-    const p = person({ ...s, top: TOPS[i % TOPS.length], pants: pick(PANTS), skin: SKIN[(i * 3) % SKIN.length], hair: pick(HAIR) });
-    p.g.position.set(s.x, FLOOR, s.z); p.g.rotation.y = s.yaw || 0;
-    p.yaw0 = s.yaw || 0; p.seed = rand() * 10; p.look = 0; p.lookPitch = p.phone || p.reading ? .55 : 0; p.nextGlance = 2 + rand() * 4; p.target = 0;
-    if (p.phone || p.reading) p.head.rotation.x = -p.lookPitch;
-    st.scene.add(p.g); people.push(p);
-  });
+  const FLOOR = st.FLOOR, benchZ = st.front + 5.8, people = [];
   // you, from the opening: still on the middle bench once the camera pulls away, headphones on, nodding along
   const me = person({ pose: 'sit', hands: 'phone', top: 0x2b3352, pants: 0x34405e, skin: 0xc98a64, hair: 0x16110e, headphones: true });
   me.g.position.set(0, FLOOR, benchZ); Object.assign(me, { yaw0: 0, seed: 0, look: 0, lookPitch: .3, music: true });
@@ -178,30 +157,13 @@ export function addPeople(st) {
 }
 export function mergePeople(st) { st.people.forEach(p => { mergeStatic(p.g); mergeStatic(p.head); }); }
 
-// heads: idle glances, phones held, and everyone turns to watch the train come in
-export function updatePeople(st, t, dt) {
-  const moving = st.trainX > .5, nose = st.cars[0].position.x + st.trainX - st.CAR_L / 2 - st.NOSE_L;
+// you, nodding along on the bench
+export function updatePeople(st, t) {
   st.people.forEach(p => {
-    if (p.music) { // nods on the beat (about 100 bpm), sways every two
-      const beat = t * 1.68, ph = beat % 1, nod = Math.exp(-ph * 7) - .5 * Math.exp(-(1 - ph) * 9), sway = Math.sin(beat * Math.PI);
-      p.head.rotation.set(-(p.lookPitch + nod * .1), sway * .1, sway * .05);
-      p.g.rotation.z = sway * .012; return;
-    }
-    const wp = p.g.position;
-    let yaw, pitch = p.lookPitch;
-    if (moving && st.trainX < 60) { // watch the front of the train
-      yaw = Math.atan2(-(nose - wp.x), -(0 - wp.z)) - p.yaw0; pitch = p.phone || p.reading ? .15 : -.04;
-    } else if (!moving && st.doors[0].open > .2 && !p.phone && !p.reading) { // doors open: look at the nearest one
-      let best = 1e9, bx = 0; st.cars.forEach(c => { const dx = c.position.x - wp.x; if (Math.abs(dx) < Math.abs(best)) { best = dx; bx = c.position.x; } });
-      yaw = Math.atan2(-(bx - wp.x), wp.z) - p.yaw0;
-    } else {
-      if (t > p.nextGlance) { p.target = (rand() - .5) * (p.phone || p.reading ? .4 : 1.6); p.nextGlance = t + 2.5 + rand() * 5; }
-      yaw = p.target;
-    }
-    yaw = Math.max(-1.25, Math.min(1.25, yaw));
-    const k = 1 - Math.pow(.04, dt);
-    p.look += (yaw - p.look) * k; p.head.rotation.y = p.look;
-    p.head.rotation.x += (-pitch - p.head.rotation.x) * k + Math.sin(t * .8 + p.seed) * .0008;
+    if (!p.music) return;
+    const beat = t * 1.68, ph = beat % 1, nod = Math.exp(-ph * 7) - .5 * Math.exp(-(1 - ph) * 9), sway = Math.sin(beat * Math.PI); // about 100 bpm
+    p.head.rotation.set(-(p.lookPitch + nod * .1), sway * .1, sway * .05);
+    p.g.rotation.z = sway * .012;
   });
 }
 
@@ -229,6 +191,16 @@ export function addPlatformProps(st) {
     const box = new THREE.Mesh(new THREE.BoxGeometry(1.6, .5, .6), mat(0x6e675e, .95)); box.position.set(x, F + .25, front + 10.5); g.add(box);
     for (let k = 0; k < 5; k++) { const b = new THREE.Mesh(new THREE.IcosahedronGeometry(.26 + rand() * .1, 0), BUSH); b.position.set(x - .6 + k * .3, F + .62 + rand() * .08, front + 10.5); g.add(b); }
   });
+  // a paved path across the station forecourt, for bikes and scooters passing by
+  const pathTex = canvasTex(256, 64, (x, w, h) => {
+    x.fillStyle = '#56535a'; x.fillRect(0, 0, w, h);
+    for (let i = 0; i < 900; i++) { x.fillStyle = rand() < .5 ? 'rgba(255,255,255,.05)' : 'rgba(0,0,0,.07)'; x.fillRect(rand() * w, rand() * h, 2, 2); }
+    x.fillStyle = 'rgba(236,230,214,.75)'; x.fillRect(0, 3, w, 3); x.fillRect(0, h - 6, w, 3);
+    x.fillStyle = 'rgba(232,185,35,.7)'; x.fillRect(0, h / 2 - 1.5, w * .55, 3);
+  });
+  pathTex.wrapS = THREE.RepeatWrapping; pathTex.repeat.set(400 / 4, 1);
+  const path = new THREE.Mesh(new THREE.PlaneGeometry(400, 2.1), new THREE.MeshStandardMaterial({ map: pathTex, roughness: .95 }));
+  path.rotation.x = -Math.PI / 2; path.position.set(0, F + .004, front + 20.2); path.userData.keep = true; s.add(path);
   // door markers painted on the platform: where each car's door will stop
   st.cars.forEach((c, i) => {
     const tex = canvasTex(256, 128, (x, w, h) => {

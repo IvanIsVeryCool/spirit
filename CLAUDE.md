@@ -44,7 +44,8 @@ The README covers the owner-facing basics: how to add a car and how to update sc
 | `hub/station.js` | The 3D scene (`Station` class): sky shader and PMREM environment, hills, trees, tracks, platform, overhead wires, lamps and benches, the train (built from `train.js`), the cutscene rig (simple hands holding the ticket, knees, sneakers), the cutscene timeline (`_introFrame`) with the spring-driven head (`_head`), the arrival, door animation, camera choreography, `warm()` and adaptive resolution (`_adapt`). |
 | `hub/train.js` | The train's shape and paint. Body cross-section is a superellipse sampled by arc length (`arcRing`, `vOfY`). `shellRing()` is that ring with vertices pinned exactly to the door and window edges (both sides); `bodyGeometry()` uses it to cut the real doorway on the platform side. Also the lofted nose (`noseGeometry`, `nosePoint`), window slots, and canvas-painted textures (`paintBody`, `paintNose`, `windowTexture`). Constants: `CAR_L = 8`, `GAP = .36`, `W = 2.9`, `H = 4.05`, `FLOOR = .55`, `DOOR_W = 1.3`, `DOOR_H = 2.1`, `NOSE_L = 2.6`. |
 | `hub/interior.js` | `buildInterior(car, …)`: the 3D inside of each car behind its door. A lining (the body section offset 7 cm inward, with the doorways and windows cut out), a platform-level vestibule with the far-side doors, an LED display and grab poles, stairs up to the upper deck on the left (far side), a step down to the lower deck on the right, seats with moquette, and one seated passenger per car (built with `person()` and baked in). All lighting is baked into vertex colours by `bake()` from the `LIGHTS` list (each light only reaches its own room box); no real-time lights. Per car it's about 5 draw calls: baked surfaces, seats, light panels, steel, and window glass. |
-| `hub/scenery.js` | `mergeStatic()`, which merges static meshes into one draw call per material (skips `userData.keep`). Also the passengers (`addPeople` and `updatePeople`: heads glance around and watch the train), platform props (bins, ticket validators, planters, door markers), and the background (hillside houses with lit windows, a radio mast, road traffic, clouds, birds). |
+| `hub/scenery.js` | `mergeStatic()`, which merges static meshes into one draw call per material (skips `userData.keep`). `person()` builds a figure from meshes (used for you, the headphone listener, via `addPeople`/`updatePeople`, and baked into the car interiors). Also platform props (bins, ticket validators, planters, door markers, the forecourt bike path), and the background (hillside houses with lit windows, a radio mast, road traffic, clouds, birds). Exports the colour palettes (`SKIN`, `HAIR`, `TOPS`, `PANTS`). |
+| `hub/crowd.js` | `Crowd`: everyone else. The people waiting (benches and yellow line; heads watch the train and the doors), walkers (some with a phone, a rolling suitcase or a dog on a leash), bikes, an e-bike and an e-scooter on the forecourt path, and cyclists on the road beyond the fence. Every body part (head, hair, torso, thigh, shoe…) and prop is one `InstancedMesh` shared by the whole crowd, posed each frame from joint positions (walk cycle by angles, seated legs and riders' legs and arms by two-bone `ik()`), so the crowd is a fixed ~27 draw calls. |
 | `hub/audio.js` | `StationAudio`: all sound is synthesized with Web Audio (crossing bells, horn, motor, brakes, door chime, birds, foley). There are no audio files. |
 | `points/index.html`, `points/js/app.js` | The Spirit Points page and its logic: sections, leaderboard, results deck, detail panel, live refresh and toasts. |
 | `points/js/scene.js`, `points/js/sound.js` | The points page's 3D particle scene and its sound. |
@@ -60,6 +61,11 @@ The README covers the owner-facing basics: how to add a car and how to update sc
   - The car-end gangway blocks reach 15 cm into each car, so the interior ends at `END = CAR_L / 2 - .22`.
   - The bogies sit under the lower deck. The springs and dampers were lowered (invisible from outside) so the lower floor (`LOWER = .43`) clears them; keep bogie parts below that.
   - Window and far-door glass is a shared transparent material with a warm gradient, so the evening outside shows through softened.
+- **Crowd (`crowd.js`):** built in the constructor before `warm()`.
+  - Walkers spawn off-screen at x = ±44 and cross; a few start mid-platform so it's busy on arrival. Slots, speeds and outfits are random; the same-lane walker behind slows down rather than overlap.
+  - Lanes are placed so passers-by stay below the doors on screen from the resting camera: desktop walkers at `front + 16.4 / 17.2`, the bike path at `front + 20.2`; phones (camera closer) use walker lanes at `front + 11.3 / 12` and no forecourt bikes. The road cyclists ride at z −8.85 and −12.4.
+  - When boarding, walkers near where the camera's flight line crosses their lane hurry out or wait (`flX` in `update`).
+  - Static waiting people used to be about 70 merged draw calls (plus shadows); in the crowd they're shared instances, so the scene dropped from ~430 to ~350 calls with the crowd included (desktop, shadow pass counted; phones ~115).
 - **Merging:** after the scene is built, `mergeStatic()` collapses each car, the props, people and wires.
   - Anything animated, or referenced later, must have `userData.keep = true` so it isn't merged.
     Examples: door leaves, door hit boxes, light spill, nose mesh, headlight beam, people's heads.
@@ -102,9 +108,5 @@ The README covers the owner-facing basics: how to add a car and how to update sc
   The status line just says who leads (for example "Seniors lead by 40"). Section kickers are just numbers.
 
 ## Next up (requested, not built yet)
-1. **Life on the platform and in the background.** People walking by, someone biking, an e-bike or scooter rider, and so on.
-   Moving people need a simple walk cycle (swing the limbs). Put them in groups that aren't merged, so they can animate.
-   Good paths are along the back of the platform (`z ≈ front + 8…12`) and on the road behind the fence (the cars there already loop).
-   They must not walk through the door columns while doors are open, or block the parked desktop view of the train.
-2. The coming-soon sections (Weekly Newsletter, Events, Meet the Cabinet) don't have pages yet.
+1. The coming-soon sections (Weekly Newsletter, Events, Meet the Cabinet) don't have pages yet.
    Add them as `/newsletter/` etc. with an `href` in `doors.js`.
