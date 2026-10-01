@@ -123,7 +123,11 @@ async function boot() {
   const fonts = Promise.race([document.fonts ? document.fonts.ready : Promise.resolve(), new Promise(r => setTimeout(r, 2500))]).then(() => done++);
   const stage = (async () => {
     if (reduce) return;
-    try { const { Station } = await import('./station.js'); station = new Station($('station'), { mobile, doors: DOORS }); station.render(); }
+    try {
+      const { Station } = await import('./station.js');
+      const logo = new Image(); logo.src = '/assets/logo.png'; await logo.decode().catch(() => {});
+      station = new Station($('station'), { mobile, doors: DOORS, logo: logo.naturalWidth ? logo : null }); station.render();
+    }
     catch (e) { console.warn(e); station = null; }
   })().then(() => done++);
   await Promise.all([fonts, stage]);
