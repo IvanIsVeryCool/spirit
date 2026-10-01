@@ -115,6 +115,29 @@ export class StationAudio {
     s.connect(sg); this._out(sg, -.1); s.start(t); s.stop(t + dur + .1);
     this._noise(t + dur + .15, 1.5, 'highpass', 2500, 5600, .7, .1, .05, -.1);
   }
+  // riding: wheel rumble, traction whine and rail joints that follow the speed. Returns { set(speed 0..1), stop() }.
+  ride() {
+    if (!this.ctx) return { set() {}, stop() {} };
+    const ctx = this.ctx, t = ctx.currentTime, bus = ctx.createGain(); bus.gain.value = 0; bus.connect(this.dry); bus.connect(this.verbIn);
+    const rumble = ctx.createBufferSource(); rumble.buffer = this.noise; rumble.loop = true;
+    const rf = ctx.createBiquadFilter(); rf.type = 'lowpass'; rf.frequency.value = 200; const rg = ctx.createGain(); rg.gain.value = .5;
+    rumble.connect(rf).connect(rg).connect(bus); rumble.start(t);
+    const tones = [[180, 'sawtooth', .03], [360, 'sine', .016]].map(([f, type, g0]) => {
+      const o = ctx.createOscillator(), g = ctx.createGain(), f2 = ctx.createBiquadFilter(); o.type = type; o.frequency.value = f; f2.type = 'lowpass'; f2.frequency.value = 2200; g.gain.value = g0;
+      o.connect(f2).connect(g).connect(bus); o.start(t); return { o, f };
+    });
+    let speed = 0, next = 0, dead = false;
+    const joints = () => { if (dead) return; if (this.live && speed > .15) { const n = ctx.currentTime; this._click(n, .07 * speed); this._click(n + .11, .06 * speed); } setTimeout(joints, 240 + (1 - speed) * 900); };
+    joints();
+    return {
+      set: v => {
+        speed = v; const n = ctx.currentTime;
+        bus.gain.setTargetAtTime(this.enabled ? .08 + v * .5 : 0, n, .25); rf.frequency.setTargetAtTime(200 + v * 900, n, .3);
+        tones.forEach(({ o, f }) => o.frequency.setTargetAtTime(f * (.9 + v * 2.6), n, .3));
+      },
+      stop: () => { dead = true; const n = ctx.currentTime; bus.gain.setTargetAtTime(0, n, .4); setTimeout(() => { rumble.stop(); tones.forEach(x => x.o.stop()); bus.disconnect(); }, 2500); }
+    };
+  }
   // platform announcement chime
   chime() {
     if (!this.live) return;

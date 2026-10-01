@@ -15,9 +15,10 @@ The README covers the owner-facing basics: how to add a car and how to update sc
   - **Train cars:** each car's door is a section of the cabinet. A split-flap departures board (a station-hall timetable: time, destination, car, status) lists the same cars.
   - **Spirit Points:** only this car is live (`/points/`).
     Weekly Newsletter, Events and Meet the Cabinet show a "coming soon" notice.
-- **`/points/`:** the live Spirit Points leaderboard.
-  - It's an igloo.inc-style scroll-driven 3D page: Intro, Leaderboard, Results, then a footer section.
-  - Scores come from a Google Sheet.
+- **`/points/`:** the live Spirit Points leaderboard, in the same golden-hour world.
+  - Boarding the Spirit Points car leads into a ride: the train runs north on an illustrated 3D Peninsula map, Nueva → Hayward Park → San Mateo → Burlingame → Spirit Points, stopping at each with a chime, a split-flap "Next stop" display and a route strip.
+  - At Spirit Points it pulls in beside a big station billboard; the standings and results open on its face.
+  - Scores come from a Google Sheet. (The old igloo-style scroll page was replaced, at the owner's request.)
 
 ## Running and testing locally
 - Serve the repo root with any static server, for example `python3 -m http.server 8770`, then open http://localhost:8770.
@@ -47,8 +48,9 @@ The README covers the owner-facing basics: how to add a car and how to update sc
 | `hub/scenery.js` | `mergeStatic()`, which merges static meshes into one draw call per material (skips `userData.keep`). `person()` builds a figure from meshes (used for you, the headphone listener, via `addPeople`/`updatePeople`, and baked into the car interiors). Also platform props (bins, ticket validators, planters, door markers, the forecourt bike path), and the background (hillside houses with lit windows, a radio mast, road traffic, clouds, birds). Exports the colour palettes (`SKIN`, `HAIR`, `TOPS`, `PANTS`). |
 | `hub/crowd.js` | `Crowd`: everyone else. The people waiting (benches and yellow line; heads watch the train and the doors), walkers (some with a phone, a rolling suitcase or a dog on a leash), bikes, an e-bike and an e-scooter on the forecourt path, and cyclists on the road beyond the fence. Every body part (head, hair, torso, thigh, shoe…) and prop is one `InstancedMesh` shared by the whole crowd, posed each frame from joint positions (walk cycle by angles, seated legs and riders' legs and arms by two-bone `ik()`), so the crowd is a fixed ~27 draw calls. |
 | `hub/audio.js` | `StationAudio`: all sound is synthesized with Web Audio (crossing bells, horn, motor, brakes, door chime, birds, foley). There are no audio files. |
-| `points/index.html`, `points/js/app.js` | The Spirit Points page and its logic: sections, leaderboard, results deck, detail panel, live refresh and toasts. |
-| `points/js/scene.js`, `points/js/sound.js` | The points page's 3D particle scene and its sound. |
+| `points/index.html`, `points/js/app.js` | The Spirit Points page (all its CSS is in the HTML) and its logic: the ride's route display and station pins, the billboard board (split-flap standings with tap-to-expand class stats, a results timetable with class filters and summary, the ticket-style event detail with standings movement), live refresh with toasts, sound, and the static fallback. |
+| `points/js/ride.js` | `Ride`: the 3D map (painted ground with the bay and freeways, low-poly hills, instanced towns and trees, the double track with catenary), five stations (`STOPS`, `STOP_U` along `curve`), the billboard (`setBillboard(aspect)`, `finalPose()`, `panelRect()`), and a simplified train built from `hub/train.js`. The ride timeline is in `update()`; `jumpToBoard()` skips straight to the billboard. |
+| `hub/flap.js` | Split-flap letters (`flap`, `pad`, `padStart`, `blank`), shared by the departures board and the billboard. |
 | `points/js/data.js` | `CONFIG`: `sheetId` `1cFKxVMGLDuZeS974UUVzH-Oa57sHUe9tHMFCUkwM0r0`, `schoolName` `Nueva`, `refreshSeconds`. Data comes from the sheet's gviz CSV endpoint. Columns: Date, Challenge, Seniors, Juniors, Sophomores, Freshmen. |
 | `assets/logo.png` | The white logo on a transparent background, used as a CSS mask (`--logo`) and as a texture. |
 
@@ -94,6 +96,14 @@ The README covers the owner-facing basics: how to add a car and how to update sc
   - Doors are at the car centers (`x = ±P/2, ±1.5P` when parked). Keep props and people out of the door columns and the boarding camera path.
   - The second track is at z −4.6, the fence at −8.2, the road at −10.6, trees from −13 to −35, houses from −50 to −68, and hills from −70 back.
 
+## How Spirit Points works
+- **Boot:** a warm cover (the same gradient as the hub's boarding flash) while fonts, data and the scene load; `ride.warm()` renders from the start and from the billboard.
+- **Ride or not:** it rides the first time per browser session and whenever you come through a train door (`sessionStorage['spirit-door']`); a reload in the same session goes straight to the board (`sessionStorage['spirit-rode']`). Skip button or Escape skips. Reduced motion or no WebGL: `body.static`, the board is the page.
+- **Billboard fit:** `layoutBoard()` picks the board's box for the screen (wide on desktop, tall on phones), `setBillboard()` reshapes the 3D billboard to that aspect, `finalPose()` places the camera so its face fills that box, and `placeBoard()` lays the HTML panel exactly over the projected face every frame.
+- **Sound:** the hub's `StationAudio` (`audio.ride()` is the running hum, `chime()` at stops, `doors()` on arrival, `clatter()` for flaps). On unless turned off (`localStorage['spirit-sound']`), unlocked on the first tap or key.
+- **Data:** `data.js` fetches the sheet; scores are cached in `localStorage['spirit-cache-<sheetId>']`; it re-checks every `refreshSeconds` and when the tab returns; changes flip only the changed flaps and show a toast.
+- **Testing without the sheet:** the sandbox can't reach Google, so seed the cache key above with sample entries (`{ entries: [{ row, challenge, t, points: { sr, jr, so, fr } }] }`).
+
 ## Owner preferences and decisions so far
 - **Look:** polished and professional, nothing that looks "vibe coded". Smooth, real animations.
   Keep the golden-hour station look, which the owner likes. Only the necessary text: the owner asked twice to cut extra copy.
@@ -104,8 +114,8 @@ The README covers the owner-facing basics: how to add a car and how to update sc
 - **Hands:** the cutscene uses the original simple hands, with no thumbs (the owner's choice).
   Rigged and photo-textured hand models were tried and removed.
 - **Loading:** a longer loading screen is fine if it means no lag.
-- **Spirit Points:** the second section is titled "Leaderboard".
-  The status line just says who leads (for example "Seniors lead by 40"). Section kickers are just numbers.
+- **Spirit Points:** the status line just says who leads (for example "Seniors lead by 40").
+  The ride uses our own Spirit Line map styling with real Peninsula stop names (approved), not Caltrain's map or branding.
 
 ## Next up (requested, not built yet)
 1. The coming-soon sections (Weekly Newsletter, Events, Meet the Cabinet) don't have pages yet.

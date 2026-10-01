@@ -1,5 +1,6 @@
 import { DOORS, SITE } from './doors.js';
 import { StationAudio } from './audio.js';
+import { flap, pad, blank } from './flap.js';
 
 window.__hubBooted = true;
 const $ = id => document.getElementById(id);
@@ -72,26 +73,7 @@ let firstToday = true; try { firstToday = localStorage.getItem('spirit-hub-day')
 if (!firstToday && !reduce) $('loader').classList.add('quick');
 let station = null, entered = false, doorsOpen = false, focus = 0, hover = -1, boarding = false;
 
-/* departure board: split-flap letters that clatter round to their new value */
-const FLAP_CH = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-function flap(el, text, delay = 0) {
-  while (el.children.length < text.length) el.appendChild(document.createElement('i'));
-  let changed = 0;
-  [...text].forEach((ch, i) => {
-    const c = el.children[i], v = ch === ' ' ? '' : ch; if (c.dataset.v === v) return; c.dataset.v = v; changed++;
-    if (reduce) { c.textContent = v; return; }
-    let n = 2 + (Math.random() * 5 | 0); const tok = c._tok = (c._tok || 0) + 1;
-    const step = () => {
-      if (c._tok !== tok) return; // a newer value took over
-      c.classList.remove('go'); void c.offsetWidth; c.classList.add('go');
-      c.textContent = n-- > 0 ? FLAP_CH[Math.random() * FLAP_CH.length | 0] : v;
-      if (n >= 0) setTimeout(step, 65);
-    };
-    setTimeout(step, delay + i * 22);
-  });
-  return changed;
-}
-const pad = (t, n) => t.length >= n ? t.slice(0, n) : t + ' '.repeat(n - t.length);
+/* departure board: split-flap letters (flap.js) that clatter round to their new value */
 const DEST_W = Math.max(...DOORS.map(d => d.title.length));
 // the timetable's departure times, set once when you arrive
 const TIMES = DOORS.map((d, i) => { const t = new Date(Date.now() + (4 + i * 7) * 60000); return pad(t.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true }).replace(/\s?[AP]M/, '').padStart(5, ' '), 5); });
@@ -104,7 +86,7 @@ function renderBoard(fresh) {
     const r = rows.children[i], st = statusOf(d);
     r.setAttribute('aria-label', `Car ${no(i)}: ${d.title}, ${d.href ? 'open' : 'coming soon'}`);
     r.classList.toggle('on', i === focus && mobile && doorsOpen);
-    if (fresh) r.querySelectorAll('i').forEach(c => { c.dataset.v = ''; c.textContent = ''; });
+    if (fresh) r.querySelectorAll('.flap').forEach(blank);
     const delay = i * 90;
     changed += flap(r.querySelector('.tm'), TIMES[i], delay) + flap(r.querySelector('.d'), pad(d.title.toUpperCase(), DEST_W), delay) + flap(r.querySelector('.c'), no(i), delay) + flap(r.querySelector('.s'), pad(st, 8), delay);
     r.querySelector('.s').className = 's flap ' + (d.href ? (doorsOpen ? 'live' : 'due') : 'soon');
