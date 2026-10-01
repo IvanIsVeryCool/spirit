@@ -199,14 +199,13 @@ function enter(withSound) {
   setTimeout(() => loader.classList.add('out'), 700);
   setTimeout(() => loader.remove(), 2900);
   if (!station) { document.body.classList.remove('pre'); $('board').classList.add('show'); doorsOpen = true; renderBoard(); return; }
-  let seenIntro = false; try { seenIntro = sessionStorage.getItem('spirit-hub-intro') === '1'; sessionStorage.setItem('spirit-hub-intro', '1'); } catch (e) {}
   document.body.classList.remove('pre');
-  if (seenIntro || reduce) { // a quicker arrival on repeat visits
+  if (reduce) { // reduced motion: just the quick arrival
     setTimeout(() => $('board').classList.add('show'), 1300);
     setTimeout(() => { station.arrive(6, arrived); audio.arrive(6); }, 700);
     return;
   }
-  // first visit: you're sitting on the bench, ticket in hand, and the train pulls in
+  // every visit: you're sitting on the bench, ticket in hand, and the train pulls in
   introPlaying = true; document.body.classList.add('intro');
   station.startIntro(ticketCanvas(), {
     sit: () => audio.sit(), paper: () => audio.paper(), bells: () => audio.bells(8.5),

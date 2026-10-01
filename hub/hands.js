@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { GLTFLoader } from '/vendor/jsm/loaders/GLTFLoader.js';
+import { OBJLoader } from '/vendor/jsm/loaders/OBJLoader.js';
 
 // Smooth, tapered tubes along a curve, with rounded ends: the building block for fingers, wrists and sleeves.
 export function tube(points, radii, { segs = 8, radial = 14, capEnd = true, capStart = false, rib = 0, ribFrom = 0 } = {}) {
@@ -254,10 +255,18 @@ export function modelHand(model, side = 1, { watch = false, pose = GRIP } = {}) 
   // forearm, watch and sleeve continue on from the model's wrist
   const w = wrist.position.clone().applyQuaternion(root.quaternion).add(root.position);
   const back = Fb.clone().normalize().applyQuaternion(root.quaternion).negate();
+  addArm(g, w, back, side, watch, skin);
+  g.traverse(o => { if (o.isMesh) { o.castShadow = false; o.receiveShadow = false; } });
+  return g;
+}
+
+// forearm, watch and knitted sleeve, continuing on from a hand's wrist (w), heading back toward you
+function addArm(g, w, back, side, watch, skin, { skinR = [.021, .024, .026], cuffR = [.03, .036, .042] } = {}) {
+  const M = mats(), P = a => V(side * a[0], a[1], a[2]);
   const fore = [w.clone().addScaledVector(back, -.022), w.clone().addScaledVector(back, .03), P([.3, -.13, .15]), P([.35, -.31, .43])];
   fore[2].x += back.x * .02;
   // bare skin only up to just inside the cuff
-  add(tube([fore[0], fore[1], fore[1].clone().lerp(fore[2], watch ? .32 : .2)], [.021, .024, .026], { segs: 8, radial: 18, capEnd: true }), skin);
+  add(tube([fore[0], fore[1], fore[1].clone().lerp(fore[2], watch ? .32 : .2)], skinR, { segs: 8, radial: 18, capEnd: true }), skin);
   function add(geo, mat) { const m = new THREE.Mesh(geo, mat); g.add(m); return m; }
   if (watch) {
     const wPos = fore[0].clone().lerp(fore[1], .62), wDir = fore[2].clone().sub(fore[1]).normalize();
@@ -270,8 +279,129 @@ export function modelHand(model, side = 1, { watch = false, pose = GRIP } = {}) 
   }
   // the cuff comes down over the wrist (on the watch side it stops just short of the watch)
   const s0 = watch ? fore[1].clone().lerp(fore[2], .12) : fore[0].clone().lerp(fore[1], .55), s1 = fore[2].clone().lerp(fore[3], .12), s2 = fore[3].clone().add(P([.02, -.03, .06]));
-  add(tube([s0, s0.clone().lerp(s1, .5), s1], [.033, .038, .042], { segs: 6, radial: 22, capEnd: false, rib: 140 }), M.cuff);
+  add(tube([s0, s0.clone().lerp(s1, .5), s1], cuffR, { segs: 6, radial: 22, capEnd: false, rib: 140 }), M.cuffIn || (M.cuffIn = Object.assign(M.cuff.clone(), { side: THREE.DoubleSide })));
+  // a rolled edge where the cuff opens, so you don't see into the sleeve
+  const lip = new THREE.Mesh(new THREE.TorusGeometry(cuffR[0] - .001, .0045, 10, 30), M.cuff); lip.position.copy(s0);
+  lip.quaternion.setFromUnitVectors(V(0, 0, 1), s1.clone().sub(s0).normalize()); g.add(lip);
   add(tube([s1, s1.clone().lerp(s2, .5), s2], [.045, .054, .062], { segs: 8, radial: 22, capEnd: false }), M.sleeve);
+}
+
+// ---- the photo-textured hand: a static mesh, so we rig it here and bend it into the grip ----
+let PHOTO = null;
+export function loadPhotoHand() {
+  if (!PHOTO) {
+    const tl = new THREE.TextureLoader(), tex = (n, srgb) => tl.loadAsync(`/assets/hands/photo/${n}.jpg`).then(t => { if (srgb) t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; return t; });
+    PHOTO = Promise.all([new OBJLoader().loadAsync('/assets/hands/photo/hand.obj'), tex('color', true), tex('normal', false)]).then(([obj, map, normalMap]) => {
+      let geo = null; obj.traverse(o => { if (o.isMesh) { o.geometry.computeBoundingBox(); if (o.geometry.boundingBox.min.x > 0) geo = o.geometry; } });
+      return { geo, map, normalMap };
+    });
+  }
+  return PHOTO;
+}
+
+// landmarks on the model's right hand, in its own coordinates (it lies flat: fingers +x, back of the hand +y, thumb toward -z)
+const PH = {
+  wrist: [.705, 1.447, .134],
+  index: [[.800, 1.452, .103], [.833, 1.452, .1035], [.853, 1.452, .104], [.873, 1.451, .104]],
+  middle: [[.802, 1.452, .132], [.838, 1.452, .1325], [.860, 1.451, .133], [.882, 1.450, .133]],
+  ring: [[.800, 1.451, .159], [.832, 1.451, .1595], [.852, 1.450, .160], [.872, 1.449, .160]],
+  pinky: [[.795, 1.450, .184], [.817, 1.449, .186], [.830, 1.448, .187], [.843, 1.447, .188]],
+  thumb: [[.735, 1.445, .092], [.762, 1.442, .078], [.782, 1.442, .066], [.800, 1.443, .056]]
+};
+export const PGRIP = {
+  F: [-.85, .3, -.42], R: [.3, .95, .25], knuckle: [.172, 0, -.04], scale: 1.1,
+  fingers: { index: [10, 22, 10, -4], middle: [12, 24, 10, 0], ring: [14, 26, 12, 4], pinky: [18, 28, 12, 9] },
+  thumb: [25, 35, 15, 20, 30] // flex at the base, roll under the palm, two knuckles, then swing toward the fingers
+};
+const smooth = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+const rotAbout = (p, axis, deg) => new THREE.Matrix4().makeTranslation(p.x, p.y, p.z)
+  .multiply(new THREE.Matrix4().makeRotationAxis(axis.clone().normalize(), deg * Math.PI / 180))
+  .multiply(new THREE.Matrix4().makeTranslation(-p.x, -p.y, -p.z));
+
+// bend the flat hand into a pose. Returns a new geometry in the model's (recentred, scaled) space.
+function posePhoto(src, pose) {
+  const S = pose.scale, O = V(...PH.wrist), toL = a => V(...a).sub(O).multiplyScalar(S);
+  const D = V(0, 1, 0), F = V(1, 0, 0);
+  const digits = ['index', 'middle', 'ring', 'pinky', 'thumb'].map(n => {
+    const J = PH[n].map(toL), thumb = n === 'thumb';
+    const dir = J[3].clone().sub(J[0]).normalize();
+    // the polyline starts a little before the base joint, so knuckles blend into the palm
+    const pts = [J[0].clone().addScaledVector(dir, -(thumb ? .012 : .02) * S), ...J];
+    const cum = [0]; for (let i = 1; i < pts.length; i++) cum.push(cum[i - 1] + pts[i].distanceTo(pts[i - 1]));
+    const h = thumb ? [.014, .006, .004] : [.008, .005, .0035];
+    // chain transforms, each joint rotating about its own rest pivot
+    const a = thumb ? pose.thumb : pose.fingers[n], mats = [];
+    let Mx = new THREE.Matrix4();
+    if (thumb) {
+      Mx = rotAbout(J[0], F, -a[1]).multiply(rotAbout(J[0], D, -(a[4] || 0))).multiply(rotAbout(J[0], new THREE.Vector3().crossVectors(D, dir), a[0])); mats.push(Mx.clone());
+      [[1, a[2]], [2, a[3]]].forEach(([k, d]) => { const ax = new THREE.Vector3().crossVectors(D, J[k + 1].clone().sub(J[k]).normalize()); Mx = Mx.clone().multiply(rotAbout(J[k], ax, d)); mats.push(Mx.clone()); });
+    } else {
+      Mx = rotAbout(J[0], D, -a[3]).multiply(rotAbout(J[0], new THREE.Vector3().crossVectors(D, dir), a[0])); mats.push(Mx.clone());
+      [[1, a[1]], [2, a[2]]].forEach(([k, d]) => { const ax = new THREE.Vector3().crossVectors(D, J[k + 1].clone().sub(J[k]).normalize()); Mx = Mx.clone().multiply(rotAbout(J[k], ax, d)); mats.push(Mx.clone()); });
+    }
+    return { n, J, pts, cum, h, mats, r: (thumb ? .019 : .014) * S, jointAt: [cum[1], cum[2], cum[3]] };
+  });
+  // drop the forearm stub behind the wrist (the sleeve takes over from there)
+  const sp = src.attributes.position, keep = [];
+  for (let t = 0; t < sp.count / 3; t++) if (Math.max(sp.getX(t * 3), sp.getX(t * 3 + 1), sp.getX(t * 3 + 2)) > PH.wrist[0] - .012) keep.push(t);
+  const pos = { count: keep.length * 3, a: sp }, nor = src.attributes.normal, uvSrc = src.attributes.uv, N = pos.count;
+  const idx = i => keep[(i / 3) | 0] * 3 + (i % 3), uvOut = new Float32Array(N * 2);
+  const out = new Float32Array(N * 3), outN = new Float32Array(N * 3);
+  const v = V(0, 0, 0), nn = V(0, 0, 0), acc = V(0, 0, 0), accN = V(0, 0, 0), tmp = V(0, 0, 0), seg = V(0, 0, 0), proj = V(0, 0, 0);
+  const nm = new THREE.Matrix3();
+  for (let i = 0; i < N; i++) {
+    const j = idx(i); v.fromBufferAttribute(sp, j).sub(O).multiplyScalar(S); nn.fromBufferAttribute(nor, j).negate(); uvOut[i * 2] = uvSrc.getX(j); uvOut[i * 2 + 1] = uvSrc.getY(j);
+    // nearest digit, and how far along it this vertex sits
+    let best = null, bd = 1e9, bs = 0;
+    for (const d of digits) for (let k = 0; k < d.pts.length - 1; k++) {
+      seg.subVectors(d.pts[k + 1], d.pts[k]); const L = seg.length();
+      const t = Math.min(1, Math.max(0, tmp.subVectors(v, d.pts[k]).dot(seg) / (L * L)));
+      proj.copy(d.pts[k]).addScaledVector(seg, t); const dist = proj.distanceTo(v);
+      if (dist < bd) { bd = dist; best = d; bs = d.cum[k] + t * L; }
+    }
+    acc.set(0, 0, 0); accN.set(0, 0, 0);
+    let wRoot = 1;
+    if (best && bd < best.r) {
+      const c = best.jointAt.map((s0, k) => smooth(s0 - best.h[k], s0 + best.h[k], bs));
+      const w = [c[0] - c[1], c[1] - c[2], c[2]];
+      wRoot = 1 - c[0];
+      w.forEach((wk, k) => { if (wk > 1e-4) { acc.addScaledVector(tmp.copy(v).applyMatrix4(best.mats[k]), wk); nm.setFromMatrix4(best.mats[k]); accN.addScaledVector(tmp.copy(nn).applyMatrix3(nm), wk); } });
+    }
+    acc.addScaledVector(v, wRoot); accN.addScaledVector(nn, wRoot).normalize();
+    out.set([acc.x, acc.y, acc.z], i * 3); outN.set([accN.x, accN.y, accN.z], i * 3);
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(out, 3)); g.setAttribute('normal', new THREE.BufferAttribute(outN, 3)); g.setAttribute('uv', new THREE.BufferAttribute(uvOut, 2));
+  const fing = ['index', 'middle', 'ring', 'pinky'].map(n => digits.find(d => d.n === n).J[0]);
+  return { geo: g, wrist: V(0, 0, 0), knuckles: fing, F: fing.reduce((a, b) => a.clone().add(b)).multiplyScalar(.25), R: fing[0].clone().sub(fing[3]) };
+}
+
+export function photoHand(asset, side = 1, { watch = false, pose = PGRIP } = {}) {
+  const g = new THREE.Group();
+  const P0 = posePhoto(asset.geo, pose);
+  let geo = P0.geo, kn = P0.F.clone(), Fb = P0.F.clone(), Rb = P0.R.clone();
+  const p = geo.attributes.position.array, n = geo.attributes.normal.array, uv = geo.attributes.uv.array;
+  if (side < 0) { // the left hand is the right one, mirrored
+    for (let i = 0; i < p.length; i += 3) { p[i] = -p[i]; n[i] = -n[i]; }
+    [kn, Fb, Rb].forEach(v => v.x = -v.x);
+  } else {
+    // the file's triangles wind inward; the mirror above flips them back for the left hand, here we flip them ourselves
+    for (let t = 0; t < p.length / 9; t++) {
+      const swap = (arr, sz) => { for (let c = 0; c < sz; c++) { const a = (t * 3 + 1) * sz + c, b = (t * 3 + 2) * sz + c; [arr[a], arr[b]] = [arr[b], arr[a]]; } };
+      swap(p, 3); swap(n, 3); swap(uv, 2);
+    }
+  }
+  const skin = new THREE.MeshPhysicalMaterial({ map: asset.map, normalMap: asset.normalMap, normalScale: new THREE.Vector2(.7, side < 0 ? -.7 : .7), roughness: .6, specularIntensity: .35, sheen: .2, sheenColor: new THREE.Color(0xb0503a), sheenRoughness: .7 });
+  const mesh = new THREE.Mesh(geo, skin);
+  const Pp = a => V(side * a[0], a[1], a[2]);
+  const rot = frameOf(Pp(pose.F), Pp(pose.R), side).multiply(frameOf(Fb, Rb, side).transpose());
+  mesh.quaternion.setFromRotationMatrix(rot);
+  mesh.position.copy(Pp(pose.knuckle)).sub(kn.clone().applyQuaternion(mesh.quaternion));
+  g.add(mesh);
+  const w = V(0, -.004, 0).applyQuaternion(mesh.quaternion).add(mesh.position);
+  const back = Fb.clone().normalize().applyQuaternion(mesh.quaternion).negate();
+  // the cuff skin colour comes from the photo, so the bare forearm uses the same texture's tone
+  addArm(g, w, back, side, watch, new THREE.MeshPhysicalMaterial({ color: 0xc7937a, roughness: .62, sheen: .2, sheenColor: new THREE.Color(0xb0503a) }), { skinR: [.022, .026, .028], cuffR: [.036, .04, .044] });
   g.traverse(o => { if (o.isMesh) { o.castShadow = false; o.receiveShadow = false; } });
   return g;
 }
