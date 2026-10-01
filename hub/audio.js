@@ -83,10 +83,16 @@ export class StationAudio {
     });
   }
   // the whole arrival over `dur` seconds: crossing bells, horn, electric motor winding down, wheels, brakes, air
-  arrive(dur = 6) {
+  // railroad crossing bells off to the right, swelling in and fading out
+  bells(dur = 8) {
+    if (!this.live) return;
+    const t = this.ctx.currentTime;
+    for (let k = 0, x = 0; x < dur; k++, x += .46) this._bell(1520, t + x, .05 * Math.min(1, (k + 1) / 4) * Math.min(1, (dur - x) / 2), .5, .55);
+  }
+  arrive(dur = 6, { bells = true } = {}) {
     if (!this.live) return;
     const ctx = this.ctx, t = ctx.currentTime;
-    for (let k = 0, x = 0; x < dur - .4; k++, x += .46) this._bell(1520, t + x, .05 * Math.min(1, (k + 1) / 3) * Math.min(1, (dur - x) / 1.5), .5, -.55);
+    if (bells) for (let k = 0, x = 0; x < dur - .4; k++, x += .46) this._bell(1520, t + x, .05 * Math.min(1, (k + 1) / 3) * Math.min(1, (dur - x) / 1.5), .5, -.55);
     this._horn(t + .5, [1.3, .45], .75);
     let pan = null;
     if (ctx.createStereoPanner) { pan = ctx.createStereoPanner(); pan.pan.setValueAtTime(.95, t); pan.pan.linearRampToValueAtTime(-.05, t + dur); pan.connect(this.dry); pan.connect(this.verbIn); }
@@ -135,6 +141,28 @@ export class StationAudio {
       o.connect(g); this._out(g, pan); o.start(t); o.stop(t + .12);
     }
     this.birdT = setTimeout(() => this._birds(), 5000 + Math.random() * 9000);
+  }
+  // first-person foley: sitting on the bench, handling the ticket, standing up
+  sit() {
+    if (!this.live) return;
+    const ctx = this.ctx, t = ctx.currentTime;
+    this._noise(t, .5, 'lowpass', 1400, 500, .7, .09, .12, 0);            // clothes
+    const o = ctx.createOscillator(), g = ctx.createGain(); o.type = 'triangle';  // bench creak
+    o.frequency.setValueAtTime(140, t + .35); o.frequency.exponentialRampToValueAtTime(96, t + .7);
+    g.gain.setValueAtTime(.0001, t + .35); g.gain.exponentialRampToValueAtTime(.05, t + .4); g.gain.exponentialRampToValueAtTime(.0001, t + .75);
+    o.connect(g).connect(this.dry); o.start(t + .35); o.stop(t + .8);
+    this._click(t + .38, .2);
+  }
+  paper() {
+    if (!this.live) return;
+    const t = this.ctx.currentTime;
+    for (let i = 0; i < 6; i++) this._noise(t + i * .045 + Math.random() * .03, .06 + Math.random() * .05, 'highpass', 2600 + Math.random() * 2000, 5200, .6, .05 + Math.random() * .04, .004, (Math.random() - .5) * .3);
+  }
+  stand() {
+    if (!this.live) return;
+    const t = this.ctx.currentTime;
+    this._noise(t, .7, 'lowpass', 900, 1600, .7, .08, .3, 0);
+    this._click(t + .62, .3); this._click(t + 1.02, .22);                 // two footsteps
   }
   // UI
   tick() {

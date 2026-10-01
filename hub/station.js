@@ -11,6 +11,7 @@ const COL = {
   skyTop: '#1c2a66', skyMid: '#7468ab', horizon: '#ffb07a', sun: '#ffd08e',
   body: 0xc8ccd3, red: 0xc9272c, dark: 0x16181f, concrete: 0x8d857a, warm: 0xffc58a
 };
+const M_SOLE = new THREE.MeshStandardMaterial({ color: 0x2a2a2e, roughness: .9 });
 const easeInOut = t => t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
 const glow = (hex, k) => { const m = new THREE.MeshBasicMaterial({ color: new THREE.Color(hex).multiplyScalar(k) }); m.toneMapped = false; return m; };
 const canvasTex = (w, h, draw) => { const c = document.createElement('canvas'); c.width = w; c.height = h; draw(c.getContext('2d'), w, h); const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; return t; };
@@ -420,7 +421,7 @@ export class Station {
       const a = A.clone().addScaledVector(dir, u0).addScaledVector(n, off), b = A.clone().addScaledVector(dir, u1).addScaledVector(n, off);
       const g = new THREE.BufferGeometry();
       g.setAttribute('position', new THREE.Float32BufferAttribute([a.x, a.y, -hz, b.x, b.y, -hz, b.x, b.y, hz, a.x, a.y, -hz, b.x, b.y, hz, a.x, a.y, hz], 3));
-      g.setAttribute('uv', new THREE.Float32BufferAttribute([1, 0, 1, 1, 0, 1, 1, 0, 0, 1, 0, 0], 2));
+      g.setAttribute('uv', new THREE.Float32BufferAttribute([0, 0, 0, 1, 1, 1, 0, 0, 1, 1, 1, 0], 2));
       g.computeVertexNormals(); const m = new THREE.Mesh(g, mat); m.position.x = x0; first.add(m); return m;
     };
     const len = B.distanceTo(A);
@@ -500,6 +501,101 @@ export class Station {
     if (this.destCv) { drawLED(this.destCv.getContext('2d'), ['SPIRIT CABINET', 'EXPRESS']); this.destTex.needsUpdate = true; }
   }
 
+  /* ---------- first-person opening: you sit on the bench and wait ---------- */
+  _rig(ticketCanvas) {
+    const g = new THREE.Group(), z0 = this.front + 5.8;
+    this.seat = new THREE.Vector3(0, 2.0, z0 + .08);
+    // the ticket, held in both hands
+    const rig = new THREE.Group(); g.add(rig);
+    const tt = new THREE.CanvasTexture(ticketCanvas); tt.colorSpace = THREE.SRGBColorSpace; tt.anisotropy = 8;
+    const pg = new THREE.PlaneGeometry(.3, .13, 12, 1), pp = pg.attributes.position;
+    for (let i = 0; i < pp.count; i++) { const x = pp.getX(i); pp.setZ(i, -Math.pow(x / .15, 2) * .014); }
+    pg.computeVertexNormals();
+    rig.add(new THREE.Mesh(pg, new THREE.MeshStandardMaterial({ map: tt, roughness: .85, side: THREE.DoubleSide, alphaTest: .5 })));
+    const skin = new THREE.MeshStandardMaterial({ color: 0xc98a64, roughness: .6 });
+    const sleeve = new THREE.MeshStandardMaterial({ color: 0x2b3352, roughness: .92 });
+    const cuff = new THREE.MeshStandardMaterial({ color: COL.red, roughness: .9 });
+    const along = (mesh, a, b) => { const v = new THREE.Vector3().subVectors(b, a); mesh.position.copy(a).addScaledVector(v, .5); mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), v.clone().normalize()); return v.length(); };
+    [-1, 1].forEach(sd => {
+      const h = new THREE.Group(); h.position.set(sd * .15, -.005, 0);
+      const palm = new THREE.Mesh(new THREE.SphereGeometry(1, 20, 14), skin); palm.scale.set(.036, .05, .022); palm.position.set(sd * .022, 0, -.02); h.add(palm);
+      for (let k = 0; k < 4; k++) { // fingers curl behind the ticket
+        const f = new THREE.Mesh(new THREE.CapsuleGeometry(.0105, .042, 4, 10), skin);
+        f.position.set(-sd * .012, .034 - k * .021, -.026); f.rotation.z = sd * Math.PI / 2; h.add(f);
+      }
+      const thumb = new THREE.Mesh(new THREE.CapsuleGeometry(.0125, .036, 4, 10), skin); // thumb pinches the front
+      thumb.position.set(-sd * .018, .012, .012); thumb.rotation.z = sd * .75; h.add(thumb);
+      const nail = new THREE.Mesh(new THREE.SphereGeometry(1, 10, 8), new THREE.MeshStandardMaterial({ color: 0xe8b8a0, roughness: .3 }));
+      nail.scale.set(.007, .009, .003); nail.position.set(-sd * .03, .024, .023); nail.rotation.z = sd * .75; h.add(nail);
+      // wrist and sleeve run back toward you
+      const wristA = new THREE.Vector3(sd * .045, -.02, -.01), wristB = new THREE.Vector3(sd * .09, -.12, .13);
+      const wrist = new THREE.Mesh(new THREE.CylinderGeometry(.024, .026, 1, 12), skin); wrist.scale.y = along(wrist, wristA, wristB); h.add(wrist);
+      const c = new THREE.Mesh(new THREE.CylinderGeometry(.036, .036, .03, 16), cuff); along(c, wristB, wristB.clone().add(new THREE.Vector3(sd * .012, -.03, .04))); h.add(c);
+      const slA = wristB.clone().add(new THREE.Vector3(sd * .01, -.02, .03)), slB = new THREE.Vector3(sd * .17, -.42, .55);
+      const sl = new THREE.Mesh(new THREE.CylinderGeometry(.04, .052, 1, 14), sleeve); sl.scale.y = along(sl, slA, slB); h.add(sl);
+      rig.add(h);
+    });
+    rig.position.set(0, 1.33, z0 - (this.mobile ? .38 : .32)); rig.lookAt(this.seat); rig.rotateX(-.12);
+    if (this.mobile) rig.scale.setScalar(.62); // a narrow screen sees less, so hold it a little further off
+    this.rig = rig; this.rigBase = rig.quaternion.clone(); this.rigPos = rig.position.clone();
+    // knees and sneakers below
+    const denim = new THREE.MeshStandardMaterial({ color: 0x34405e, roughness: .9 }), shoe = new THREE.MeshStandardMaterial({ color: 0xf1ede6, roughness: .7 });
+    [-1, 1].forEach(sd => {
+      const hip = new THREE.Vector3(sd * .13, 1.13, z0 + .1), knee = new THREE.Vector3(sd * .15, 1.16, z0 - .4), foot = new THREE.Vector3(sd * .16, FLOOR + .1, z0 - .5);
+      const thigh = new THREE.Mesh(new THREE.CapsuleGeometry(.075, 1, 4, 12), denim); thigh.scale.y = along(thigh, hip, knee) / 1.15; g.add(thigh);
+      const shin = new THREE.Mesh(new THREE.CapsuleGeometry(.06, 1, 4, 12), denim); shin.scale.y = along(shin, knee, foot) / 1.1; g.add(shin);
+      const sn = new THREE.Mesh(new THREE.BoxGeometry(.11, .09, .28), shoe); sn.position.set(sd * .16, FLOOR + .05, z0 - .58); g.add(sn);
+      const sole = new THREE.Mesh(new THREE.BoxGeometry(.115, .025, .29), M_SOLE); sole.position.set(sd * .16, FLOOR + .012, z0 - .58); g.add(sole);
+    });
+    g.traverse(o => { if (o.isMesh) { o.castShadow = false; o.receiveShadow = false; } });
+    this.scene.add(g); this.introGroup = g;
+  }
+  startIntro(ticketCanvas, cb = {}) {
+    if (!this.introGroup) this._rig(ticketCanvas);
+    this.introGroup.visible = true;
+    this.trainX = 70; this.arrival = null;
+    this.intro = { t0: this.clock.elapsedTime, cb, fired: {} };
+    this.look.set(0, 1.5, 3); this.camera.position.set(0, 2.85, this.seat.z + .75); this.camera.lookAt(this.look);
+  }
+  skipIntro() {
+    const I = this.intro; if (!I) return;
+    this.intro = null; this.introGroup.visible = false;
+    if (!I.fired.arrive) { I.fired.arrive = 1; I.cb.arrive && I.cb.arrive(true); }
+    if (this.arrival || this.trainX > 0) { const stop = (this.arrival && this.arrival.onStop) || I.cb.stop; this.park(); stop && stop(); }
+    this.blendUntil = this.clock.elapsedTime + 2.5;
+    I.cb.end && I.cb.end();
+  }
+  _introFrame(t, dt) {
+    const I = this.intro, e = t - I.t0, cb = I.cb;
+    const fire = (k, at, fn) => { if (e >= at && !I.fired[k]) { I.fired[k] = 1; fn && fn(); } };
+    fire('sit', .25, cb.sit); fire('paper', 2.5, cb.paper); fire('bells', 3.4, cb.bells);
+    fire('arrive', 5.2, () => { this.arrive(6, cb.stop); cb.arrive && cb.arrive(false); });
+    fire('stand', 12.1, cb.stand);
+    // where the eyes are: sit down, breathe, then stand up when the doors open
+    const stand0 = new THREE.Vector3(0, 2.86, this.seat.z + .75), up = new THREE.Vector3(-.4, 3.0, this.seat.z + 1.1), c = this.camera;
+    if (e < 1.3) c.position.lerpVectors(stand0, this.seat, easeInOut(e / 1.3));
+    else if (e < 12.1) c.position.copy(this.seat);
+    else c.position.lerpVectors(this.seat, up, easeInOut(Math.min(1, (e - 12.1) / 1.2)));
+    c.position.y += Math.sin(t * 1.7) * .005 + (e > 1.1 && e < 1.5 ? -Math.sin((e - 1.1) / .4 * Math.PI) * .03 : 0);
+    // where the head turns: down at the ticket, up, a look left down the platform, then the horn pulls it right to the train
+    const front = this.cars[0].position.x + this.trainX - CAR_L / 2 - 1.6, tgt = new THREE.Vector3();
+    if (e < 1.0) tgt.set(0, 1.5, this.seat.z - 3.5);
+    else if (e < 3.5) tgt.set(.02 + Math.sin(e * .9) * .02, 1.31, this.seat.z - .42);
+    else if (e < 4.6) tgt.set(.8, 1.95, 0);
+    else if (e < 5.8) tgt.set(-11, 2.3, 0);
+    else if (e < 6.3) tgt.set(-6, 2.1, 0);
+    else if (e < 11.4) tgt.set(Math.max(-2.5, Math.min(18, front)), 2.0, 0);
+    else tgt.set(-1.6, 2.25, 0);
+    const k = 1 - Math.pow(e < 6.3 ? .012 : .03, dt);
+    this.look.lerp(tgt, k);
+    c.lookAt(this.look);
+    // the ticket gets a small fidget, then the hands drop away as you stand
+    const fid = e > 2.5 && e < 3.3 ? Math.sin((e - 2.5) / .8 * Math.PI) : 0;
+    this.rig.quaternion.copy(this.rigBase); this.rig.rotateZ(fid * .12); this.rig.rotateX(Math.sin(t * 1.7) * .02);
+    this.rig.position.copy(this.rigPos); if (e > 12.1) this.rig.position.y -= Math.pow(Math.min(1, (e - 12.1) / .6), 2) * .6;
+    if (e > 13.3) { this.intro = null; this.introGroup.visible = false; this.blendUntil = t + 2.8; cb.end && cb.end(); }
+  }
+
   /* ---------- choreography ---------- */
   doorX(i) { return this.cars[i].position.x + this.trainX; }
   arrive(dur = 6, onStop) { this.trainX = 70; this.arrival = { t0: this.clock.elapsedTime, dur, onStop }; }
@@ -568,21 +664,22 @@ export class Station {
       const page = Math.floor(t / 2.6 + i * .3) % 2; if (page !== d.led.page) { d.led.page = page; this.drawSign(i); }
     });
     const c = this.camera;
-    if (this.flight) {
+    if (this.intro) { this._introFrame(t, dt); }
+    else if (this.flight) {
       const f = this.flight, p = Math.min(1, (t - f.t0) / 1.6);
       if (p < .55) { const u = easeInOut(p / .55); c.position.lerpVectors(f.p0, f.p1, u); this.look.lerpVectors(f.l0, f.l1, u); }
       else { const u = Math.pow((p - .55) / .45, 2); c.position.lerpVectors(f.p1, f.p2, u); this.look.copy(f.l1); }
       if (p >= 1 && !f.fired) { f.fired = true; f.done && f.done(); }
     } else {
       this.parkedPose(false); this.par.lerp(this.mouse, .05);
-      const k = 1 - Math.pow(.05, dt);
+      const k = 1 - Math.pow(this.blendUntil > t ? .35 : .05, dt);
       c.position.x += (this.camPos.x + this.par.x * (this.mobile ? .3 : 1.2) - c.position.x) * k;
       c.position.y += (this.camPos.y + this.par.y * .5 - c.position.y) * k;
       c.position.z += (this.camPos.z - c.position.z) * k;
-      this.look.lerp(this.camLook, 1 - Math.pow(.04, dt));
+      this.look.lerp(this.camLook, 1 - Math.pow(this.blendUntil > t ? .3 : .04, dt));
     }
-    c.lookAt(this.look);
-    const shake = Math.min(1, speed / 25); if (shake > .02) c.position.y += (Math.random() - .5) * .03 * shake;
+    if (!this.intro) c.lookAt(this.look);
+    const shake = Math.min(1, speed / 25) * (this.intro ? .5 : 1); if (shake > .02) c.position.y += (Math.random() - .5) * .03 * shake;
     const pos = this.motes.geometry.attributes.position.array;
     for (let i = 0; i < pos.length; i += 3) { pos[i] -= speed * .003 * (pos[i + 2] < 4 ? 1 : .25) + .004; pos[i + 1] += Math.sin(t * .7 + i) * .0015; if (pos[i] < -35) pos[i] += 70; }
     this.motes.geometry.attributes.position.needsUpdate = true;

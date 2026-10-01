@@ -1,8 +1,9 @@
 # Nueva Spirit Cabinet website
 
-- `/` is the homescreen: a red-and-silver commuter train pulls into a golden-hour
-  platform and each car's door is a section of the Spirit Cabinet. The LED departure
-  board lists the same cars.
+- `/` is the homescreen. You get a ticket, punch it, and on your first visit you're
+  sitting on the platform bench, ticket in hand, as a red-and-silver commuter train
+  pulls in. Each car's door is a section of the Spirit Cabinet, and the LED departure
+  board lists the same cars. Later visits in the same tab skip straight to the arrival.
 - `/points/` is the live Spirit Points standings (scroll-driven 3D, scores from the Google Sheet).
 
 ## Adding or opening a train car
