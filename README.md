@@ -3,7 +3,7 @@
 - `/` is the homescreen. You get a ticket, punch it, and on your first visit you're
   sitting on the platform bench, ticket in hand, as a red-and-silver commuter train
   pulls in. Each car's door is a section of the Spirit Cabinet, and the LED departure
-  board lists the same cars. Later visits in the same tab skip straight to the arrival.
+  board lists the same cars. The ticket and that opening play on your first visit each day; later visits go straight to the platform, with a Replay intro button.
 - `/points/` is the live Spirit Points standings (scroll-driven 3D, scores from the Google Sheet).
 
 ## Adding or opening a train car

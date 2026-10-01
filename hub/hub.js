@@ -66,6 +66,10 @@ function ticketCanvas() {
 }
 
 /* state */
+// The ticket and the opening play on your first visit each day; after that you go straight to the platform
+const today = (() => { const d = new Date(); return d.getFullYear() + '-' + (d.getMonth() + 1) + '-' + d.getDate(); })();
+let firstToday = true; try { firstToday = localStorage.getItem('spirit-hub-day') !== today; } catch (e) {}
+if (!firstToday && !reduce) $('loader').classList.add('quick');
 let station = null, entered = false, doorsOpen = false, focus = 0, hover = -1, boarding = false;
 
 /* departure board */
@@ -164,11 +168,11 @@ function loop() {
 
 /* boot: load, then the ticket gate */
 async function boot() {
-  const bar = $('load-bar'), dot = $('mini-train'), pct = $('load-pct');
+  const bar = $('load-bar'), dot = $('mini-train'), pct = $('load-pct'), ql = $('ql-bar');
   let done = 0; const total = 3, shown = { v: 0 };
   const anim = () => {
     shown.v += ((done / total) * 100 - shown.v) * .1;
-    bar.style.transform = `scaleX(${shown.v / 100})`; dot.style.left = `calc((100% - 58px) * ${shown.v / 100})`; pct.textContent = Math.round(shown.v) + '%';
+    bar.style.transform = `scaleX(${shown.v / 100})`; ql.style.transform = `scaleX(${shown.v / 100})`; dot.style.left = `calc((100% - 58px) * ${shown.v / 100})`; pct.textContent = Math.round(shown.v) + '%';
     if (shown.v < 99.5) requestAnimationFrame(anim); else { pct.textContent = '100%'; bar.style.transform = 'scaleX(1)'; dot.style.left = 'calc(100% - 58px)'; }
   };
   requestAnimationFrame(anim);
@@ -191,11 +195,13 @@ async function boot() {
   done++;
   $('tk-status').classList.add('done');
   if (!station) { document.body.classList.add('static'); enter(false); return; }
+  if (!firstToday && !reduce) { setTimeout(quickEnter, 350); return; }
   setTimeout(() => { $('gate').classList.add('ready'); $('enter-sound').focus({ preventScroll: true }); }, 350);
 }
 let introPlaying = false;
 function enter(withSound) {
   if (entered) return; entered = true;
+  try { localStorage.setItem('spirit-hub-day', today); } catch (e) {}
   if (withSound) setSound(true);
   const loader = $('loader'), tk = $('ticket');
   tk.classList.add('punched'); audio.punch();
@@ -209,7 +215,20 @@ function enter(withSound) {
     setTimeout(() => { station.arrive(6, arrived); audio.arrive(6); }, 700);
     return;
   }
-  // every visit: you're sitting on the bench, ticket in hand, and the train pulls in
+  playIntro();
+}
+// already been here today: the train is waiting at the platform
+function quickEnter() {
+  if (entered) return; entered = true;
+  const loader = $('loader');
+  loader.classList.add('out'); setTimeout(() => loader.remove(), 2900);
+  document.body.classList.remove('pre'); document.body.classList.add('entered');
+  if (!station) { $('board').classList.add('show'); doorsOpen = true; renderBoard(); return; }
+  station.park(); arrived();
+  setTimeout(() => $('board').classList.add('show'), 700);
+}
+// you're sitting on the bench, ticket in hand, and the train pulls in
+function playIntro() {
   introPlaying = true; document.body.classList.add('intro');
   station.startIntro(ticketCanvas(), {
     sit: () => audio.sit(), paper: () => audio.paper(), bells: () => audio.bells(8.5),
@@ -218,10 +237,17 @@ function enter(withSound) {
   });
 }
 function endIntro() {
-  if (!introPlaying) return; introPlaying = false;
+  if (!introPlaying) return; introPlaying = false; document.body.classList.add('entered');
   document.body.classList.remove('intro');
   setTimeout(() => $('board').classList.add('show'), 600);
 }
+// watch the opening again, any time
+$('replay-btn').addEventListener('click', () => {
+  if (!station || introPlaying || boarding || reduce || !$('notice').hidden) return;
+  doorsOpen = false; hover = -1; station.setHover(-1); renderBoard();
+  $('board').classList.remove('show'); audio.tick();
+  playIntro();
+});
 $('skip').addEventListener('click', () => { if (station && introPlaying) station.skipIntro(); });
 addEventListener('keydown', e => { if (introPlaying && (e.key === 'Escape' || e.key === ' ')) { e.preventDefault(); station.skipIntro(); } });
 $('enter-sound').addEventListener('click', () => enter(true));

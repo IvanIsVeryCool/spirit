@@ -459,8 +459,12 @@ export class Station {
     if (!this.introGroup) this._rig(ticketCanvas);
     this.introGroup.visible = true;
     this.trainX = 70; this.arrival = null;
+    this.flight = null; this.doors.forEach(d => { d.target = 0; d.open = 0; });
     this.intro = { t0: this.clock.elapsedTime, cb, fired: {} };
     this.look.set(0, 1.5, 3); this.camera.position.set(0, 2.85, this.seat.z + .75); this.camera.lookAt(this.look);
+    // the head: yaw/pitch driven by springs, so turns ease in, overshoot a touch and settle like a real neck
+    const d = this.look.clone().sub(this.camera.position).normalize();
+    this.head = { yaw: Math.atan2(-d.x, -d.z), pitch: Math.asin(d.y), vy: 0, vp: 0, roll: 0, jy: 0, jp: 0, next: 0 };
   }
   skipIntro() {
     const I = this.intro; if (!I) return;
@@ -482,23 +486,49 @@ export class Station {
     else if (e < 12.1) c.position.copy(this.seat);
     else c.position.lerpVectors(this.seat, up, easeInOut(Math.min(1, (e - 12.1) / 1.2)));
     c.position.y += Math.sin(t * 1.7) * .005 + (e > 1.1 && e < 1.5 ? -Math.sin((e - 1.1) / .4 * Math.PI) * .03 : 0);
-    // where the head turns: down at the ticket, up, a look left down the platform, then the horn pulls it right to the train
+    // where the attention goes: down at the ticket, up, a look left down the platform, then the horn pulls it right to the train
     const front = this.cars[0].position.x + this.trainX - CAR_L / 2 - NOSE_L + .3, tgt = new THREE.Vector3();
+    let tracking = false, reading = false;
     if (e < 1.0) tgt.set(0, 1.5, this.seat.z - 3.5);
-    else if (e < 3.5) tgt.set(.02 + Math.sin(e * .9) * .02, 1.31, this.seat.z - .42);
-    else if (e < 4.6) tgt.set(.8, 1.95, 0);
-    else if (e < 5.8) tgt.set(-11, 2.3, 0);
-    else if (e < 6.3) tgt.set(-6, 2.1, 0);
-    else if (e < 11.4) tgt.set(Math.max(-2.5, Math.min(18, front)), 2.0, 0);
+    else if (e < 3.6) { tgt.set(.02 + Math.sin(e * 1.1) * .025, 1.31, this.seat.z - .42); reading = true; }
+    else if (e < 4.5) tgt.set(1.6, 2.05, 0);       // up, a little to the right
+    else if (e < 5.9) tgt.set(-12, 2.25, 0);       // the bells: down the platform to the left
+    else if (e < 6.4) tgt.set(-3, 2.1, 0);         // the horn: back toward it
+    else if (e < 11.4) { tgt.set(Math.max(-2.5, Math.min(18, front)), 2.0, 0); tracking = true; }
     else tgt.set(-1.6, 2.25, 0);
-    const k = 1 - Math.pow(e < 6.3 ? .012 : .03, dt);
-    this.look.lerp(tgt, k);
-    c.lookAt(this.look);
+    this._head(tgt, t, dt, tracking, reading);
     // the ticket gets a small fidget, then the hands drop away as you stand
     const fid = e > 2.5 && e < 3.3 ? Math.sin((e - 2.5) / .8 * Math.PI) : 0;
     this.rig.quaternion.copy(this.rigBase); this.rig.rotateZ(fid * .12); this.rig.rotateX(Math.sin(t * 1.7) * .02);
     this.rig.position.copy(this.rigPos); if (e > 12.1) this.rig.position.y -= Math.pow(Math.min(1, (e - 12.1) / .6), 2) * .6;
     if (e > 13.3) { this.intro = null; this.introGroup.visible = false; this.blendUntil = t + 2.8; cb.end && cb.end(); }
+  }
+
+  // A first-person head: springs on yaw and pitch (a quick start, a soft landing, a hint of overshoot),
+  // tiny glances while it rests, a dip during big turns, a lean into the turn, and slow breathing sway.
+  _head(tgt, t, dt, tracking, reading) {
+    const h = this.head, c = this.camera, d = tgt.clone().sub(c.position).normalize();
+    let ty = Math.atan2(-d.x, -d.z), tp = Math.asin(Math.max(-1, Math.min(1, d.y)));
+    if (!tracking && t > h.next) { // little glances while holding a look
+      const k = reading ? .25 : 1;
+      h.jy = (Math.random() - .5) * .05 * k; h.jp = (Math.random() - .5) * .03 * k; h.next = t + .7 + Math.random() * 1.3;
+    }
+    if (tracking) { h.jy *= .9; h.jp *= .9; }
+    ty += h.jy; tp += h.jp;
+    const err = Math.abs(ty - h.yaw);
+    tp -= Math.min(1, err / .7) * .05; // the head drops slightly mid-turn
+    const w = tracking ? 5.5 : reading ? 4 : 4.6, z = tracking ? 1 : .78;
+    for (let n = Math.ceil(dt / .02), i = 0; i < n; i++) {
+      const s = dt / n;
+      h.vy += (w * w * (ty - h.yaw) - 2 * z * w * h.vy) * s; h.yaw += h.vy * s;
+      h.vp += (w * w * (tp - h.pitch) - 2 * z * w * h.vp) * s; h.pitch += h.vp * s;
+    }
+    h.roll += (Math.max(-.06, Math.min(.06, -h.vy * .045)) - h.roll) * Math.min(1, dt * 6);
+    const yaw = h.yaw + Math.sin(t * .53) * .004 + Math.sin(t * 1.37 + 1) * .0025;
+    const pitch = h.pitch + Math.sin(t * 1.7) * .006 + Math.sin(t * .41 + 2) * .003; // breathing
+    c.rotation.set(pitch, yaw, h.roll + Math.sin(t * .37) * .004, 'YXZ');
+    // keep a look point in front of the eyes, so the hand-off to the platform view is seamless
+    this.look.set(-Math.sin(yaw) * Math.cos(pitch), Math.sin(pitch), -Math.cos(yaw) * Math.cos(pitch)).multiplyScalar(8).add(c.position);
   }
 
   /* ---------- choreography ---------- */
