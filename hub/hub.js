@@ -166,7 +166,7 @@ function loop() {
 /* boot: load, then the ticket gate */
 async function boot() {
   const bar = $('load-bar'), dot = $('mini-train'), pct = $('load-pct');
-  let done = 0; const total = 2, shown = { v: 0 };
+  let done = 0; const total = 3, shown = { v: 0 };
   const anim = () => {
     shown.v += ((done / total) * 100 - shown.v) * .1;
     bar.style.transform = `scaleX(${shown.v / 100})`; dot.style.left = `calc(6px + (100% - 12px) * ${shown.v / 100})`; pct.textContent = Math.round(shown.v) + '%';
@@ -185,6 +185,12 @@ async function boot() {
   })().then(() => done++);
   await Promise.all([fonts, stage]);
   if (station) station.redrawSigns(); // once the LED font has loaded
+  if (station) { // get everything onto the graphics card now, so the train doesn't stutter as it pulls in
+    $('load-state').textContent = 'Warming up the engine\u2026';
+    await new Promise(r => setTimeout(r, 50));
+    try { await station.warm(ticketCanvas()); } catch (e) { console.warn(e); }
+  }
+  done++;
   $('load-state').textContent = 'Ready to board \u00b7 your train is on time';
   if (!station) { document.body.classList.add('static'); enter(false); return; }
   setTimeout(() => { $('gate').classList.add('ready'); $('enter-sound').focus({ preventScroll: true }); }, 350);

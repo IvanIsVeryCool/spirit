@@ -4,6 +4,7 @@ import { EffectComposer } from '/vendor/jsm/postprocessing/EffectComposer.js';
 import { RenderPass } from '/vendor/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from '/vendor/jsm/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from '/vendor/jsm/postprocessing/OutputPass.js';
+import { mergeStatic, addPeople, mergePeople, updatePeople, addPlatformProps, addBackground, updateBackground } from './scenery.js';
 import { CAR_L, GAP, W, H, BASE, FLOOR, DOOR_W, DOOR_H, NOSE_L, bodyGeometry, capGeometry, noseGeometry, nosePoint, paintBody, paintNose, windowTexture, interiorTexture, windowSlots } from './train.js';
 
 // A golden-hour Peninsula platform and a red-and-silver double-decker commuter train.
@@ -44,7 +45,6 @@ export class Station {
   constructor(canvas, { mobile, doors, logo }) {
     this.mobile = mobile; this.data = doors; this.count = doors.length; this.logo = logo;
     const r = this.renderer = new THREE.WebGLRenderer({ canvas, antialias: !mobile, powerPreference: 'high-performance' });
-    r.setPixelRatio(Math.min(devicePixelRatio || 1, mobile ? 1.5 : 1.75));
     r.toneMapping = THREE.ACESFilmicToneMapping; r.toneMappingExposure = 1.0;
     r.outputColorSpace = THREE.SRGBColorSpace;
     if (!mobile) { r.shadowMap.enabled = true; r.shadowMap.type = THREE.PCFSoftShadowMap; }
@@ -68,8 +68,16 @@ export class Station {
     }
     const fill = new THREE.DirectionalLight(0x8d9cff, .5); fill.position.set(14, 8, 18); s.add(fill);
 
+    Object.assign(this, { FLOOR, CAR_L, NOSE_L, P: CAR_L + GAP });
     this._sky(); this._hills(); this._trees(); this._tracks(); this._platform(); this._wires(); this._props(); this._train(); this._motes();
+    const propGroup = addPlatformProps(this); addPeople(this); addBackground(this);
     s.traverse(o => { if (o.isMesh && !o.userData.noShadow) { o.castShadow = !!o.userData.cast; o.receiveShadow = true; } });
+    // hundreds of small static parts become one draw call per material
+    this.cars.forEach(c => { c.userData.keep = true; }); mergeStatic(this.train);
+    this.cars.forEach(c => { c.userData.keep = false; mergeStatic(c); });
+    mergeStatic(propGroup); mergePeople(this); mergeStatic(this.wireGroup);
+    // frame-time watch: drop the resolution a notch on slower machines instead of stuttering
+    this.prMax = Math.min(devicePixelRatio || 1, mobile ? 1.5 : 1.75); this.pr = this.prMax; this.ft = { last: 0, avg: 16, check: 0, calm: 0 };
 
     this.composer = new EffectComposer(r);
     this.composer.addPass(new RenderPass(s, this.camera));
@@ -172,7 +180,7 @@ export class Station {
     for (let i = 0; i < 70; i++) { m.makeTranslation(-140 + i * 4, FLOOR + .004, front + 21.6); joints.setMatrixAt(i, m); } s.add(joints);
   }
   _wires() {
-    const s = this.scene, poleMat = new THREE.MeshStandardMaterial({ color: 0x6b717b, metalness: .7, roughness: .45 });
+    const scene = this.scene, s = new THREE.Group(), poleMat = new THREE.MeshStandardMaterial({ color: 0x6b717b, metalness: .7, roughness: .45 }); scene.add(s); this.wireGroup = s;
     const pts = [];
     for (let x = -120; x <= 120; x += 16) {
       const pole = new THREE.Mesh(new THREE.BoxGeometry(.28, 7.6, .28), poleMat); pole.position.set(x, 3.8, -7.2); pole.userData.cast = true; s.add(pole);
@@ -306,7 +314,7 @@ export class Station {
       const w = new THREE.Mesh(new THREE.PlaneGeometry(DOOR_W / 2 - .2, .96), M.window); w.position.set(0, .28, .036); leaf.add(w);
       const seal = new THREE.Mesh(new THREE.BoxGeometry(.03, DOOR_H, .03), M.dark); seal.position.set(-sd * (DOOR_W / 4 - .015), 0, .026); leaf.add(seal);
       const btn = new THREE.Mesh(new THREE.CylinderGeometry(.035, .035, .015, 16), glow(0x5dff8f, .2)); btn.rotation.x = Math.PI / 2; btn.position.set(-sd * (DOOR_W / 4 - .1), -.12, .03); leaf.add(btn);
-      leaf.position.set(sd * DOOR_W / 4, FLOOR + DOOR_H / 2, z + .03); leaf.userData.sd = sd; leaf.userData.btn = btn; car.add(leaf); return leaf;
+      leaf.position.set(sd * DOOR_W / 4, FLOOR + DOOR_H / 2, z + .03); leaf.userData.keep = true; leaf.userData.sd = sd; leaf.userData.btn = btn; car.add(leaf); return leaf;
     });
     [-1, 1].forEach(sd => side(new THREE.CylinderGeometry(.018, .018, 1.1, 8), M.steel, sd * (DOOR_W / 2 + .1), FLOOR + 1.15, .04));
     const statusMats = [-1, 1].map(sd => { const m = glow(0xffa31f, .3); side(new THREE.BoxGeometry(.09, .05, .02), m, sd * (DOOR_W / 2 + .1), FLOOR + DOOR_H + .12, .01); return m; });
@@ -320,10 +328,10 @@ export class Station {
     side(new THREE.PlaneGeometry(2, .5), ledMat, 0, 3.08, .03);
     side(new THREE.PlaneGeometry(.5, .25), new THREE.MeshBasicMaterial({ map: this._plate(String(i + 1).padStart(2, '0')), transparent: true }), CAR_L / 2 - .55, 3.3, .005);
     const spill = new THREE.Mesh(new THREE.PlaneGeometry(1.7, 2.6), new THREE.MeshBasicMaterial({ color: COL.warm, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, map: this._spillTex() }));
-    spill.rotation.x = -Math.PI / 2; spill.position.set(0, FLOOR + .012, z + 1.35); spill.userData.noShadow = true; car.add(spill);
+    spill.rotation.x = -Math.PI / 2; spill.position.set(0, FLOOR + .012, z + 1.35); spill.userData.noShadow = true; spill.userData.keep = true; car.add(spill);
     let pl = null; if (!this.mobile) { pl = new THREE.PointLight(COL.warm, 0, 6, 1.6); pl.position.set(0, 1.6, z + .7); car.add(pl); }
     const hit = new THREE.Mesh(new THREE.BoxGeometry(DOOR_W + .6, DOOR_H + 1, .8), new THREE.MeshBasicMaterial({ visible: false }));
-    hit.position.set(0, FLOOR + DOOR_H / 2 + .3, z + .2); hit.userData.door = i; hit.userData.noShadow = true; car.add(hit);
+    hit.position.set(0, FLOOR + DOOR_H / 2 + .3, z + .2); hit.userData.door = i; hit.userData.keep = true; hit.userData.noShadow = true; car.add(hit);
     this.doors.push({ leaves, lightMat, spill, pl, hit, statusMats, open: 0, target: 0, hover: 0, led: { ctx: cv.getContext('2d'), tex, mat: ledMat, page: 0, key: '' } });
     this.drawSign(i);
   }
@@ -340,7 +348,7 @@ export class Station {
   _cab() {
     const M = this.mats, first = this.cars[0], x0 = -CAR_L / 2;
     const nose = new THREE.Mesh(noseGeometry(), new THREE.MeshPhysicalMaterial({ roughness: 1, metalness: 0, clearcoat: 1, clearcoatRoughness: .06, emissive: 0xffffff, emissiveIntensity: 2.2 }));
-    nose.position.x = x0; nose.userData.cast = true; first.add(nose); this.noseMesh = nose;
+    nose.position.x = x0; nose.userData.cast = true; nose.userData.keep = true; first.add(nose); this.noseMesh = nose;
     this._paintNose();
     // wipers resting at the bottom of the windshield
     [.36, .64].forEach(v => {
@@ -353,7 +361,7 @@ export class Station {
     const coupler = new THREE.Mesh(new THREE.BoxGeometry(.5, .16, .28), M.steel); coupler.position.set(x0 - NOSE_L + .15, .45, 0); first.add(coupler);
     const horn = new THREE.Mesh(new THREE.CylinderGeometry(.05, .09, .32, 10), M.steel); horn.rotation.z = Math.PI / 2; horn.position.set(x0 - .2, H + .02, .4); first.add(horn);
     const beam = new THREE.Mesh(new THREE.ConeGeometry(2.4, 14, 24, 1, true), new THREE.MeshBasicMaterial({ color: 0xfff1d6, transparent: true, opacity: .05, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide }));
-    beam.rotation.z = -Math.PI / 2; beam.position.set(x0 - NOSE_L - 7, 1.25, 0); beam.userData.noShadow = true; first.add(beam); this.headBeam = beam;
+    beam.rotation.z = -Math.PI / 2; beam.position.set(x0 - NOSE_L - 7, 1.25, 0); beam.userData.noShadow = true; beam.userData.keep = true; first.add(beam); this.headBeam = beam;
   }
   _paintNose() {
     const p = paintNose(this.logo, ctx => drawLED(ctx, ['SPIRIT CABINET', 'EXPRESS']));
@@ -525,8 +533,9 @@ export class Station {
   }
   resize() {
     const w = innerWidth, h = innerHeight;
+    this.renderer.setPixelRatio(this.pr || Math.min(devicePixelRatio || 1, this.mobile ? 1.5 : 1.75));
     this.renderer.setSize(w, h, false); this.camera.aspect = w / h; this.camera.updateProjectionMatrix();
-    this.composer.setSize(w, h); if (this.bloom) this.bloom.resolution.set(w / 2, h / 2);
+    this.composer.setPixelRatio(this.renderer.getPixelRatio()); this.composer.setSize(w, h); if (this.bloom) this.bloom.resolution.set(w / 2, h / 2);
   }
 
   render() {
@@ -580,7 +589,33 @@ export class Station {
     const pos = this.motes.geometry.attributes.position.array;
     for (let i = 0; i < pos.length; i += 3) { pos[i] -= speed * .003 * (pos[i + 2] < 4 ? 1 : .25) + .004; pos[i + 1] += Math.sin(t * .7 + i) * .0015; if (pos[i] < -35) pos[i] += 70; }
     this.motes.geometry.attributes.position.needsUpdate = true;
+    updatePeople(this, t, dt); updateBackground(this, t, dt);
     this.sky.position.copy(c.position);
+    this._adapt();
     this.composer.render();
+  }
+  // keep frames smooth: if they're consistently slow, render at a slightly lower resolution
+  _adapt() {
+    const f = this.ft, now = performance.now(), d = now - f.last; f.last = now;
+    if (d <= 0 || d > 250) return; // first frame, or the tab was in the background
+    f.avg += (d - f.avg) * .05;
+    if (now < f.check) return; f.check = now + 1500;
+    if (f.avg > 24 && this.pr > (this.mobile ? .75 : 1)) { this.pr = Math.max(this.mobile ? .75 : 1, this.pr - .25); f.calm = now + 8000; this.resize(); }
+    else if (f.avg < 12 && this.pr < this.prMax && now > f.calm) { this.pr = Math.min(this.prMax, this.pr + .25); f.calm = now + 8000; this.resize(); }
+  }
+  // Called behind the loading screen: build the opening's hands and ticket, then draw every object once
+  // (the train included, wherever it is) so shaders compile and textures upload now, not mid-arrival.
+  async warm(ticketCanvas) {
+    if (!this.introGroup) this._rig(ticketCanvas);
+    try { if (this.renderer.compileAsync) { this.introGroup.visible = true; await this.renderer.compileAsync(this.scene, this.camera); } } catch (e) {}
+    const culled = []; this.scene.traverse(o => { if (o.frustumCulled) { culled.push(o); o.frustumCulled = false; } });
+    const x = this.train.position.x, cam = this.camera.position.clone(), q = this.camera.quaternion.clone();
+    this.introGroup.visible = true;
+    [0, 70].forEach(tx => { this.train.position.x = tx; this.composer.render(); });
+    // and once from the bench, so the close-up of the hands is ready too
+    this.camera.position.copy(this.seat); this.camera.lookAt(0, 1.3, this.seat.z - .5); this.composer.render();
+    culled.forEach(o => { o.frustumCulled = true; });
+    this.train.position.x = x; this.camera.position.copy(cam); this.camera.quaternion.copy(q);
+    this.introGroup.visible = false; this.warmed = true;
   }
 }
