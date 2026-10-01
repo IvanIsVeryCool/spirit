@@ -309,9 +309,9 @@ const PH = {
   thumb: [[.735, 1.445, .092], [.762, 1.442, .078], [.782, 1.442, .066], [.800, 1.443, .056]]
 };
 export const PGRIP = {
-  F: [-.85, .3, -.42], R: [.3, .95, .25], knuckle: [.172, 0, -.04], scale: 1.1,
+  F: [-.85, .3, -.42], R: [.3, .95, .25], knuckle: [.158, 0, -.036], scale: 1.1,
   fingers: { index: [10, 22, 10, -4], middle: [12, 24, 10, 0], ring: [14, 26, 12, 4], pinky: [18, 28, 12, 9] },
-  thumb: [25, 35, 15, 20, 30] // flex at the base, roll under the palm, two knuckles, then swing toward the fingers
+  thumb: [10, 15, 10, 10, 48] // flex at the base, roll under the palm, two knuckles, then swing toward the fingers
 };
 const smooth = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 const rotAbout = (p, axis, deg) => new THREE.Matrix4().makeTranslation(p.x, p.y, p.z)

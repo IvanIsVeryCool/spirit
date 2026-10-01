@@ -4,7 +4,7 @@ import { EffectComposer } from '/vendor/jsm/postprocessing/EffectComposer.js';
 import { RenderPass } from '/vendor/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from '/vendor/jsm/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from '/vendor/jsm/postprocessing/OutputPass.js';
-import { buildHand } from './hands.js';
+import { buildHand, loadPhotoHand, photoHand } from './hands.js';
 import { CAR_L, GAP, W, H, BASE, FLOOR, DOOR_W, DOOR_H, NOSE_L, bodyGeometry, capGeometry, noseGeometry, nosePoint, paintBody, paintNose, windowTexture, interiorTexture, windowSlots } from './train.js';
 
 // A golden-hour Peninsula platform and a red-and-silver double-decker commuter train.
@@ -44,6 +44,7 @@ function grilleTex() {
 export class Station {
   constructor(canvas, { mobile, doors, logo }) {
     this.mobile = mobile; this.data = doors; this.count = doors.length; this.logo = logo;
+    this.hands = null; loadPhotoHand().then(h => { this.hands = h; }).catch(() => {}); // the photo-textured hands for the opening; drawn ones if they don't arrive
     const r = this.renderer = new THREE.WebGLRenderer({ canvas, antialias: !mobile, powerPreference: 'high-performance' });
     r.setPixelRatio(Math.min(devicePixelRatio || 1, mobile ? 1.5 : 1.75));
     r.toneMapping = THREE.ACESFilmicToneMapping; r.toneMappingExposure = 1.0;
@@ -415,7 +416,8 @@ export class Station {
     pg.computeVertexNormals();
     rig.add(new THREE.Mesh(pg, new THREE.MeshStandardMaterial({ map: tt, roughness: .85, side: THREE.DoubleSide, alphaTest: .5 })));
     const along = (mesh, a, b) => { const v = new THREE.Vector3().subVectors(b, a); mesh.position.copy(a).addScaledVector(v, .5); mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), v.clone().normalize()); return v.length(); };
-    rig.add(buildHand(1), buildHand(-1, { watch: true }));
+    if (this.hands) rig.add(photoHand(this.hands, 1), photoHand(this.hands, -1, { watch: true }));
+    else rig.add(buildHand(1), buildHand(-1, { watch: true }));
     const fillL = new THREE.PointLight(0xffd2a8, .05, 1.2, 2); fillL.position.set(.1, .2, .5); rig.add(fillL); // a little light on your hands
     rig.position.set(0, 1.33, z0 - (this.mobile ? .38 : .32)); rig.lookAt(this.seat); rig.rotateX(-.12);
     if (this.mobile) rig.scale.setScalar(.62); // a narrow screen sees less, so hold it a little further off
