@@ -2,7 +2,8 @@ import * as THREE from '../vendor/three.module.min.js';
 
 const VERT = /* glsl */`
 attribute vec3 aFrom; attribute vec3 aTo; attribute vec3 aCFrom; attribute vec3 aCTo; attribute vec3 aOffset;
-attribute float aRand; attribute float aDelay;
+attribute float aRand; attribute float aDelay; attribute float aIdx;
+uniform float uHiA, uHiB, uHiMix;
 uniform float uProgress, uTime, uSize, uPixelRatio, uScatter, uFocus;
 uniform vec2 uShift;
 varying vec3 vColor; varying float vAlpha;
@@ -21,8 +22,10 @@ void main(){
   gl_Position.xy += uShift * gl_Position.w;
   float depth = -mv.z;
   float dof = abs(depth - uFocus);
-  gl_PointSize = uSize * (.55 + aRand * .9) * uPixelRatio / depth * (1. + dof * .45) * (1. + stir * .9);
-  vColor = mix(aCFrom, aCTo, e) * (1. + stir * 2.4);
+  float hi = step(uHiA, aIdx) * step(aIdx, uHiB - .5);
+  float hiK = mix(1., mix(.4, 1.9, hi), uHiMix);
+  gl_PointSize = uSize * (.55 + aRand * .9) * uPixelRatio / depth * (1. + dof * .45) * (1. + stir * .9) * mix(1., mix(.85, 1.35, hi), uHiMix);
+  vColor = mix(aCFrom, aCTo, e) * (1. + stir * 2.4) * hiK;
   vAlpha = (.55 + .45 * sin(uTime * 1.7 + aRand * 60.)) / (1. + dof * dof * .2) * smoothstep(34., 8., depth);
 }`;
 const FRAG = /* glsl */`
@@ -56,7 +59,7 @@ export class Scene {
     this.mouse = new THREE.Vector2(0, 0); this.tilt = new THREE.Vector2(0, 0);
     this.pointer = { ndc: new THREE.Vector2(), active: false, prev: null, vel: new THREE.Vector3() };
     this.raycaster = new THREE.Raycaster(); this.inv = new THREE.Matrix4(); this.shockState = null;
-    this.camTarget = { x: 0, y: 0, z: 12, lookY: 0 };
+    this.camPos = new THREE.Vector3(0, 0, 12); this.camLook = new THREE.Vector3(0, .6, 0); this.look = this.camLook.clone();
     this.morph = { start: 0, dur: 1, active: false, landed: true };
     this.split = 0; this.extraSplit = 0;
     this.onLand = null;
@@ -64,6 +67,8 @@ export class Scene {
     this.clock = new THREE.Clock();
     this._buildParticles();
     this._buildStars();
+    this._buildShards();
+    this.hiTarget = 0;
     this.resize();
   }
 
@@ -87,6 +92,8 @@ export class Scene {
     g.setAttribute('aCTo', new THREE.BufferAttribute(ct, 3));
     g.setAttribute('aRand', new THREE.BufferAttribute(rand, 1));
     g.setAttribute('aDelay', new THREE.BufferAttribute(delay, 1));
+    const idx = new Float32Array(N); for (let i = 0; i < N; i++) idx[i] = i;
+    g.setAttribute('aIdx', new THREE.BufferAttribute(idx, 1));
     this.offAttr = new THREE.BufferAttribute(new Float32Array(N * 3), 3); this.offAttr.setUsage(THREE.DynamicDrawUsage);
     g.setAttribute('aOffset', this.offAttr);
     this.vel = new Float32Array(N * 3); this.energy = 0; this.stir = 0;
@@ -94,7 +101,7 @@ export class Scene {
     this.geo = g;
     this.uniforms = {
       uProgress: { value: 1 }, uTime: { value: 0 }, uSize: { value: this.mobile ? 58 : 52 }, uPixelRatio: { value: this.dpr },
-      uScatter: { value: 1.2 }, uFocus: { value: 12 }
+      uScatter: { value: 1.2 }, uFocus: { value: 12 }, uHiA: { value: -1 }, uHiB: { value: -1 }, uHiMix: { value: 0 }
     };
     const make = (mul, shift, opacity) => new THREE.ShaderMaterial({
       vertexShader: VERT, fragmentShader: FRAG, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
@@ -202,19 +209,21 @@ export class Scene {
     ['aFrom', 'aTo', 'aCFrom', 'aCTo'].forEach(a => { g.attributes[a].needsUpdate = true; });
     this.uniforms.uProgress.value = 1; this.morph.active = false; this.morph.landed = true;
   }
-  pillarsTarget(rows) {
-    const N = this.N, pos = new Float32Array(N * 3), col = new Float32Array(N * 3);
-    const narrow = this.visW < 7;
-    const spacing = narrow ? this.visW * 0.22 : Math.min(2.1, this.visW * 0.16), base = narrow ? -2.55 : -2.35, maxH = narrow ? 2.8 : 3.35;
+  pillarsTarget(rows, opts = {}) {
+    const N = this.N, pos = new Float32Array(N * 3), col = new Float32Array(N * 3), ranges = {};
+    const narrow = this.visW < 7, keepAnchors = opts.anchors !== false;
+    const spacing = narrow ? this.visW * 0.22 : Math.min(2.1, this.visW * 0.16);
+    const base = opts.base != null ? opts.base : (narrow ? -2.55 : -2.35), maxH = opts.maxH != null ? opts.maxH : (narrow ? 2.8 : 3.35);
+    const shiftX = opts.shiftX != null ? opts.shiftX : (narrow ? 0 : this.visW * 0.19);
     const max = Math.max(1, ...rows.map(r => Math.max(0, r.pts)));
     const any = rows.some(r => r.pts > 0);
     const pillars = rows.map((r, i) => {
       const h = 0.45 + (any ? maxH * Math.max(0, r.pts) / max : 0);
-      return { r, h, x: (i - (rows.length - 1) / 2) * spacing + (narrow ? 0 : this.visW * 0.13), rad: Math.min(0.48, spacing * 0.24), rot: Math.random() * Math.PI, weight: h + 0.6 };
+      return { r, h, x: (i - (rows.length - 1) / 2) * spacing + shiftX, rad: Math.min(0.48, spacing * 0.24), rot: Math.random() * Math.PI, weight: h + 0.6 };
     });
     const totalW = pillars.reduce((s, p) => s + p.weight, 0);
     const counts = pillars.map(p => Math.floor(N * 0.9 * p.weight / totalW));
-    this.anchors = {};
+    const anchors = {};
     let i = 0;
     const put = (x, y, z, c, bright) => {
       pos[i * 3] = x; pos[i * 3 + 1] = y; pos[i * 3 + 2] = z;
@@ -223,8 +232,9 @@ export class Scene {
     pillars.forEach((p, pi) => {
       const c = CLASS_COLORS[p.r.id], lead = any && p.r.rank === 1;
       const tip = p.rad * 1.5;
-      this.anchors[p.r.id] = new THREE.Vector3(p.x, base + p.h + tip + 0.25, 0);
-      this.anchors[p.r.id + '-base'] = new THREE.Vector3(p.x, base - 0.25, 0);
+      anchors[p.r.id] = new THREE.Vector3(p.x, base + p.h + tip + 0.25, 0);
+      anchors[p.r.id + '-base'] = new THREE.Vector3(p.x, base - 0.25, 0);
+      ranges[p.r.id] = [i, i + counts[pi]];
       const hexPt = (k, t, rad) => { const a0 = p.rot + k * Math.PI / 3, a1 = a0 + Math.PI / 3; return [Math.cos(a0) * rad * (1 - t) + Math.cos(a1) * rad * t, Math.sin(a0) * rad * (1 - t) + Math.sin(a1) * rad * t]; };
       for (let n = 0; n < counts[pi]; n++) {
         const roll = Math.random(), k = (Math.random() * 6) | 0;
@@ -245,7 +255,8 @@ export class Scene {
     });
     // whatever is left becomes drifting dust
     for (; i < N;) put((Math.random() - .5) * this.visW * 1.2, (Math.random() - .5) * this.visH, -2 - Math.random() * 6, PALETTE.blue, .35);
-    return { pos, col };
+    if (keepAnchors) this.anchors = anchors;
+    return { pos, col, ranges };
   }
   ringTarget() {
     const N = this.N, pos = new Float32Array(N * 3), col = new Float32Array(N * 3);
@@ -263,7 +274,18 @@ export class Scene {
   }
 
   /* ---------- morphing ---------- */
-  morphTo(target, { duration = 1.9, scatter = 1.2 } = {}) {
+  // opening shot: a long stream of ice dust far down the dark, ready to rush in
+  tunnelTarget() {
+    const N = this.N, pos = new Float32Array(N * 3), col = new Float32Array(N * 3);
+    for (let i = 0; i < N; i++) {
+      const a = Math.random() * Math.PI * 2, r = 1.2 + Math.pow(Math.random(), .6) * 7, z = -12 - Math.random() * 70;
+      pos[i * 3] = Math.cos(a) * r; pos[i * 3 + 1] = Math.sin(a) * r * .8; pos[i * 3 + 2] = z;
+      const b = .25 + Math.random() * .5; col[i * 3] = .66 * b; col[i * 3 + 1] = .83 * b; col[i * 3 + 2] = b;
+    }
+    return { pos, col };
+  }
+  flash(amount = .03) { this.extraSplit = amount; }
+  morphTo(target, { duration = 1.9, scatter = 1.2, order = 'random' } = {}) {
     const g = this.geo, N = this.N;
     const from = g.attributes.aFrom.array, to = g.attributes.aTo.array, cf = g.attributes.aCFrom.array, ct = g.attributes.aCTo.array, dl = g.attributes.aDelay.array;
     const prog = this.uniforms.uProgress.value;
@@ -277,10 +299,45 @@ export class Scene {
     }
     ['aFrom', 'aTo', 'aCFrom', 'aCTo'].forEach(a => { g.attributes[a].needsUpdate = true; });
     this.uniforms.uProgress.value = 0; this.uniforms.uScatter.value = scatter;
+    // radial order makes a shape crystallize from its core outward
+    if (!this.randDelay) this.randDelay = Float32Array.from(dl);
+    if (order === 'radial') {
+      let cx = 0, cy = 0, cz = 0; for (let i = 0; i < N; i++) { cx += to[i * 3]; cy += to[i * 3 + 1]; cz += to[i * 3 + 2]; }
+      cx /= N; cy /= N; cz /= N;
+      const dist = new Float32Array(N); let mx = 1e-6;
+      for (let i = 0; i < N; i++) { const x = to[i * 3] - cx, y = to[i * 3 + 1] - cy, z = to[i * 3 + 2] - cz; dist[i] = Math.sqrt(x * x + y * y + z * z); if (dist[i] > mx) mx = dist[i]; }
+      for (let i = 0; i < N; i++) dl[i] = Math.min(1, dist[i] / mx * .85 + Math.random() * .15);
+      g.attributes.aDelay.needsUpdate = true; this.delayMode = 'radial';
+    } else if (this.delayMode === 'radial') { dl.set(this.randDelay); g.attributes.aDelay.needsUpdate = true; this.delayMode = 'random'; }
     this.morph = { start: this.clock.elapsedTime, dur: duration, active: true, landed: false };
   }
 
-  setCamera(x, y, z, lookY) { Object.assign(this.camTarget, { x, y, z, lookY }); }
+  highlight(range) {
+    this.hiTarget = range ? 1 : 0;
+    if (range) { this.uniforms.uHiA.value = range[0]; this.uniforms.uHiB.value = range[1]; }
+  }
+  // wireframe ice shards drifting at different depths through every section
+  _buildShards() {
+    const n = this.mobile ? 9 : 18; this.shards = [];
+    const geos = [new THREE.IcosahedronGeometry(1, 0), new THREE.OctahedronGeometry(1, 0), new THREE.TetrahedronGeometry(1, 0), new THREE.DodecahedronGeometry(1, 0)];
+    for (let i = 0; i < n; i++) {
+      const g = geos[i % geos.length], s = .18 + Math.random() * .55;
+      const holder = new THREE.Group();
+      const mat = new THREE.LineBasicMaterial({ color: i % 3 ? 0x9cc8ff : 0xe6f0ff, transparent: true, opacity: .16 + Math.random() * .3, depthWrite: false, blending: THREE.AdditiveBlending });
+      holder.add(new THREE.LineSegments(new THREE.EdgesGeometry(g), mat));
+      const body = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ color: 0x3a62ff, transparent: true, opacity: .045, depthWrite: false, blending: THREE.AdditiveBlending }));
+      holder.add(body);
+      holder.scale.setScalar(s);
+      const z = -9 + Math.random() * 11;
+      holder.userData = { x: (Math.random() - .5) * 22, y: (Math.random() - .5) * 14, z, par: .0012 + (z + 9) * .00035, rx: (Math.random() - .5) * .006, ry: (Math.random() - .5) * .008, bob: Math.random() * 6.28 };
+      holder.rotation.set(Math.random() * 3, Math.random() * 3, 0);
+      this.scene.add(holder); this.shards.push(holder);
+    }
+    this.spinBoost = 0;
+  }
+  // where the camera should be and what it should look at; it glides there with momentum
+  setCam(px, py, pz, lx, ly, lz) { this.camPos.set(px, py, pz); this.camLook.set(lx, ly, lz); }
+  snapCam() { this.camera.position.copy(this.camPos); this.look.copy(this.camLook); this.camera.lookAt(this.look); }
   setPointer(nx, ny, active) {
     this.mouse.set(nx, ny); this.pointer.ndc.set(nx, ny);
     if (!active) this.pointer.prev = null;
@@ -365,21 +422,35 @@ export class Scene {
     }
     const mp = this.uniforms.uProgress.value, flight = Math.sin(Math.min(1, mp) * Math.PI);
     // chromatic fringe grows while particles fly or the page scrolls fast
+    this.extraSplit *= .965;
     this.split += ((flight * 0.009 + Math.min(.008, Math.abs(scrollVel) * .00004) + this.extraSplit) - this.split) * .12;
     if (this.splitMats.length) { this.splitMats[0].uniforms.uShift.value.set(this.split, 0); this.splitMats[1].uniforms.uShift.value.set(-this.split, this.split * .3); }
     this._physics();
-    // camera eases toward its section pose, plus a little pointer parallax
-    const c = this.camera, ct = this.camTarget, k = 1 - Math.pow(.02, dt);
-    c.position.x += (ct.x + this.mouse.x * .45 - c.position.x) * k;
-    c.position.y += (ct.y + this.mouse.y * .3 - c.position.y) * k;
-    c.position.z += (ct.z - c.position.z) * k;
-    c.lookAt(0, ct.lookY, 0);
-    this.uniforms.uFocus.value = c.position.length();
+    // camera flies along its path with momentum, plus a little pointer parallax
+    const c = this.camera, k = 1 - Math.pow(.06, dt), kl = 1 - Math.pow(.04, dt);
+    c.position.x += (this.camPos.x + this.mouse.x * .45 - c.position.x) * k;
+    c.position.y += (this.camPos.y + this.mouse.y * .3 - c.position.y) * k;
+    c.position.z += (this.camPos.z - c.position.z) * k;
+    this.look.lerp(this.camLook, kl);
+    c.lookAt(this.look);
+    this.uniforms.uFocus.value = c.position.distanceTo(this.look);
     // the whole scene leans toward the pointer so its depth reads
     this.tilt.x += (this.mouse.x - this.tilt.x) * .05; this.tilt.y += (this.mouse.y - this.tilt.y) * .05;
     this.group.rotation.y = Math.sin(t * .22) * .14 + spin + this.tilt.x * .38;
     this.group.rotation.x = -this.tilt.y * .2 + Math.sin(t * .17) * .03;
     this.stars.rotation.z = t * .006; this.stars.position.y = -window.scrollY * .0015;
+    this.uniforms.uHiMix.value += (this.hiTarget - this.uniforms.uHiMix.value) * .12;
+    if (this.shockState) this.spinBoost = 1;
+    this.spinBoost *= .97;
+    const sy = window.scrollY;
+    for (const h of this.shards) {
+      const u = h.userData, sp = 1 + this.spinBoost * 10;
+      h.rotation.x += u.rx * sp; h.rotation.y += u.ry * sp;
+      // wrap vertically so shards keep streaming past as you scroll
+      let y = u.y + sy * u.par * 10 + Math.sin(t * .4 + u.bob) * .25;
+      y = ((y + 9) % 18 + 18) % 18 - 9;
+      h.position.set(u.x + this.tilt.x * (u.z + 9) * .08, y, u.z);
+    }
     this.renderer.render(this.scene, c);
   }
 }
