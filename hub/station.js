@@ -424,10 +424,6 @@ export class Station {
         const f = new THREE.Mesh(new THREE.CapsuleGeometry(.0105, .042, 4, 10), skin);
         f.position.set(-sd * .012, .034 - k * .021, -.026); f.rotation.z = sd * Math.PI / 2; h.add(f);
       }
-      const thumb = new THREE.Mesh(new THREE.CapsuleGeometry(.0125, .036, 4, 10), skin); // thumb pinches the front
-      thumb.position.set(-sd * .018, .012, .012); thumb.rotation.z = sd * .75; h.add(thumb);
-      const nail = new THREE.Mesh(new THREE.SphereGeometry(1, 10, 8), new THREE.MeshStandardMaterial({ color: 0xe8b8a0, roughness: .3 }));
-      nail.scale.set(.007, .009, .003); nail.position.set(-sd * .03, .024, .023); nail.rotation.z = sd * .75; h.add(nail);
       // wrist and sleeve run back toward you
       const wristA = new THREE.Vector3(sd * .045, -.02, -.01), wristB = new THREE.Vector3(sd * .09, -.12, .13);
       const wrist = new THREE.Mesh(new THREE.CylinderGeometry(.024, .026, 1, 12), skin); wrist.scale.y = along(wrist, wristA, wristB); h.add(wrist);
