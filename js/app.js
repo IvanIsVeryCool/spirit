@@ -166,14 +166,14 @@ let scene = null;
 const targets = {};
 function buildTargets() {
   if (!scene) return;
-  targets.logo = scene.logoTarget(mobile ? 1.15 : 1.0);
+  targets.logo = scene.logoTarget(mobile ? 1.2 : 1.05, true);
   targets.endLogo = scene.logoTarget(mobile ? 1.6 : 1.5);
   targets.pillars = scene.pillarsTarget(rows);
   targets.ring = scene.ringTarget();
   targets.words = {};
 }
 function wordTarget(w) { if (!targets.words[w]) targets.words[w] = scene.textTarget(w, mobile ? 1.7 : 1.6); return targets.words[w]; }
-const CAMS = [[0, 0, 12, 0], [0, .35, 11.2, .15], [0, -.2, 12.6, -.1], [0, .2, 12, .25]];
+const CAMS = [[0, 0, 12, 0], [0, 1.6, 11.3, -.35], [0, -.6, 12.6, -.1], [0, .2, 12, .25]];
 function targetFor(i) { return [targets.logo, targets.pillars, targets.ring, targets.endLogo][i]; }
 
 /* ---------- sections ---------- */
@@ -208,10 +208,20 @@ function currentSection() {
 /* ---------- pointer, cursor, sounds on UI ---------- */
 const cursor = $('cursor'), dot = $('cursor-dot');
 let mx = innerWidth / 2, my = innerHeight / 2, cx = mx, cy = my;
+let touchDown = false;
+const ndc = (x, y) => [(x / innerWidth) * 2 - 1, -(y / innerHeight) * 2 + 1];
 addEventListener('pointermove', e => {
   mx = e.clientX; my = e.clientY;
-  if (scene && e.pointerType === 'mouse') scene.setPointer((mx / innerWidth) * 2 - 1, -(my / innerHeight) * 2 + 1, true);
+  if (scene && entered && (e.pointerType === 'mouse' || touchDown)) scene.setPointer(...ndc(mx, my), true);
 }, { passive: true });
+addEventListener('pointerdown', e => {
+  if (!scene || !entered || e.target.closest('a,button,.res,#loader')) return;
+  const [nx, ny] = ndc(e.clientX, e.clientY);
+  scene.shock(nx, ny); sound.pulse();
+  if (e.pointerType !== 'mouse') { touchDown = true; scene.setPointer(nx, ny, true); }
+}, { passive: true });
+addEventListener('pointerup', e => { if (e.pointerType !== 'mouse' && scene) { touchDown = false; scene.setPointer(0, 0, false); } }, { passive: true });
+addEventListener('pointercancel', () => { if (scene) { touchDown = false; scene.setPointer(0, 0, false); } }, { passive: true });
 document.documentElement.addEventListener('mouseleave', () => scene && scene.setPointer(0, 0, false));
 document.addEventListener('pointerover', e => {
   const t = e.target.closest('a,button,.res');
@@ -265,6 +275,7 @@ function loop() {
     let spin = 0;
     if (active === 1) { const r = secs[1].getBoundingClientRect(); spin = ((-r.top) / Math.max(1, r.height - innerHeight) - .5) * .5; }
     scene.render(vel, spin);
+    sound.sparkle(scene.stir);
     if (active === 1) rows.forEach(x => {
       const L = labels[x.id]; if (!L) return;
       const a = scene.project(x.id), b = scene.project(x.id + '-base');

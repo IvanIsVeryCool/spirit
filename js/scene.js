@@ -1,10 +1,10 @@
 import * as THREE from '../vendor/three.module.min.js';
 
 const VERT = /* glsl */`
-attribute vec3 aFrom; attribute vec3 aTo; attribute vec3 aCFrom; attribute vec3 aCTo;
+attribute vec3 aFrom; attribute vec3 aTo; attribute vec3 aCFrom; attribute vec3 aCTo; attribute vec3 aOffset;
 attribute float aRand; attribute float aDelay;
-uniform float uProgress, uTime, uSize, uPixelRatio, uScatter, uMouseForce;
-uniform vec3 uMouse; uniform vec2 uShift;
+uniform float uProgress, uTime, uSize, uPixelRatio, uScatter, uFocus;
+uniform vec2 uShift;
 varying vec3 vColor; varying float vAlpha;
 float ease(float t){ return t < .5 ? 4.*t*t*t : 1. - pow(-2.*t + 2., 3.) / 2.; }
 void main(){
@@ -14,15 +14,16 @@ void main(){
   float fly = sin(p * 3.14159);
   pos += fly * uScatter * (.4 + aRand) * vec3(sin(aRand * 41. + uTime * .7), cos(aRand * 29. + uTime * .9), sin(aRand * 17. - uTime * .6) * 1.6);
   pos += .028 * vec3(sin(uTime * 1.1 + aRand * 20.), cos(uTime * .9 + aRand * 13.), sin(uTime * .8 + aRand * 7.));
-  vec2 d = pos.xy - uMouse.xy; float dist = length(d);
-  pos.xy += normalize(d + 1e-4) * uMouseForce * smoothstep(1.1, 0., dist) * .32;
-  pos.z += uMouseForce * smoothstep(1.1, 0., dist) * .4;
+  pos += aOffset;
+  float stir = min(length(aOffset), 1.2);
   vec4 mv = modelViewMatrix * vec4(pos, 1.);
   gl_Position = projectionMatrix * mv;
   gl_Position.xy += uShift * gl_Position.w;
-  gl_PointSize = uSize * (.55 + aRand * .9) * uPixelRatio / -mv.z;
-  vColor = mix(aCFrom, aCTo, e);
-  vAlpha = .55 + .45 * sin(uTime * 1.7 + aRand * 60.);
+  float depth = -mv.z;
+  float dof = abs(depth - uFocus);
+  gl_PointSize = uSize * (.55 + aRand * .9) * uPixelRatio / depth * (1. + dof * .45) * (1. + stir * .9);
+  vColor = mix(aCFrom, aCTo, e) * (1. + stir * 2.4);
+  vAlpha = (.55 + .45 * sin(uTime * 1.7 + aRand * 60.)) / (1. + dof * dof * .2) * smoothstep(34., 8., depth);
 }`;
 const FRAG = /* glsl */`
 uniform vec3 uColorMul; uniform float uOpacity;
@@ -52,7 +53,9 @@ export class Scene {
     this.camera = new THREE.PerspectiveCamera(35, 1, 0.1, 100);
     this.camera.position.set(0, 0, 12);
     this.group = new THREE.Group(); this.scene.add(this.group);
-    this.mouse = new THREE.Vector2(0, 0); this.mouseWorld = new THREE.Vector3(99, 99, 0); this.mouseForce = 0; this.mouseTarget = 0;
+    this.mouse = new THREE.Vector2(0, 0); this.tilt = new THREE.Vector2(0, 0);
+    this.pointer = { ndc: new THREE.Vector2(), active: false, prev: null, vel: new THREE.Vector3() };
+    this.raycaster = new THREE.Raycaster(); this.inv = new THREE.Matrix4(); this.shockState = null;
     this.camTarget = { x: 0, y: 0, z: 12, lookY: 0 };
     this.morph = { start: 0, dur: 1, active: false, landed: true };
     this.split = 0; this.extraSplit = 0;
@@ -84,11 +87,14 @@ export class Scene {
     g.setAttribute('aCTo', new THREE.BufferAttribute(ct, 3));
     g.setAttribute('aRand', new THREE.BufferAttribute(rand, 1));
     g.setAttribute('aDelay', new THREE.BufferAttribute(delay, 1));
+    this.offAttr = new THREE.BufferAttribute(new Float32Array(N * 3), 3); this.offAttr.setUsage(THREE.DynamicDrawUsage);
+    g.setAttribute('aOffset', this.offAttr);
+    this.vel = new Float32Array(N * 3); this.energy = 0; this.stir = 0;
     g.boundingSphere = new THREE.Sphere(new THREE.Vector3(), 40);
     this.geo = g;
     this.uniforms = {
       uProgress: { value: 1 }, uTime: { value: 0 }, uSize: { value: this.mobile ? 58 : 52 }, uPixelRatio: { value: this.dpr },
-      uScatter: { value: 1.2 }, uMouse: { value: new THREE.Vector3(99, 99, 0) }, uMouseForce: { value: 0 }
+      uScatter: { value: 1.2 }, uFocus: { value: 12 }
     };
     const make = (mul, shift, opacity) => new THREE.ShaderMaterial({
       vertexShader: VERT, fragmentShader: FRAG, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
@@ -140,10 +146,37 @@ export class Scene {
     }
     return { pos, col };
   }
-  logoTarget(cy = 0.35) {
-    const w = Math.min(4.5, this.visW * 0.78);
+  logoTarget(cy = 0.35, block = false) {
+    const narrow = this.visW < 7, w = block ? (narrow ? this.visW * .64 : Math.min(3.4, this.visW * .5)) : Math.min(4.3, this.visW * .78);
     const tmp = new THREE.Color();
-    return this._fromPixels(this.logoPixels, w, 0, cy, 0.35, (i, u, v) => tmp.copy(PALETTE.white).lerp(PALETTE.ice, Math.min(1, v * 1.2 + Math.random() * .3)).lerp(PALETTE.blue, Math.random() < .12 ? .7 : 0));
+    const t = this._fromPixels(this.logoPixels, w, 0, cy, 0.0, (i, u, v) => tmp.copy(PALETTE.white).lerp(PALETTE.ice, Math.min(1, v * 1.2 + Math.random() * .3)).lerp(PALETTE.blue, Math.random() < .12 ? .7 : 0));
+    // give the logo real thickness, denser on its front and back faces
+    for (let i = 0; i < this.N; i++) { const r = Math.random() * 2 - 1; t.pos[i * 3 + 2] = Math.sign(r) * Math.pow(Math.abs(r), .55) * 0.32; }
+    if (block) this._iceBlock(t, Math.floor(this.N * 0.72), w * (narrow ? 1.1 : 1.24), w * (narrow ? 1.18 : 1.15), narrow ? 1.2 : 1.5, cy);
+    return t;
+  }
+  // a frosted cube of particles: crisp edges, faint faces, a few motes trapped inside
+  _iceBlock(t, start, W, H, D, cy) {
+    const hx = W / 2, hy = H / 2, hz = D / 2, N = this.N;
+    const c = new THREE.Color(), corners = [-1, 1];
+    const edges = [];
+    corners.forEach(a => corners.forEach(b => { edges.push([[-1, a, b], [1, a, b]]); edges.push([[a, -1, b], [a, 1, b]]); edges.push([[a, b, -1], [a, b, 1]]); }));
+    const put = (i, x, y, z, col, b) => { t.pos[i * 3] = x; t.pos[i * 3 + 1] = cy + y; t.pos[i * 3 + 2] = z; t.col[i * 3] = col.r * b; t.col[i * 3 + 1] = col.g * b; t.col[i * 3 + 2] = col.b * b; };
+    for (let i = start; i < N; i++) {
+      const roll = Math.random();
+      if (roll < .5) {
+        const [e0, e1] = edges[(Math.random() * 12) | 0], k = Math.random(), j = () => (Math.random() - .5) * .03;
+        put(i, (e0[0] + (e1[0] - e0[0]) * k) * hx + j(), (e0[1] + (e1[1] - e0[1]) * k) * hy + j(), (e0[2] + (e1[2] - e0[2]) * k) * hz + j(), c.copy(PALETTE.ice).lerp(PALETTE.white, Math.random() * .5), .75);
+      } else if (roll < .88) {
+        const ax = (Math.random() * 3) | 0, sgn = Math.random() < .5 ? -1 : 1;
+        // frost gathers toward the edges of each face
+        const f = () => { const r = Math.random() * 2 - 1; return Math.sign(r) * Math.pow(Math.abs(r), .35); };
+        const v = [f(), f(), f()]; v[ax] = sgn;
+        put(i, v[0] * hx, v[1] * hy, v[2] * hz, PALETTE.ice, .28 + Math.random() * .2);
+      } else {
+        put(i, (Math.random() - .5) * W * .9, (Math.random() - .5) * H * .9, (Math.random() - .5) * D * .9, PALETTE.blue, .5);
+      }
+    }
   }
   textTarget(str, cy = 0.6) {
     const cv = document.createElement('canvas'), W = 900, H = 220; cv.width = W; cv.height = H;
@@ -249,9 +282,71 @@ export class Scene {
 
   setCamera(x, y, z, lookY) { Object.assign(this.camTarget, { x, y, z, lookY }); }
   setPointer(nx, ny, active) {
-    this.mouse.set(nx, ny); this.mouseTarget = active ? 1 : 0;
-    const v = new THREE.Vector3(nx, ny, 0.5).unproject(this.camera).sub(this.camera.position).normalize();
-    const t = -this.camera.position.z / v.z; this.mouseWorld.copy(this.camera.position).addScaledVector(v, t);
+    this.mouse.set(nx, ny); this.pointer.ndc.set(nx, ny);
+    if (!active) this.pointer.prev = null;
+    this.pointer.active = active;
+  }
+  _localRay() {
+    this.group.updateMatrixWorld(); this.inv.copy(this.group.matrixWorld).invert();
+    this.raycaster.setFromCamera(this.pointer.ndc, this.camera);
+    const o = this.raycaster.ray.origin.clone().applyMatrix4(this.inv), d = this.raycaster.ray.direction.clone().transformDirection(this.inv);
+    return { o, d, hit: o.clone().addScaledVector(d, -o.z / d.z) };
+  }
+  // a click sends a ring of force out through the particles
+  shock(nx, ny) {
+    const keep = this.pointer.ndc.clone(); this.pointer.ndc.set(nx, ny);
+    const { hit } = this._localRay(); this.pointer.ndc.copy(keep);
+    this.shockState = { c: hit, start: this.clock.elapsedTime };
+  }
+  _physics() {
+    const N = this.N, off = this.offAttr.array, vel = this.vel;
+    const t = this.clock.elapsedTime, P = this.pointer;
+    let sh = this.shockState;
+    if (sh && t - sh.start > 1.3) sh = this.shockState = null;
+    if (!P.active && !sh && this.energy < 2e-5) { this.stir = 0; return; }
+    let ox = 0, oy = 0, oz = 0, dx = 0, dy = 0, dz = 1, mvx = 0, mvy = 0, mvz = 0, speed = 0;
+    if (P.active) {
+      const r = this._localRay(); ox = r.o.x; oy = r.o.y; oz = r.o.z; dx = r.d.x; dy = r.d.y; dz = r.d.z;
+      if (P.prev) { P.vel.subVectors(r.hit, P.prev).clampLength(0, .6); } else P.vel.set(0, 0, 0);
+      P.prev = r.hit; mvx = P.vel.x; mvy = P.vel.y; mvz = P.vel.z; speed = Math.min(1, P.vel.length() * 7);
+    }
+    this.stir += ((P.active ? speed : 0) - this.stir) * .2;
+    const R = this.mobile ? 1.15 : .95, R2 = R * R;
+    const push = .006 + speed * .045, swirl = .004 + speed * .035, drag = .22;
+    let sx = 0, sy = 0, sz = 0, sr = 0, sp = 0;
+    if (sh) { const age = t - sh.start; sx = sh.c.x; sy = sh.c.y; sz = sh.c.z; sr = age * 7.5; sp = .2 * Math.pow(1 - age / 1.3, 2); }
+    const from = this.geo.attributes.aFrom.array, to = this.geo.attributes.aTo.array, dl = this.geo.attributes.aDelay.array;
+    const prog = this.uniforms.uProgress.value;
+    const k = .045, damp = .87;
+    let energy = 0;
+    for (let i = 0; i < N; i++) {
+      const j = i * 3;
+      let p = (prog - dl[i] * .38) / .62; p = p < 0 ? 0 : p > 1 ? 1 : p;
+      const e = p < .5 ? 4 * p * p * p : 1 - Math.pow(-2 * p + 2, 3) / 2;
+      const px = from[j] + (to[j] - from[j]) * e + off[j], py = from[j + 1] + (to[j + 1] - from[j + 1]) * e + off[j + 1], pz = from[j + 2] + (to[j + 2] - from[j + 2]) * e + off[j + 2];
+      let fx = 0, fy = 0, fz = 0;
+      if (P.active) {
+        const vx = px - ox, vy = py - oy, vz = pz - oz, tt = vx * dx + vy * dy + vz * dz;
+        const cx = vx - dx * tt, cy = vy - dy * tt, cz = vz - dz * tt, d2 = cx * cx + cy * cy + cz * cz;
+        if (d2 < R2) {
+          const d = Math.sqrt(d2) + 1e-4; let f = 1 - d / R; f *= f;
+          fx += (cx / d) * f * push; fy += (cy / d) * f * push; fz += (cz / d) * f * push;
+          fx += ((dy * cz - dz * cy) / d) * f * swirl; fy += ((dz * cx - dx * cz) / d) * f * swirl; fz += ((dx * cy - dy * cx) / d) * f * swirl;
+          fx += mvx * f * drag; fy += mvy * f * drag; fz += mvz * f * drag;
+        }
+      }
+      if (sh) {
+        const wx = px - sx, wy = py - sy, wz = pz - sz, dd = Math.sqrt(wx * wx + wy * wy + wz * wz) + 1e-4, q = (dd - sr) / .7, band = Math.exp(-q * q);
+        if (band > .01) { const f = band * sp / dd; fx += wx * f; fy += wy * f; fz += wz * f + band * sp * .5; }
+      }
+      let a = (vel[j] + fx - off[j] * k) * damp, b = (vel[j + 1] + fy - off[j + 1] * k) * damp, c = (vel[j + 2] + fz - off[j + 2] * k) * damp;
+      vel[j] = a; vel[j + 1] = b; vel[j + 2] = c;
+      off[j] += a; off[j + 1] += b; off[j + 2] += c;
+      energy += Math.abs(a) + Math.abs(b) + Math.abs(c) + Math.abs(off[j]) * .05 + Math.abs(off[j + 1]) * .05 + Math.abs(off[j + 2]) * .05;
+    }
+    this.energy = energy / N;
+    if (this.energy < 2e-5 && !P.active && !sh) { off.fill(0); vel.fill(0); }
+    this.offAttr.needsUpdate = true;
   }
   project(id) {
     const a = this.anchors[id]; if (!a) return null;
@@ -272,16 +367,18 @@ export class Scene {
     // chromatic fringe grows while particles fly or the page scrolls fast
     this.split += ((flight * 0.009 + Math.min(.008, Math.abs(scrollVel) * .00004) + this.extraSplit) - this.split) * .12;
     if (this.splitMats.length) { this.splitMats[0].uniforms.uShift.value.set(this.split, 0); this.splitMats[1].uniforms.uShift.value.set(-this.split, this.split * .3); }
-    this.mouseForce += (this.mouseTarget - this.mouseForce) * .06;
-    this.uniforms.uMouseForce.value = this.mouseForce;
-    this.uniforms.uMouse.value.copy(this.mouseWorld);
+    this._physics();
     // camera eases toward its section pose, plus a little pointer parallax
     const c = this.camera, ct = this.camTarget, k = 1 - Math.pow(.02, dt);
     c.position.x += (ct.x + this.mouse.x * .45 - c.position.x) * k;
     c.position.y += (ct.y + this.mouse.y * .3 - c.position.y) * k;
     c.position.z += (ct.z - c.position.z) * k;
     c.lookAt(0, ct.lookY, 0);
-    this.group.rotation.y += ((Math.sin(t * .25) * .12 + spin) - this.group.rotation.y) * .04;
+    this.uniforms.uFocus.value = c.position.length();
+    // the whole scene leans toward the pointer so its depth reads
+    this.tilt.x += (this.mouse.x - this.tilt.x) * .05; this.tilt.y += (this.mouse.y - this.tilt.y) * .05;
+    this.group.rotation.y = Math.sin(t * .22) * .14 + spin + this.tilt.x * .38;
+    this.group.rotation.x = -this.tilt.y * .2 + Math.sin(t * .17) * .03;
     this.stars.rotation.z = t * .006; this.stars.position.y = -window.scrollY * .0015;
     this.renderer.render(this.scene, c);
   }

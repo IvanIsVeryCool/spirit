@@ -138,6 +138,27 @@ export class Sound {
       o.start(t); m.start(t); o.stop(t + 1.5); m.stop(t + 1.5);
     }
   }
+  // click shockwave: a soft low thump with a glassy tail
+  pulse() {
+    if (!this.live) return;
+    const ctx = this.ctx, t = ctx.currentTime;
+    const o = ctx.createOscillator(), g = ctx.createGain(); o.type = 'sine';
+    o.frequency.setValueAtTime(150, t); o.frequency.exponentialRampToValueAtTime(52, t + 0.45);
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.16, t + 0.015); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.6);
+    o.connect(g); g.connect(this.dry); g.connect(this.verbIn); o.start(t); o.stop(t + 0.65);
+    this.whoosh(0.9, false); this.shimmer(3);
+  }
+  // stirring the particles: sparse glassy pings, more of them the faster you move
+  sparkle(v) {
+    if (!this.live || v < .08) return;
+    const now = performance.now(); if (now - (this.lastSpark || 0) < 70 || Math.random() > v) return; this.lastSpark = now;
+    const ctx = this.ctx, t = ctx.currentTime, n = SHIMMER[(Math.random() * SHIMMER.length) | 0] + 12;
+    const o = ctx.createOscillator(), g = ctx.createGain(); o.type = 'sine'; o.frequency.value = NOTE(n);
+    let out = g;
+    if (ctx.createStereoPanner) { const p = ctx.createStereoPanner(); p.pan.value = Math.random() * 1.6 - .8; g.connect(p); out = p; }
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.012 + v * .012, t + 0.005); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.35);
+    o.connect(g); out.connect(this.verbIn); out.connect(this.dry); o.start(t); o.stop(t + 0.4);
+  }
   impact() {
     if (!this.live) return;
     const ctx = this.ctx, t = ctx.currentTime;
