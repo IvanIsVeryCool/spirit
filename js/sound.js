@@ -142,9 +142,10 @@ export class Sound {
     if (!this.live) return;
     const ctx = this.ctx, t = ctx.currentTime;
     const o = ctx.createOscillator(), g = ctx.createGain(); o.type = 'sine';
-    o.frequency.setValueAtTime(110, t); o.frequency.exponentialRampToValueAtTime(38, t + 0.6);
-    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.35, t + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.9);
-    o.connect(g); g.connect(this.dry); g.connect(this.verbIn); o.start(t); o.stop(t + 1);
-    this.whoosh(1.6, false); this.shimmer(6);
+    // a soft swell rather than a hit, so entering feels like stepping inside
+    o.frequency.setValueAtTime(62, t); o.frequency.exponentialRampToValueAtTime(46, t + 2.2);
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.22, t + 0.5); g.gain.exponentialRampToValueAtTime(0.0001, t + 2.6);
+    o.connect(g); g.connect(this.dry); g.connect(this.verbIn); o.start(t); o.stop(t + 2.7);
+    this.whoosh(2.4, true);
   }
 }

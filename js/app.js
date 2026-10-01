@@ -344,14 +344,19 @@ function enter(withSound) {
   document.body.classList.add('has-cursor');
   const loader = $('loader');
   if (scene) {
-    loader.classList.add('out'); setTimeout(() => loader.remove(), 1150);
+    // hand off: particles start exactly where the loader logo sits, then grow into the full logo
+    const lr = loader.querySelector('.logo-img').getBoundingClientRect();
+    scene.camera.position.set(0, 0, 12);
+    scene.setInstant(scene.logoAtRect(lr));
+    loader.classList.add('out'); setTimeout(() => loader.remove(), 2100);
+    document.body.classList.remove('pre');
     sound.impact();
-    entered = true; active = -1;
-    setSection(currentSection(), true);
-    scene.morphTo(targetFor(active), { duration: 2.8, scatter: 2.2 });
-    scramble($('hero-title'), TITLE, { duration: 1300, delay: 350 });
+    active = -1; setSection(currentSection(), true); entered = true;
+    scene.setCamera(...CAMS[active]);
+    setTimeout(() => scene.morphTo(targetFor(active), { duration: 2.6, scatter: .45 }), 250);
+    scramble($('hero-title'), TITLE, { duration: 1400, delay: 1250 });
   } else {
-    loader.remove(); entered = true; setSection(currentSection(), true);
+    loader.remove(); document.body.classList.remove('pre'); entered = true; setSection(currentSection(), true);
     seen.add(1); seen.add(2);
   }
 }

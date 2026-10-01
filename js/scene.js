@@ -156,6 +156,19 @@ export class Scene {
     const tmp = new THREE.Color();
     return this._fromPixels({ pts, S: W }, Math.min(9, this.visW * 0.86), 0, cy, 0.3, (i, u) => tmp.copy(PALETTE.white).lerp(PALETTE.ice, u * .8 + Math.random() * .2));
   }
+  // the logo at the size and spot of an element on screen (used to hand off from the loader)
+  logoAtRect(rect) {
+    const k = this.visH / window.innerHeight, tmp = new THREE.Color();
+    const cx = (rect.left + rect.width / 2 - window.innerWidth / 2) * k, cy = -(rect.top + rect.height / 2 - window.innerHeight / 2) * k;
+    return this._fromPixels(this.logoPixels, rect.width * k, cx, cy, 0.05, () => tmp.copy(PALETTE.white));
+  }
+  setInstant(target) {
+    const g = this.geo;
+    g.attributes.aFrom.array.set(target.pos); g.attributes.aTo.array.set(target.pos);
+    g.attributes.aCFrom.array.set(target.col); g.attributes.aCTo.array.set(target.col);
+    ['aFrom', 'aTo', 'aCFrom', 'aCTo'].forEach(a => { g.attributes[a].needsUpdate = true; });
+    this.uniforms.uProgress.value = 1; this.morph.active = false; this.morph.landed = true;
+  }
   pillarsTarget(rows) {
     const N = this.N, pos = new Float32Array(N * 3), col = new Float32Array(N * 3);
     const narrow = this.visW < 7;
