@@ -19,7 +19,7 @@ const SEC_NAMES = ['Intro', 'Standings', 'Results', 'Keep up'];
 })();
 
 /* ---------- static text ---------- */
-const TITLE = (school || 'Class') + ' Spirit';
+const TITLE = 'Spirit Points';
 $('brand-name').textContent = TITLE;
 $('hero-title').textContent = TITLE; $('hero-title').setAttribute('aria-label', TITLE);
 $('brand-season').textContent = season() + ' season';
