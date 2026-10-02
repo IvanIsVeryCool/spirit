@@ -213,22 +213,6 @@ body.visiting .crew-back{opacity:1;transform:translate(-50%,0);pointer-events:au
   .stamp{right:24px;top:auto;bottom:70px}
   .hole{right:auto;left:50%;top:auto;bottom:-11px;margin-left:-11px}
 }
-/* music volume: a vertical slider, bottom right */
-.vol{--v:.75;position:fixed;z-index:22;right:clamp(16px,3vw,36px);bottom:calc(20px + env(safe-area-inset-bottom,0px));width:40px;padding:16px 0 6px;border-radius:999px;background:rgba(255,255,255,.92);box-shadow:0 10px 26px -12px rgba(10,8,30,.55);display:flex;flex-direction:column;align-items:center;gap:8px;touch-action:none;opacity:0;pointer-events:none;transform:translateY(10px);transition:opacity .6s ease,transform .8s var(--ease),bottom .6s var(--ease)}
-body.entered .vol,body.intro .vol{opacity:1;transform:none;pointer-events:auto}
-body.intro .vol{bottom:calc(68px + env(safe-area-inset-bottom,0px))}
-body.boarding .vol{opacity:0;pointer-events:none}
-body.entered .vol.off{opacity:.55}
-.vol:focus-visible{outline:2px solid #fff;outline-offset:3px}
-.vol-track{position:relative;width:4px;height:104px;border-radius:4px;background:rgba(22,24,31,.14);cursor:pointer}
-.vol-track::before{content:"";position:absolute;inset:-8px -16px}
-.vol-fill{position:absolute;left:0;right:0;bottom:0;height:calc(var(--v) * 100%);border-radius:4px;background:var(--red)}
-.vol-knob{position:absolute;left:50%;bottom:calc(var(--v) * 100%);width:14px;height:14px;margin:0 0 -7px -7px;border-radius:50%;background:#fff;box-shadow:0 0 0 2px var(--red),0 2px 6px rgba(0,0,0,.25);transition:transform .2s var(--ease)}
-.vol:active .vol-knob,.vol:focus-visible .vol-knob{transform:scale(1.18)}
-.vol-icon{width:28px;height:28px;display:grid;place-items:center;color:var(--ink);border-radius:50%}
-.vol-icon svg{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
-.vol-icon .x{display:none}.vol.muted .vol-icon{color:var(--muted)}.vol.muted .vol-icon .x{display:inline}
-body.static .vol{display:none}
 .skip{position:fixed;z-index:30;right:clamp(16px,3vw,36px);bottom:calc(20px + env(safe-area-inset-bottom,0px));background:rgba(255,255,255,.9);color:var(--ink);border-radius:999px;padding:9px 16px;font-size:12px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;opacity:0;pointer-events:none;transition:opacity .6s}
 body.intro .skip{opacity:1;pointer-events:auto}
 body.intro .hud,body.intro .head,body.intro .board{opacity:0!important;pointer-events:none}
@@ -303,10 +287,6 @@ body.static .board{position:relative;left:auto;bottom:auto;opacity:1;transform:n
   </div>
 </div>
 
-<div class="vol" id="vol" role="slider" tabindex="0" aria-label="Music volume" aria-orientation="vertical" aria-valuemin="0" aria-valuemax="100" aria-valuenow="75">
-  <div class="vol-track" id="vol-track"><i class="vol-fill"></i><i class="vol-knob"></i></div>
-  <button class="vol-icon" id="vol-icon" type="button" tabindex="-1" aria-label="Mute music"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 17.5V5.5l10-2v12"/><circle cx="6.5" cy="17.5" r="2.5"/><circle cx="16.5" cy="15.5" r="2.5"/><path class="x" d="M4 4l16 16"/></svg></button>
-</div>
 <button class="skip" id="skip" type="button">Skip intro</button>
 
 <header class="hud">

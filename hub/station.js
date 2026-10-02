@@ -463,7 +463,7 @@ export class Station {
     const g = new THREE.Group(), BW = 22, BH = 6.6, Y = 11, Z = -17.2; g.position.set(0, 0, Z); this.scene.add(g);
     const steel = new THREE.MeshStandardMaterial({ color: 0x2c2f37, roughness: .6, metalness: .55 }), dark = new THREE.MeshStandardMaterial({ color: 0x1b1d22, roughness: .7, metalness: .3 });
     const box = (w, h, d, m, x, y, z) => { const o = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m); o.position.set(x, y, z); o.userData.cast = true; g.add(o); return o; };
-    this.boardFace = new THREE.Mesh(new THREE.PlaneGeometry(BW, BH), new THREE.MeshStandardMaterial({ roughness: .9, color: 0xd9d2c6, emissive: 0xffffff, emissiveIntensity: .16, envMapIntensity: .4 }));
+    this.boardFace = new THREE.Mesh(new THREE.PlaneGeometry(BW, BH), new THREE.MeshStandardMaterial({ roughness: .9, color: 0xe2e2e2, emissive: 0xffffff, emissiveIntensity: .22, envMapIntensity: .4 }));
     this.boardFace.position.set(0, Y, .17); g.add(this.boardFace);
     box(BW + .5, BH + .5, .3, dark, 0, Y, 0);                                                    // the frame and backing
     [-1, 1].forEach(sd => {
@@ -486,18 +486,18 @@ export class Station {
   }
   _paintBillboard() {
     const W = 2048, H = Math.round(2048 * 6.6 / 22), c = document.createElement('canvas'); c.width = W; c.height = H; const x = c.getContext('2d');
-    // the poster: warm paper, lit from the lamps above (brighter at the top), a red band along the bottom
-    const bg = x.createLinearGradient(0, 0, 0, H); bg.addColorStop(0, '#f3ead9'); bg.addColorStop(1, '#ded0b8'); x.fillStyle = bg; x.fillRect(0, 0, W, H);
-    [.125, .375, .625, .875].forEach(f => { const r = x.createRadialGradient(f * W, -40, 10, f * W, -40, 520); r.addColorStop(0, 'rgba(255,232,190,.4)'); r.addColorStop(1, 'rgba(255,236,200,0)'); x.fillStyle = r; x.fillRect(0, 0, W, H); });
-    x.fillStyle = '#c9272c'; x.fillRect(0, H - 70, W, 70); x.fillStyle = '#16181f'; x.fillRect(0, H - 80, W, 10);
-    // the logo, white on a red square, and the name
-    const S = H - 210, L = 90, T = 70; x.fillStyle = '#c9272c'; x.beginPath(); x.roundRect(L, T, S, S, 26); x.fill();
-    if (this.logo) x.drawImage(this.logo, L + S * .12, T + S * .12, S * .76, S * .76);
+    // the poster: deep blue, lit from the lamps above (brighter at the top), a navy band along the bottom
+    const bg = x.createLinearGradient(0, 0, 0, H); bg.addColorStop(0, '#2a5fc4'); bg.addColorStop(1, '#183f91'); x.fillStyle = bg; x.fillRect(0, 0, W, H);
+    [.125, .375, .625, .875].forEach(f => { const r = x.createRadialGradient(f * W, -40, 10, f * W, -40, 520); r.addColorStop(0, 'rgba(255,236,200,.28)'); r.addColorStop(1, 'rgba(255,236,200,0)'); x.fillStyle = r; x.fillRect(0, 0, W, H); });
+    x.fillStyle = '#0e2a66'; x.fillRect(0, H - 70, W, 70); x.fillStyle = 'rgba(255,255,255,.85)'; x.fillRect(0, H - 80, W, 6);
+    // the logo, white in a white-edged square, and the name in white
+    const S = H - 210, L = 90, T = 70; x.strokeStyle = '#fff'; x.lineWidth = 12; x.beginPath(); x.roundRect(L + 6, T + 6, S - 12, S - 12, 24); x.stroke();
+    if (this.logo) x.drawImage(this.logo, L + S * .14, T + S * .14, S * .72, S * .72);
     const tx = L + S + 90, fs = Math.round(S * .62); x.textBaseline = 'alphabetic';
     x.font = `900 ${fs}px Archivo, "Arial Black", sans-serif`; try { x.fontStretch = 'expanded'; } catch (e) {}
     const avail = W - tx - 90, w1 = x.measureText('NUEVA ').width, w2 = x.measureText('SPIRIT').width, k = Math.min(1, avail / (w1 + w2));
     x.save(); x.translate(tx, T + S * .5 + fs * .36); x.scale(k, 1);
-    x.fillStyle = '#c9272c'; x.fillText('NUEVA ', 0, 0); x.fillStyle = '#16181f'; x.fillText('SPIRIT', w1, 0); x.restore();
+    x.fillStyle = '#ffffff'; x.fillText('NUEVA ', 0, 0); x.fillStyle = '#ffffff'; x.fillText('SPIRIT', w1, 0); x.restore();
     // a little weathering
     const d = x.getImageData(0, 0, W, H), a = d.data; for (let i = 0; i < a.length; i += 4) { const n = (Math.random() - .5) * 10; a[i] += n; a[i + 1] += n; a[i + 2] += n; } x.putImageData(d, 0, 0);
     const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8;

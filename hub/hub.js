@@ -95,7 +95,7 @@ function renderBoard(fresh) {
   if (changed && $('board').classList.contains('show')) audio.clatter();
 }
 // the board slides in and its letters flip round from blank
-function showBoard() { const b = $('board'); placeVol(); if (b.classList.contains('show')) return; b.classList.add('show'); setTimeout(() => renderBoard(true), 250); }
+function showBoard() { const b = $('board'); if (b.classList.contains('show')) return; b.classList.add('show'); setTimeout(() => renderBoard(true), 250); }
 function tickClock() { flap($('clock'), pad(new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }).replace(/\s?[AP]M/, '').padStart(5, ' '), 5)); }
 tickClock(); setInterval(tickClock, 15000);
 renderBoard();
@@ -203,7 +203,7 @@ function setSound(on, remember) {
 // After a reload, browsers keep audio paused until the first click, tap or key press on the page.
 // Until then the button says so; the first press anywhere (the button included) starts the sound.
 const held = () => audio.enabled && (!audio.ctx || audio.ctx.state !== 'running');
-function soundLabel() { $('sound-label').textContent = !audio.enabled ? 'Sound off' : held() ? 'Tap for sound' : 'Sound on'; $('vol').classList.toggle('off', !audio.enabled); }
+function soundLabel() { $('sound-label').textContent = !audio.enabled ? 'Sound off' : held() ? 'Tap for sound' : 'Sound on'; }
 let wokeAt = 0;
 const unlockAudio = () => {
   if (!audio.enabled || !audio.ctx || audio.ctx.state === 'running') return;
@@ -215,32 +215,6 @@ $('sound-btn').addEventListener('click', () => {
   setSound(!audio.enabled, true); audio.tick();
 });
 setInterval(soundLabel, 1000); // the browser can also resume or suspend on its own
-/* music volume: a vertical slider, bottom right; the headphone song only, remembered */
-let vol = .75, volBack = .75; try { const v = parseFloat(localStorage.getItem('spirit-music-vol')); if (v >= 0 && v <= 1) vol = v; } catch (e) {}
-function setVol(p, save) {
-  vol = Math.max(0, Math.min(1, p)); audio.setMusicVolume(1.8 * vol * vol); // .75 is the song's normal level
-  const el = $('vol'); el.style.setProperty('--v', vol.toFixed(3)); el.setAttribute('aria-valuenow', String(Math.round(vol * 100))); el.classList.toggle('muted', vol === 0);
-  $('vol-icon').setAttribute('aria-label', vol === 0 ? 'Unmute music' : 'Mute music');
-  if (save) try { localStorage.setItem('spirit-music-vol', String(vol)); } catch (e) {}
-}
-setVol(vol);
-{
-  const el = $('vol'), track = $('vol-track'); let drag = false;
-  const at = y => { const r = track.getBoundingClientRect(); return (r.bottom - y) / r.height; };
-  el.addEventListener('pointerdown', e => { if (e.target.closest('.vol-icon')) return; drag = true; el.setPointerCapture(e.pointerId); setVol(at(e.clientY), true); e.preventDefault(); });
-  el.addEventListener('pointermove', e => { if (drag) setVol(at(e.clientY), true); });
-  ['pointerup', 'pointercancel', 'lostpointercapture'].forEach(ev => el.addEventListener(ev, () => { drag = false; }));
-  el.addEventListener('wheel', e => { e.preventDefault(); setVol(vol - e.deltaY * .0012, true); }, { passive: false });
-  el.addEventListener('keydown', e => {
-    const step = { ArrowUp: .05, ArrowRight: .05, ArrowDown: -.05, ArrowLeft: -.05, PageUp: .2, PageDown: -.2 }[e.key];
-    if (step === undefined && e.key !== 'Home' && e.key !== 'End') return;
-    e.preventDefault(); e.stopPropagation(); setVol(e.key === 'Home' ? 0 : e.key === 'End' ? 1 : vol + step, true);
-  });
-  $('vol-icon').addEventListener('click', () => { if (vol > 0) { volBack = vol; setVol(0, true); } else setVol(volBack || .75, true); });
-}
-// on phones the departures board spans the bottom: the slider sits just above it
-function placeVol() { $('vol').style.bottom = mobile && !document.body.classList.contains('intro') ? `${$('board').offsetHeight + 30}px` : ''; }
-addEventListener('resize', placeVol);
 // Coming back the same day: start the sound right away, under the loading screen. Browsers that allow it play now;
 // the rest hold it until a press, so the loader then waits for one tap ("Tap to board") and you arrive with sound.
 if (!firstToday && !reduce && soundPref) setSound(true);

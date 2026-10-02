@@ -27,8 +27,6 @@ export class StationAudio {
     wind.connect(wf).connect(wg); wg.connect(this.dry); wg.connect(this.verbIn); wind.start();
     const hum = ctx.createOscillator(), hg = ctx.createGain(); hum.frequency.value = 58; hg.gain.value = .012; hum.connect(hg).connect(this.dry); hum.start();
     this.outDry = this.dry; this.outVerb = this.verbIn;
-    // the headphone song's own volume (the slider), on top of its level in the mix
-    this.musicGain = ctx.createGain(); this.musicGain.gain.value = this.musicVol ?? 1; this.musicGain.connect(this.dry);
     if (this.sceneWanted) this.beginScene();
   }
   // Everything the opening plays (bells, horn, the train pulling in, foley) goes through its own pair of gains,
@@ -57,11 +55,6 @@ export class StationAudio {
     this.master.gain.linearRampToValueAtTime(on ? .9 : 0, t + (on ? 1 : .35));
     clearTimeout(this.birdT); if (on) this._birds();
     if (!on) setTimeout(() => { if (!this.enabled && ctx.state === 'running') ctx.suspend(); }, 500);
-  }
-  // 0 (silent) to about 1.8; 1 is the song's normal level
-  setMusicVolume(v) {
-    this.musicVol = v; if (!this.ctx) return;
-    const g = this.musicGain.gain, t = this.ctx.currentTime; g.cancelScheduledValues(t); g.setValueAtTime(g.value, t); g.linearRampToValueAtTime(v, t + .08);
   }
   get live() { return this.enabled && this.ctx && this.ctx.state === 'running'; }
   _out(g, pan) {
@@ -190,7 +183,7 @@ export class StationAudio {
   _songOut(level, background) {
     const ctx = this.ctx, bus = ctx.createGain(), hp = ctx.createBiquadFilter(), lp = ctx.createBiquadFilter(), t = ctx.currentTime, LEAK = .2;
     hp.type = 'highpass'; lp.type = 'lowpass'; hp.frequency.value = background ? 420 : 20; lp.frequency.value = background ? 5200 : 3800;
-    bus.connect(hp).connect(lp).connect(this.musicGain);
+    bus.connect(hp).connect(lp).connect(this.dry);
     bus.gain.setValueAtTime(0, t); bus.gain.linearRampToValueAtTime(level * (background ? LEAK : 1), t + (background ? 2.5 : 1.6));
     const ramp = (p, v, f) => { const n = ctx.currentTime; p.cancelScheduledValues(n); p.setValueAtTime(p.value, n); p.linearRampToValueAtTime(v, n + f); };
     return { bus, ramp, duck: (fade = 1.4) => { ramp(bus.gain, level * LEAK, fade); ramp(hp.frequency, 420, fade); ramp(lp.frequency, 5200, fade); } };
