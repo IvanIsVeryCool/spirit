@@ -17,6 +17,7 @@ const COL = {
   body: 0xc8ccd3, red: 0xc9272c, dark: 0x16181f, concrete: 0x8d857a, warm: 0xffc58a
 };
 const M_SOLE = new THREE.MeshStandardMaterial({ color: 0x2a2a2e, roughness: .9 });
+const INTRO_D = 2.3; // the opening's cassette-player moment, before the ticket: everything after it is shifted by this
 const easeInOut = t => t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
 const glow = (hex, k) => { const m = new THREE.MeshBasicMaterial({ color: new THREE.Color(hex).multiplyScalar(k) }); m.toneMapped = false; return m; };
 const canvasTex = (w, h, draw) => { const c = document.createElement('canvas'); c.width = w; c.height = h; draw(c.getContext('2d'), w, h); const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; return t; };
@@ -447,6 +448,7 @@ export class Station {
     rig.position.set(.03, 1.84, z0 - (this.mobile ? .58 : .5)); rig.lookAt(this.seat); rig.rotateX(.06);
     this.rigUpQ = rig.quaternion.clone(); this.rigUp = rig.position.clone();
     rig.position.copy(this.rigPos); rig.quaternion.copy(this.rigBase);
+    this._player(g, armMat, z0);
     // knees and sneakers below
     const denim = new THREE.MeshStandardMaterial({ color: 0x34405e, roughness: .9 }), shoe = new THREE.MeshStandardMaterial({ color: 0xf1ede6, roughness: .7 });
     [-1, 1].forEach(sd => {
@@ -459,10 +461,62 @@ export class Station {
     g.traverse(o => { if (o.isMesh) { o.castShadow = false; o.receiveShadow = false; } });
     this.scene.add(g); this.introGroup = g;
   }
+  // Before the ticket: your cassette player. Our own design (Spirit Line red, a silver face, a window onto the tape,
+  // piano keys along the top, the headphone cable running up). One hand holds it, the other presses play, the reels turn.
+  _player(g, armMat, z0) {
+    const P = new THREE.Group(), S = 1.8, B = new THREE.Group(); g.add(P); B.scale.setScalar(S); P.add(B); // B: the player, in toy proportion to your fists
+    const red = new THREE.MeshStandardMaterial({ color: 0xb8262b, roughness: .4, metalness: .25 }), face = new THREE.MeshStandardMaterial({ color: 0xc9ccd2, roughness: .35, metalness: .7 });
+    const dark = new THREE.MeshStandardMaterial({ color: 0x15161a, roughness: .5 }), keyMat = new THREE.MeshStandardMaterial({ color: 0xd8dade, roughness: .3, metalness: .6 });
+    const box = (w, h, d, m, x, y, z, parent = B) => { const o = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m); o.position.set(x, y, z); parent.add(o); return o; };
+    box(.118, .086, .03, red, 0, 0, 0);                    // body
+    box(.106, .072, .002, face, 0, -.002, .0155);          // brushed face
+    box(.084, .042, .001, dark, 0, .002, .0162);           // tape window
+    // the cassette behind the window: a label and two reels with three spokes, turning when it plays
+    const lc = document.createElement('canvas'); lc.width = 256; lc.height = 128; const x = lc.getContext('2d');
+    x.fillStyle = '#efe6d2'; x.fillRect(0, 0, 256, 128); x.fillStyle = '#c9272c'; x.fillRect(0, 84, 256, 14); x.fillStyle = '#2a2a33'; x.fillRect(0, 98, 256, 4);
+    x.strokeStyle = 'rgba(40,40,50,.35)'; x.lineWidth = 2; [24, 38, 52].forEach(y => { x.beginPath(); x.moveTo(14, y); x.lineTo(242, y); x.stroke(); });
+    x.fillStyle = '#1a1a20'; x.beginPath(); x.roundRect(58, 44, 140, 36, 18); x.fill();
+    const lt = new THREE.CanvasTexture(lc); lt.colorSpace = THREE.SRGBColorSpace;
+    const label = new THREE.Mesh(new THREE.PlaneGeometry(.08, .04), new THREE.MeshStandardMaterial({ map: lt, roughness: .7 })); label.position.set(0, .002, .017); B.add(label);
+    const reelMat = new THREE.MeshStandardMaterial({ color: 0xf2f2f2, roughness: .5 });
+    this.reels = [-1, 1].map(sd => {
+      const r = new THREE.Group(); r.position.set(sd * .021, .0035, .0177); B.add(r);
+      const hub = new THREE.Mesh(new THREE.CylinderGeometry(.0055, .0055, .002, 16), reelMat); hub.rotation.x = Math.PI / 2; r.add(hub);
+      for (let k = 0; k < 3; k++) { const sp = box(.0016, .0042, .0022, dark, 0, 0, 0, r); sp.rotation.z = k * Math.PI * 2 / 3; sp.translateY(.0036); }
+      return r;
+    });
+    const glass = new THREE.Mesh(new THREE.PlaneGeometry(.084, .042), new THREE.MeshPhysicalMaterial({ color: 0x223, transparent: true, opacity: .22, roughness: .05, clearcoat: 1, envMapIntensity: 1 }));
+    glass.position.set(0, .002, .0192); B.add(glass);
+    // piano keys along the top: rewind, play, fast-forward, stop; play is the one you press
+    this.keys = [-.033, -.011, .011, .033].map((kx, i) => box(.019, .01, .018, i === 1 ? red : keyMat, kx, .047, .002));
+    [0x15161a, 0xffffff, 0x15161a, 0x15161a].forEach((c, i) => { const t = new THREE.Mesh(new THREE.ConeGeometry(.003, .005, 3), new THREE.MeshBasicMaterial({ color: c })); t.rotation.set(-Math.PI / 2, 0, -Math.PI / 2); t.position.set(0, .0051, 0); this.keys[i].add(t); }); // each key's symbol rides on it
+    // the headphone cable, from the jack up toward your headphones
+    const cable = new THREE.CatmullRomCurve3([new THREE.Vector3(-.045, .045, -.004), new THREE.Vector3(-.05, .07, 0), new THREE.Vector3(-.045, .15, .04), new THREE.Vector3(-.02, .36, .16)]);
+    B.add(new THREE.Mesh(new THREE.TubeGeometry(cable, 24, .0015, 6), dark));
+    // your hands: the right one holds it, the left one comes in to press play
+    const arm = bone => { const { geometry, tip } = limbGeometry(0, bone), m = new THREE.Mesh(geometry, armMat); m.scale.setScalar(.88); P.add(m); return { m, tip }; };
+    const hold = arm('arm-left'), grip = new THREE.Vector3(.118, -.02, -.012), hdir = new THREE.Vector3(-.2, .62, -.75).normalize();
+    hold.m.quaternion.copy(aimBasis(hold.tip, new THREE.Vector3(0, 1, 0), hdir, new THREE.Vector3(0, .3, 1))); hold.m.position.copy(grip).addScaledVector(hdir, -hold.tip.length() * .88);
+    this.presser = { ...arm('arm-right'), shoulder: new THREE.Vector3(-.26, -.42, .3) };
+    // held low out of view, and up in front of you
+    P.position.set(.02, 1.25, z0 - .3); P.lookAt(this.seat); this.plDown = { p: P.position.clone(), q: P.quaternion.clone() };
+    P.position.set(.01, 1.8, z0 - (this.mobile ? .56 : .46)); P.lookAt(this.seat); P.rotateX(.1); this.plUp = { p: P.position.clone(), q: P.quaternion.clone() };
+    if (this.mobile) P.scale.setScalar(.75);
+    this.player = P; this._press(0);
+  }
+  // the pressing fist: k = 0 resting out of view, 1 over the play key, 2 pressing it down
+  _press(k) {
+    const pr = this.presser, rest = new THREE.Vector3(-.2, -.26, .12), over = new THREE.Vector3(-.03, .17, .06), down = new THREE.Vector3(-.026, .1, .004); // the play key's top is at y .094
+    const target = k <= 1 ? rest.clone().lerp(over, k) : over.clone().lerp(down, k - 1);
+    const dir = target.clone().sub(pr.shoulder).normalize();
+    pr.m.quaternion.copy(aimBasis(pr.tip, new THREE.Vector3(0, 1, 0), dir, new THREE.Vector3(0, .3, 1)));
+    pr.m.position.copy(target).addScaledVector(dir, -pr.tip.length() * .88);
+    this.keys[1].position.y = .047 - Math.max(0, k - 1) * .005;
+  }
   startIntro(ticketCanvas, cb = {}) {
     if (!this.introGroup) this._rig(ticketCanvas);
     this.introGroup.visible = true; this._me(false);
-    this.trainX = 70; this.arrival = null; this.approachAt(this.clock.elapsedTime + 5.2);
+    this.trainX = 70; this.arrival = null; this.approachAt(this.clock.elapsedTime + INTRO_D + 5.2);
     this.flight = null; this.doors.forEach(d => { d.target = 0; d.open = 0; });
     this.intro = { t0: this.clock.elapsedTime, cb, fired: {} };
     this.look.set(0, 1.5, 3); this.camera.position.set(0, 2.85, this.seat.z + .75); this.camera.lookAt(this.look);
@@ -480,37 +534,49 @@ export class Station {
   }
   _me(on) { if (this.listener) this.listener.root.visible = on; }
   _introFrame(t, dt) {
-    const I = this.intro, e = t - I.t0, cb = I.cb;
+    const I = this.intro, e = t - I.t0, cb = I.cb, D = INTRO_D, E = e - D; // E: the ticket and the train, after the cassette player
     const fire = (k, at, fn) => { if (e >= at && !I.fired[k]) { I.fired[k] = 1; fn && fn(); } };
-    fire('start', 0, cb.start); fire('sit', .25, cb.sit); fire('lift', 1.15, cb.paper); fire('paper', 2.6, cb.paper); fire('bells', 3.4, cb.bells);
-    fire('arrive', 5.2, () => { this.arrive(6, cb.stop, I.t0 + 5.2); cb.arrive && cb.arrive(false); });
+    fire('sit', .25, cb.sit); fire('press', 2.32, cb.press); fire('start', 2.45, cb.start); // the song starts as the tape gets up to speed
+    fire('lift', D + 1.15, cb.paper); fire('paper', D + 2.6, cb.paper); fire('bells', D + 3.4, cb.bells);
+    fire('arrive', D + 5.2, () => { this.arrive(6, cb.stop, I.t0 + D + 5.2); cb.arrive && cb.arrive(false); });
     // when the doors open, the view lifts out of your head and pulls back: you stay on the bench, headphones on
-    fire('leave', 12.1, () => { this.introGroup.visible = false; this._me(true); cb.leave && cb.leave(); });
+    fire('leave', D + 12.1, () => { this.introGroup.visible = false; this._me(true); cb.leave && cb.leave(); });
     // where the eyes are: sit down, breathe, then rise up and back
     const stand0 = new THREE.Vector3(0, 2.86, this.seat.z + .75), back = new THREE.Vector3(.5, 2.4, this.seat.z + 2.3), c = this.camera;
     if (e < 1.3) c.position.lerpVectors(stand0, this.seat, easeInOut(e / 1.3));
-    else if (e < 12.1) c.position.copy(this.seat);
-    else { const u = easeInOut(Math.min(1, (e - 12.1) / 1.5)); c.position.lerpVectors(this.seat, back, u); c.position.y += Math.sin(Math.PI * Math.min(1, u * 1.4)) * .3; } // up over your head, then back
+    else if (E < 12.1) c.position.copy(this.seat);
+    else { const u = easeInOut(Math.min(1, (E - 12.1) / 1.5)); c.position.lerpVectors(this.seat, back, u); c.position.y += Math.sin(Math.PI * Math.min(1, u * 1.4)) * .3; } // up over your head, then back
     c.position.y += Math.sin(t * 1.7) * .005 + (e > 1.1 && e < 1.5 ? -Math.sin((e - 1.1) / .4 * Math.PI) * .03 : 0);
+    // the cassette player: up from your lap as you settle, a press on play (the key goes down, the reels start), then away
+    const up = e < .9 ? 0 : e < 1.7 ? easeInOut((e - .9) / .8) : e < 2.95 ? 1 : e < 3.45 ? 1 - easeInOut((e - 2.95) / .5) : 0;
+    const P = this.player; P.visible = e < 3.5;
+    P.position.lerpVectors(this.plDown.p, this.plUp.p, up); P.position.z += Math.sin(up * Math.PI) * .04; P.quaternion.slerpQuaternions(this.plDown.q, this.plUp.q, up);
+    P.rotateZ(Math.sin(up * Math.PI) * .05 + (e > 2.2 && e < 2.5 ? -Math.sin((e - 2.2) / .3 * Math.PI) * .02 : 0)); // a little give as you press
+    this._press(e < 1.85 ? 0 : e < 2.2 ? easeInOut((e - 1.85) / .35) : e < 2.32 ? 1 + easeInOut((e - 2.2) / .12) : e < 2.42 ? 2 : e < 2.75 ? 2 - 2 * easeInOut((e - 2.42) / .33) : 0);
+    if (e < 2.75 && e > 2.42) this.keys[1].position.y = .047 - .005; // play stays down while it plays
+    else if (e >= 2.75) this.keys[1].position.y = .042;
+    const spin = e < 2.35 ? 0 : Math.min(1, (e - 2.35) / .35); this.reels.forEach((r, i) => { r.rotation.z -= dt * 7 * spin * (i ? 1 : 1.25); });
+    this.rig.visible = E > 1.0; // the ticket waits on your lap until the player is put away
     // the ticket: on your lap as you sit, lifted up to your face and looked over, then lowered as the train is coming
-    const lift = e < 1.1 ? 0 : e < 2.05 ? easeInOut((e - 1.1) / .95) : e < 3.55 ? 1 : e < 4.5 ? 1 - easeInOut((e - 3.55) / .95) : 0;
-    const fid = e > 2.6 && e < 3.4 ? Math.sin((e - 2.6) / .8 * Math.PI) : 0, read = Math.max(0, Math.min(1, (e - 1.8) / .5)) * Math.max(0, Math.min(1, (3.6 - e) / .4));
+    const lift = E < 1.1 ? 0 : E < 2.05 ? easeInOut((E - 1.1) / .95) : E < 3.55 ? 1 : E < 4.5 ? 1 - easeInOut((E - 3.55) / .95) : 0;
+    const fid = E > 2.6 && E < 3.4 ? Math.sin((E - 2.6) / .8 * Math.PI) : 0, read = Math.max(0, Math.min(1, (E - 1.8) / .5)) * Math.max(0, Math.min(1, (3.6 - E) / .4));
     this.rig.position.lerpVectors(this.rigPos, this.rigUp, lift);
     this.rig.position.z += Math.sin(lift * Math.PI) * .05; // it comes up toward you in an arc, not a straight line
     this.rig.quaternion.slerpQuaternions(this.rigBase, this.rigUpQ, lift);
     // reading it: one slow tilt toward the light and a little turn toward the stamp; held this close, anything quicker reads as shaking
-    this.rig.rotateY(Math.sin((e - 1.8) * .9) * .06 * read); this.rig.rotateX(Math.sin(t * 1.1) * .006 - read * .04 * Math.sin((e - 2) * .7));
+    this.rig.rotateY(Math.sin((E - 1.8) * .9) * .06 * read); this.rig.rotateX(Math.sin(t * 1.1) * .006 - read * .04 * Math.sin((E - 2) * .7));
     this.rig.rotateZ(fid * .03 + Math.sin(lift * Math.PI) * .05);
-    // where the attention goes: ahead as you sit, then the ticket as it comes up, then the train
+    // where the attention goes: ahead as you sit, the player and the press, then the ticket as it comes up, then the train
     const front = this.cars[0].position.x + this.trainX - CAR_L / 2 - NOSE_L + .3, tgt = new THREE.Vector3();
     let tracking = false, reading = false;
     if (e < 1.0) tgt.set(0, 1.5, this.seat.z - 3.5);
-    else if (e < 3.6) { tgt.lerpVectors(this.rigPos, this.rigUp, .5 + .5 * lift); tgt.y -= .01; reading = true; } // the ticket comes up to meet the eyes
+    else if (E < 1.0) { tgt.lerpVectors(this.plDown.p, this.plUp.p, .55 + .45 * up); tgt.y += .01; reading = true; }
+    else if (E < 3.6) { tgt.lerpVectors(this.rigPos, this.rigUp, .5 + .5 * lift); tgt.y -= .01; reading = true; } // the ticket comes up to meet the eyes
     // one long, smooth turn up and to the right, toward where the train comes from, that then follows its nose in
-    else if (e < 11.4) { tgt.set(Math.max(-2.5, Math.min(18, front)), 2.0, 0); tracking = true; I.turn = I.turn || e; }
+    else if (E < 11.4) { tgt.set(Math.max(-2.5, Math.min(18, front)), 2.0, 0); tracking = true; I.turn = I.turn || e; }
     else tgt.set(-1.2, 1.95, 0);
     this._head(tgt, t, dt, tracking, reading);
-    if (e > 13.6) { this.intro = null; this.introGroup.visible = false; this._me(true); this.blendUntil = t + 2.8; cb.end && cb.end(); }
+    if (E > 13.6) { this.intro = null; this.introGroup.visible = false; this._me(true); this.blendUntil = t + 2.8; cb.end && cb.end(); }
   }
 
   // A first-person head: springs on yaw and pitch (a quick start, a soft landing, a hint of overshoot),

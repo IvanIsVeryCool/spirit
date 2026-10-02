@@ -277,8 +277,9 @@ function playIntro() {
   audio.beginScene();
   introPlaying = true; document.body.classList.add('intro');
   station.startIntro(ticketCanvas(), {
-    // your headphones: a song plays while you're in your own head, and fades as the view pulls out
-    start: () => { song = audio.music(); }, leave: () => { if (song) song.stop(1.4); song = null; },
+    // your headphones: you press play on your cassette player, the song plays while you're in your own head,
+    // and fades as the view pulls out
+    press: () => audio.cassette(), start: () => { song = audio.music(); }, leave: () => { if (song) song.stop(1.4); song = null; },
     sit: () => audio.sit(), paper: () => audio.paper(), bells: () => audio.bells(8.5),
     arrive: skipped => { if (!skipped) audio.arrive(6, { bells: false }); },
     stop: arrived, end: endIntro

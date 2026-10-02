@@ -294,6 +294,17 @@ export class StationAudio {
       o.connect(f).connect(g); g.connect(this.outDry); o.start(t + d); o.stop(t + d + .1);
     });
   }
+  // a cassette player's play key: the latch clicks, the mechanism thunks down, the capstan motor spins up
+  cassette() {
+    if (!this.live) return;
+    const ctx = this.ctx, t = ctx.currentTime;
+    this._noise(t, .025, 'bandpass', 3200, 2600, 4, .12, .001, -.05); this._click(t + .004, .2);
+    this._noise(t + .03, .07, 'lowpass', 900, 260, 1, .2, .003, -.05);
+    const o = ctx.createOscillator(), g = ctx.createGain(); o.type = 'triangle';
+    o.frequency.setValueAtTime(60, t + .06); o.frequency.exponentialRampToValueAtTime(190, t + .4);
+    g.gain.setValueAtTime(.0001, t + .06); g.gain.exponentialRampToValueAtTime(.012, t + .2); g.gain.exponentialRampToValueAtTime(.0001, t + .55);
+    o.connect(g); this._out(g, -.05); o.start(t + .06); o.stop(t + .6);
+  }
   punch() {
     if (!this.live) return;
     const t = this.ctx.currentTime; this._noise(t, .09, 'highpass', 1800, 4200, .8, .22, .002, 0); this._click(t, .25);
