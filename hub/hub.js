@@ -72,6 +72,7 @@ const today = (() => { const d = new Date(); return d.getFullYear() + '-' + (d.g
 let firstToday = true; try { firstToday = localStorage.getItem('spirit-hub-day') !== today; } catch (e) {}
 if (!firstToday && !reduce) $('loader').classList.add('quick');
 let station = null, entered = false, doorsOpen = false, focus = 0, hover = -1, boarding = false;
+let song = null, introPlaying = false; // the headphone song; the opening playing
 
 /* departure board: split-flap letters (flap.js) that clatter round to their new value */
 const DEST_W = Math.max(...DOORS.map(d => d.title.length));
@@ -160,7 +161,7 @@ $('station').addEventListener('pointerup', e => {
 /* sound toggle: on unless you've turned it off yourself */
 let soundPref = true; try { soundPref = localStorage.getItem('spirit-sound') !== 'off'; } catch (e) {}
 function setSound(on, remember) {
-  audio.setEnabled(on);
+  audio.setEnabled(on); if (on) ambientSong();
   if (remember) try { if (on) localStorage.removeItem('spirit-sound'); else localStorage.setItem('spirit-sound', 'off'); } catch (e) {}
   $('sound-btn').classList.toggle('on', on); $('sound-btn').setAttribute('aria-pressed', String(on));
   soundLabel();
@@ -236,7 +237,6 @@ async function boot() {
   if (!firstToday && !reduce) { setTimeout(() => (soundPref && held() ? tapToBoard() : quickEnter()), 350); return; }
   setTimeout(() => { $('gate').classList.add('ready'); $('enter-sound').focus({ preventScroll: true }); }, 350);
 }
-let introPlaying = false;
 function enter(withSound) {
   if (entered) return; entered = true;
   try { localStorage.setItem('spirit-hub-day', today); } catch (e) {}
@@ -263,7 +263,7 @@ function quickEnter() {
   document.body.classList.remove('pre'); document.body.classList.add('entered');
   if (soundPref) setSound(true);
   if (!station) { showBoard(); doorsOpen = true; renderBoard(); return; }
-  station.park(); arrived();
+  station.park(); arrived(); ambientSong();
   setTimeout(() => showBoard(), 700);
 }
 function tapToBoard() {
@@ -272,14 +272,15 @@ function tapToBoard() {
   loader.addEventListener('click', go); addEventListener('keydown', go); // the press itself starts the sound (unlockAudio)
 }
 // you're sitting on the bench, ticket in hand, and the train pulls in
-let song = null;
 function playIntro() {
+  if (song) song.stop(.6); song = null; // the opening starts its own when you press play
   audio.beginScene();
   introPlaying = true; document.body.classList.add('intro');
   station.startIntro(ticketCanvas(), {
     // your headphones: you press play on your cassette player, the song plays while you're in your own head,
     // and fades as the view pulls out
-    press: () => audio.cassette(), start: () => { song = audio.music(); }, leave: () => { if (song) song.stop(1.4); song = null; },
+    press: () => audio.cassette(), start: () => { if (song) song.stop(.3); song = audio.ctx ? audio.music() : null; },
+    leave: () => { if (song) song.duck(1.6); }, // it doesn't stop: it carries on faintly, leaking from the headphones on the bench
     sit: () => audio.sit(), paper: () => audio.paper(), bells: () => audio.bells(8.5),
     arrive: skipped => { if (!skipped) audio.arrive(6, { bells: false }); },
     stop: arrived, end: endIntro
@@ -300,7 +301,9 @@ $('replay-btn').addEventListener('click', () => {
   playIntro();
 });
 // skipping cuts the opening's sounds too (bells, horn and the arrival are scheduled ahead), with a short fade
-function skipIntro() { if (!station || !introPlaying) return; if (song) song.stop(.4); song = null; audio.endScene(.4); station.skipIntro(); }
+function skipIntro() { if (!station || !introPlaying) return; if (song) song.duck(.6); audio.endScene(.4); station.skipIntro(); ambientSong(); }
+// the song in the background on the platform: faint, from the listener's headphones (on later visits, after a skip, or once sound comes on)
+function ambientSong() { if (!song && audio.ctx && entered && !introPlaying && station) song = audio.music({ background: true }); }
 $('skip').addEventListener('click', skipIntro);
 addEventListener('keydown', e => { if (introPlaying && (e.key === 'Escape' || e.key === ' ')) { e.preventDefault(); skipIntro(); } });
 $('enter-sound').addEventListener('click', () => enter(true));

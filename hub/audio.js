@@ -170,21 +170,29 @@ export class StationAudio {
       this.track = await new AC(2, 1, 44100).decodeAudioData(await r.arrayBuffer());
     } catch (e) { this.track = null; }
   }
-  _playTrack() {
-    const ctx = this.ctx, src = ctx.createBufferSource(), bus = ctx.createGain(), t = ctx.currentTime;
-    src.buffer = this.track; src.loop = true;
-    bus.gain.setValueAtTime(0, t); bus.gain.linearRampToValueAtTime(.24, t + 1.6); // a finished recording is loud: keep it under the station
-    src.connect(bus).connect(this.outDry); src.start(t);
-    let dead = false;
-    return { stop: (fade = 1.2) => { if (dead) return; dead = true; const n = ctx.currentTime; bus.gain.cancelScheduledValues(n); bus.gain.setValueAtTime(bus.gain.value, n); bus.gain.linearRampToValueAtTime(0, n + fade); src.stop(n + fade + .05); setTimeout(() => bus.disconnect(), fade * 1000 + 300); } };
+  // The song's way out: in your headphones up close, or, once the view pulls out of your head, ducked to the faint,
+  // tinny leak you'd hear from someone's headphones on the bench (quieter, no bass), playing on in the background.
+  // It goes straight to the station mix, not the opening's scene bus, so it outlives the opening.
+  _songOut(level, background) {
+    const ctx = this.ctx, bus = ctx.createGain(), hp = ctx.createBiquadFilter(), lp = ctx.createBiquadFilter(), t = ctx.currentTime, LEAK = .2;
+    hp.type = 'highpass'; lp.type = 'lowpass'; hp.frequency.value = background ? 420 : 20; lp.frequency.value = background ? 5200 : 3800;
+    bus.connect(hp).connect(lp).connect(this.dry);
+    bus.gain.setValueAtTime(0, t); bus.gain.linearRampToValueAtTime(level * (background ? LEAK : 1), t + (background ? 2.5 : 1.6));
+    const ramp = (p, v, f) => { const n = ctx.currentTime; p.cancelScheduledValues(n); p.setValueAtTime(p.value, n); p.linearRampToValueAtTime(v, n + f); };
+    return { bus, ramp, duck: (fade = 1.4) => { ramp(bus.gain, level * LEAK, fade); ramp(hp.frequency, 420, fade); ramp(lp.frequency, 5200, fade); } };
   }
-  music() {
-    if (!this.ctx) return { stop() {} };
-    if (this.track) return this._playTrack();
-    const ctx = this.ctx, bus = ctx.createGain(), tone = ctx.createBiquadFilter(), BEAT = 60 / 84;
-    tone.type = 'lowpass'; tone.frequency.value = 3800; bus.gain.value = 0;
-    bus.connect(tone).connect(this.outDry);
-    bus.gain.setValueAtTime(0, ctx.currentTime); bus.gain.linearRampToValueAtTime(.17, ctx.currentTime + 2.2);
+  _playTrack(background) {
+    const ctx = this.ctx, src = ctx.createBufferSource(), out = this._songOut(.24, background); // a finished recording is loud: keep it under the station
+    src.buffer = this.track; src.loop = true; src.connect(out.bus); src.start(ctx.currentTime);
+    let dead = false;
+    return { duck: out.duck, stop: (fade = 1.2) => { if (dead) return; dead = true; out.ramp(out.bus.gain, 0, fade); src.stop(ctx.currentTime + fade + .05); setTimeout(() => out.bus.disconnect(), fade * 1000 + 300); } };
+  }
+  // background: start already ducked (later visits, a skipped opening)
+  music({ background = false } = {}) {
+    if (!this.ctx) return { stop() {}, duck() {} };
+    if (this.track) return this._playTrack(background);
+    const ctx = this.ctx, bus = ctx.createGain(), out = this._songOut(.17, background), BEAT = 60 / 84;
+    bus.connect(out.bus);
     // a dotted-eighth echo for the guitar, like a delay pedal
     const echo = ctx.createDelay(1), fb = ctx.createGain(), wet = ctx.createGain(), damp = ctx.createBiquadFilter();
     echo.delayTime.value = BEAT * .75; fb.gain.value = .38; wet.gain.value = .45; damp.type = 'lowpass'; damp.frequency.value = 2200;
@@ -222,7 +230,7 @@ export class StationAudio {
       setTimeout(schedule, 200);
     };
     schedule();
-    return { stop: (fade = 1.2) => { if (dead) return; dead = true; const t = ctx.currentTime; bus.gain.cancelScheduledValues(t); bus.gain.setValueAtTime(bus.gain.value, t); bus.gain.linearRampToValueAtTime(0, t + fade); setTimeout(() => { bus.disconnect(); fb.disconnect(); }, fade * 1000 + 4000); } };
+    return { duck: out.duck, stop: (fade = 1.2) => { if (dead) return; dead = true; out.ramp(out.bus.gain, 0, fade); setTimeout(() => { out.bus.disconnect(); fb.disconnect(); }, fade * 1000 + 4000); } };
   }
   // platform announcement chime
   chime() {
