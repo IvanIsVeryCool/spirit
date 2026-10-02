@@ -5,11 +5,11 @@ import { RenderPass } from '/vendor/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from '/vendor/jsm/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from '/vendor/jsm/postprocessing/OutputPass.js';
 import { mergeStatic, addPeople, updatePeople, addPlatformProps, addBackground, updateBackground } from './scenery.js';
-import { CAR_L, GAP, W, H, BASE, FLOOR, DOOR_W, DOOR_H, NOSE_L, bodyGeometry, capGeometry, noseGeometry, nosePoint, paintBody, paintNose, windowTexture, windowSlots } from './train.js';
+import { CAR_L, GAP, W, H, BASE, FLOOR, DOOR_W, DOOR_H, NOSE_L, bodyGeometry, capGeometry, noseGeometry, nosePoint, paintBody, paintNose, windowSlots } from './train.js';
 import { buildInterior } from './interior.js';
 import { Crowd } from './crowd.js';
 import { limbGeometry, aimBasis, library } from './people.js';
-import { addCity, updateCity } from './city.js';
+import { addCity, updateCity, cityLoaded } from './city.js';
 
 // A golden-hour Peninsula platform and a red-and-silver double-decker commuter train.
 const COL = {
@@ -128,6 +128,7 @@ export class Station {
     });
   }
   _trees() {
+    if (cityLoaded()) return; // Kenney's Nature Kit trees and palms (city.js); these are the fallback
     const n = this.mobile ? 40 : 80, geo = new THREE.IcosahedronGeometry(1, 1);
     const mat = new THREE.MeshStandardMaterial({ color: 0x24402f, roughness: .95, flatShading: true });
     const inst = new THREE.InstancedMesh(geo, mat, n), m = new THREE.Matrix4(), q = new THREE.Quaternion(), sc = new THREE.Vector3(), p = new THREE.Vector3();
@@ -248,9 +249,9 @@ export class Station {
       door: new THREE.MeshPhysicalMaterial({ color: 0xc9ced5, metalness: .8, roughness: .3, clearcoat: .3 }),
       yellow: new THREE.MeshStandardMaterial({ color: 0xe8b923, roughness: .5 })
     };
-    const winT = windowTexture();
-    M.window = new THREE.MeshPhysicalMaterial({ map: winT, emissiveMap: winT, emissive: 0xffffff, emissiveIntensity: .3, roughness: .12, metalness: 0, clearcoat: .6, clearcoatRoughness: .1, envMapIntensity: .3, alphaTest: .5 });
-    const shell = bodyGeometry(), cap = capGeometry();
+    // tinted glass you can see through: the lit decks and the passengers inside show, with the evening sky on top
+    M.window = new THREE.MeshPhysicalMaterial({ color: 0x262c3a, transparent: true, opacity: .5, depthWrite: false, roughness: .06, metalness: 0, clearcoat: .8, clearcoatRoughness: .05, envMapIntensity: .9 });
+    const shell = bodyGeometry({ windows: true }), cap = capGeometry();
     this.cars = []; this.doors = [];
     for (let i = 0; i < this.count; i++) {
       const car = new THREE.Group(); car.position.x = (i - (this.count - 1) / 2) * (CAR_L + GAP);
@@ -461,7 +462,7 @@ export class Station {
   startIntro(ticketCanvas, cb = {}) {
     if (!this.introGroup) this._rig(ticketCanvas);
     this.introGroup.visible = true; this._me(false);
-    this.trainX = 70; this.arrival = null;
+    this.trainX = 70; this.arrival = null; this.approachAt(this.clock.elapsedTime + 5.2);
     this.flight = null; this.doors.forEach(d => { d.target = 0; d.open = 0; });
     this.intro = { t0: this.clock.elapsedTime, cb, fired: {} };
     this.look.set(0, 1.5, 3); this.camera.position.set(0, 2.85, this.seat.z + .75); this.camera.lookAt(this.look);
@@ -482,7 +483,7 @@ export class Station {
     const I = this.intro, e = t - I.t0, cb = I.cb;
     const fire = (k, at, fn) => { if (e >= at && !I.fired[k]) { I.fired[k] = 1; fn && fn(); } };
     fire('start', 0, cb.start); fire('sit', .25, cb.sit); fire('lift', 1.15, cb.paper); fire('paper', 2.6, cb.paper); fire('bells', 3.4, cb.bells);
-    fire('arrive', 5.2, () => { this.arrive(6, cb.stop); cb.arrive && cb.arrive(false); });
+    fire('arrive', 5.2, () => { this.arrive(6, cb.stop, I.t0 + 5.2); cb.arrive && cb.arrive(false); });
     // when the doors open, the view lifts out of your head and pulls back: you stay on the bench, headphones on
     fire('leave', 12.1, () => { this.introGroup.visible = false; this._me(true); cb.leave && cb.leave(); });
     // where the eyes are: sit down, breathe, then rise up and back
@@ -543,8 +544,11 @@ export class Station {
 
   /* ---------- choreography ---------- */
   doorX(i) { return this.cars[i].position.x + this.trainX; }
-  arrive(dur = 6, onStop) { this.trainX = 70; this.arrival = { t0: this.clock.elapsedTime, dur, onStop }; }
-  park() { this.arrival = null; this.trainX = 0; }
+  arrive(dur = 6, onStop, t0 = this.clock.elapsedTime) { this.approach = null; this.trainX = 70; this.arrival = { t0, dur, onStop }; }
+  // before it brakes, the train is already on its way in at full speed (the speed the braking curve starts from),
+  // so wherever you look down the line it's moving, never standing and then setting off
+  approachAt(t0, dur = 6) { this.approach = { t0, v: 70 * 2.6 / dur }; }
+  park() { this.arrival = null; this.approach = null; this.trainX = 0; }
   openDoors(stagger = .16) { this.doors.forEach((d, i) => setTimeout(() => { d.target = 1; }, i * stagger * 1000)); }
   setFocus(i) { this.focus = i; }
   setHover(i) { this.hover = i; }
@@ -581,6 +585,7 @@ export class Station {
   render() {
     const dt = Math.min(this.clock.getDelta(), .1), t = this.clock.elapsedTime;
     let speed = 0;
+    if (this.approach && !this.arrival) { this.trainX = Math.min(165, 70 + this.approach.v * (this.approach.t0 - t)); speed = this.trainX < 165 ? this.approach.v : 0; } // the rails end at 200
     if (this.arrival) {
       const a = this.arrival, p = Math.min(1, (t - a.t0) / a.dur), prev = this.trainX;
       this.trainX = 70 * Math.pow(1 - p, 2.6); speed = (prev - this.trainX) / Math.max(dt, 1e-3);
@@ -602,7 +607,7 @@ export class Station {
       });
       d.hover += ((this.hover === i ? 1 : 0) - d.hover) * Math.min(1, dt * 6);
       // the interior lights come up as the doors open, and glow warmer while you point at the door
-      const lit = (.3 + .7 * o) * (1 + d.hover * .45);
+      const lit = (.72 + .28 * o) * (1 + d.hover * .45); // on all the time now (you see in through the windows); a little brighter as the doors open
       d.inside.base.color.setScalar(lit); d.inside.seat.color.setScalar(lit); d.inside.glow.color.setRGB(1.6, 1.35, 1.02).multiplyScalar(lit * (1 + d.hover * .4));
       d.statusMats.forEach(m => m.color.setRGB(o > .05 ? .36 * 3 : 1 * .4, o > .05 ? 1 * 3 : .64 * .4, o > .05 ? .56 * 3 : .12 * .4));
       d.spill.material.opacity = o * (.28 + d.hover * .3);

@@ -75,13 +75,19 @@ export function shellRing() {
   const pin = (y, sd = 1) => pins[sd + ':' + y.toFixed(3)];
   return { pts, R, pin, pinned: new Set(Object.values(pins)) };
 }
-export function bodyGeometry() {
-  const { pts, pin } = shellRing(), xs = [-DOOR_W / 2, DOOR_W / 2];
+// windows: true also cuts the window openings on both sides, for a train with its decks and passengers modelled inside
+export function bodyGeometry({ windows = false } = {}) {
+  const { pts, pin } = shellRing(), xs = [-DOOR_W / 2, DOOR_W / 2], wins = windows ? windowSlots() : [];
   for (let i = 0; i <= 8; i++) xs.push(-CAR_L / 2 + CAR_L * i / 8);
+  wins.forEach(w => xs.push(w.x - w.w / 2, w.x + w.w / 2));
   xs.sort((a, b) => a - b);
   const jb = pin(FLOOR), jt = pin(FLOOR + DOOR_H);
+  const holes = []; wins.forEach(w => [1, -1].forEach(sd => { const a = pin(w.y - w.h / 2, sd), b = pin(w.y + w.h / 2, sd); holes.push([w.x - w.w / 2, w.x + w.w / 2, Math.min(a, b), Math.max(a, b)]); }));
   // the doorway on the platform side is a real opening, so the 3D vestibule behind it shows through
-  return ringGeometry(xs.map(x => ({ x, pts, u: (x + CAR_L / 2) / CAR_L })), (i, j) => Math.abs((xs[i] + xs[i + 1]) / 2) < DOOR_W / 2 && j >= jb && j < jt);
+  return ringGeometry(xs.map(x => ({ x, pts, u: (x + CAR_L / 2) / CAR_L })), (i, j) => {
+    const xm = (xs[i] + xs[i + 1]) / 2;
+    return (Math.abs(xm) < DOOR_W / 2 && j >= jb && j < jt) || holes.some(h => xm > h[0] && xm < h[1] && j >= h[2] && j < h[3]);
+  });
 }
 export function capGeometry() {
   const sh = new THREE.Shape(); arcRing(180).forEach(([z, y], j) => j ? sh.lineTo(z, y) : sh.moveTo(z, y));

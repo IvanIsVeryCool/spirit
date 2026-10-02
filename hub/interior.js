@@ -1,10 +1,12 @@
 import * as THREE from 'three';
 import { CAR_L, FLOOR, DOOR_W, DOOR_H, shellRing, windowSlots } from './train.js';
-import { posedGeometry, SCALE, HIP_SIT } from './people.js';
+import { posedGeometry, SCALE, HIP_SIT, sitters } from './people.js';
 
 // The inside of each car, seen through its open door and flown through when you board:
 // a platform-level vestibule, stairs up to the upper deck, a step down to the lower deck,
-// seats, grab poles and a few passengers. No real-time lights: the light from the ceiling
+// seats, grab poles, and passengers in the seats by the windows (you see them from the platform too).
+// Both ends of the car have both decks: on the right the lower deck with an upper deck over it,
+// on the left the stairs (far side) beside a lower saloon (near side) under the upper deck. No real-time lights: the light from the ceiling
 // panels is baked into vertex colours once, and each car's interior is a handful of draw calls.
 
 const V = (x, y, z) => new THREE.Vector3(x, y, z);
@@ -17,18 +19,23 @@ const XV = 1.0;                     // the vestibule spans |x| < XV
 const ZW = -.28;                    // stair wells take the far side of the car (z < ZW)
 const XTOP = -XV - (STEPS - 1) * RUN; // where the stairs reach the upper deck
 const END = CAR_L / 2 - .22, ZIN = 1.33, IN = .07, ROOF = 3.97;
+const UPR = LCEIL + .1;             // upper deck floor over the lower deck (right)
+const LTOP = UPPER - .14;           // underside of the upper deck on the left: the lower saloon's ceiling
 
 const LIGHTS = [ // [from, to, intensity, reach, region the light can see: x0 x1 y0 y1 z0 z1]
   [V(-.5, CEIL - .02, 0), V(.5, CEIL - .02, 0), 1.6, 1.35, [-XV, XV, 0, CEIL + .02, -2, 2]],
   [V(-1.2, ROOF - .03, -.8), V(XTOP - .2, ROOF - .03, -.8), 1.1, 1.3, [-4, -XV, 0, 4.2, -2, ZW]],
   [V(XTOP - .1, ROOF - .03, -.1), V(-END + .1, ROOF - .03, -.1), 1.1, 1.4, [-4, XTOP + .03, UPPER - .2, 4.2, -2, 2]],
-  [V(XV + .2, LCEIL - .02, -.3), V(END - .1, LCEIL - .02, -.3), 1.05, 1.2, [XV, 4, 0, LCEIL + .02, -2, 2]]
+  [V(XV + .2, LCEIL - .02, -.3), V(END - .1, LCEIL - .02, -.3), 1.05, 1.2, [XV, 4, 0, LCEIL + .02, -2, 2]],
+  [V(XV + .2, ROOF - .03, -.1), V(END - .1, ROOF - .03, -.1), 1.1, 1.4, [XV, 4, LCEIL + .05, 4.2, -2, 2]],         // upper deck, right
+  [V(-XV - .2, LTOP - .02, .45), V(-END + .1, LTOP - .02, .45), 1.05, 1.2, [-4, -XV, 0, LTOP + .02, ZW, 2]],       // lower saloon, left
+  [V(-XV - .2, ROOF - .03, .55), V(XTOP, ROOF - .03, .55), 1.1, 1.3, [XTOP + .03, -XV, LTOP - .05, 4.2, ZW, 2]]    // upper deck beside the stairs
 ].map(([a, b, I, r, box]) => ({ a, b, I, r, box }));
 const AMB = new THREE.Color(.15, .135, .13), WARM = new THREE.Color(1, .8, .56);
 
 function localFloor(p) {
-  if (p.x > XV) return LOWER;
-  if (p.x < -XV) return p.z < ZW ? VEST + Math.min(STEPS, Math.max(0, Math.ceil((-XV - p.x) / RUN))) * RISE : (p.x < XTOP ? UPPER : LOWER);
+  if (p.x > XV) return p.y > LCEIL ? UPR : LOWER;
+  if (p.x < -XV) return p.z < ZW && p.x > XTOP ? VEST + Math.min(STEPS, Math.max(0, Math.ceil((-XV - p.x) / RUN))) * RISE : (p.y > LTOP - .05 ? UPPER : LOWER);
   return VEST;
 }
 const _q = new THREE.Vector3(), _d = new THREE.Vector3();
@@ -76,6 +83,7 @@ class Baked {
   }
 }
 const _lc = new THREE.Color(), _vc = new THREE.Color();
+const POSED = {}; const posed = (kind, pose) => POSED[kind + pose] || (POSED[kind + pose] = posedGeometry(kind, pose)); // shared by every car
 const M4 = new THREE.Matrix4(), I4 = new THREE.Matrix4();
 const boxGeo = (w, h, d) => new THREE.BoxGeometry(w, h, d, Math.max(1, Math.ceil(w / .35)), Math.max(1, Math.ceil(h / .35)), Math.max(1, Math.ceil(d / .35)));
 // an axis-aligned box from its extents
@@ -214,7 +222,11 @@ export function buildInterior(car, { ledMat, plateMat, idx = 0 }) {
   const floorOpt = { uvs: 2.2 };
   box(A, [-XV, XV], [.36, VEST], [-ZIN, ZIN], (p, n) => n.y > .5 ? P.floor : P.riser, floorOpt); // vestibule
   box(A, [XV, END], [.36, LOWER], [-1.27, 1.27], P.floor, floorOpt);                      // lower deck
-  box(A, [-END, XTOP], [UPPER - .14, UPPER], [-1.36, 1.36], P.floor, floorOpt);         // upper deck, top of the stairs
+  box(A, [-END, XTOP], [LTOP, UPPER], [-1.36, 1.36], (p, n) => n.y < -.5 ? P.ceil : P.floor, floorOpt); // upper deck, top of the stairs
+  box(A, [XTOP, -XV], [LTOP, UPPER], [ZW, 1.36], (p, n) => n.y < -.5 ? P.ceil : P.floor, floorOpt);       // ...and on beside the stair well
+  box(A, [-END, -XV], [.36, LOWER], [ZW, 1.27], P.floor, floorOpt);                      // lower saloon, left
+  box(A, [-END, XTOP], [LOWER, LTOP], [ZW - .05, ZW], P.part);                          // its far wall, under the upper deck
+  box(A, [XV + .05, END], [LCEIL + .1, UPR], [-1.38, 1.38], P.floor, floorOpt);          // upper deck floor, right
   box(A, [-.65, .65], [VEST - .02, VEST + .003], [ZIN - .1, 1.47], P.riser, { uvs: 4 }); // threshold plate
   box(A, [-.65, .65], [VEST, VEST + .006], [1.38, 1.43], P.yellow);
   box(A, [-.66, .66], [VEST, VEST + .006], [-ZIN, -ZIN + .06], P.yellow);              // far door threshold
@@ -232,10 +244,9 @@ export function buildInterior(car, { ledMat, plateMat, idx = 0 }) {
   // the stair well's inner wall, its end wall at the top, and the partition facing the vestibule
   const partPaint = p => p.y < localFloor(p) + .22 ? P.kick : P.part;
   box(A, [XTOP, -XV], [VEST, ROOF], [ZW - .05, ZW], partPaint);
-  box(A, [XTOP - .05, XTOP], [UPPER - .14, ROOF], [ZW - .05, ZIN], P.part);
   [-1, 1].forEach(sd => {
     const x0 = sd > 0 ? XV : -XV - .05, x1 = x0 + .05;
-    box(A, [x0, x1], [sd > 0 ? LOWER : VEST, CEIL], [ZW - .05, ZIN], partPaint);
+    box(A, [x0, x1], [sd > 0 ? LOWER : VEST, ROOF], [ZW - .05, ZIN], partPaint); // up to the roof: it closes off the decks either side
     box(A, [x0, x1], [sd > 0 ? LCEIL : CEIL, ROOF], [-1.38, ZW], P.part); // header over each opening
     box(A, [x0 - sd * .004, x1 - sd * .004], [1.96, 2.02], [ZW - .05, ZIN - .02], P.red); // red accent line
     pole(sd * (XV - .03), ZW - .03, VEST, CEIL); // pole at the corner of each opening
@@ -274,6 +285,9 @@ export function buildInterior(car, { ledMat, plateMat, idx = 0 }) {
   glowBox(XTOP - .1, -XV - .15, ROOF - .03, -.8, .1);
   glowBox(-END + .15, XTOP - .1, ROOF - .03, -.1, .14);
   glowBox(XV + .25, END - .15, LCEIL - .012, -.32, .12);
+  glowBox(XV + .25, END - .15, ROOF - .03, -.1, .14);
+  glowBox(-END + .15, -XV - .25, LTOP - .012, .45, .12);
+  glowBox(XTOP + .05, -XV - .15, ROOF - .03, .55, .1);
   box(A, [-.66, .66], [CEIL - .01, CEIL], [-.21, .21], P.frame); // trim around the vestibule panel
 
   /* ---- seats ---- */
@@ -294,18 +308,30 @@ export function buildInterior(car, { ledMat, plateMat, idx = 0 }) {
     S.add(boxGeo(.11, .7, z1 - z0 - .04), sub(.35, -face * .01, (z0 + z1) / 2), P.white, { uvs: 4 });
     for (let k = 0; k < n; k++) A.add(boxGeo(.125, .16, w * .66), sub(.6, face * .005, z0 + w * (k + .5)), P.head);
     A.add(boxGeo(.05, .72, z1 - z0 - .02), sub(.34, -face * .07, (z0 + z1) / 2), P.shell, { uvs: 0 }); // moulded seat-back shell
+    for (let k = 0; k < n; k++) seats.push({ cx, fy, z: z0 + w * (k + .5), face });
   };
+  const seats = [];
   // lower deck: a facing bay, its seats on boxes over the bogie's wheels (x = 2.05 and 3.45)
   bench(2.05, LOWER, -.04, 1.22, 1, true); bench(3.45, LOWER, -.04, 1.22, -1, true);
   bench(2.05, LOWER, -1.24, -.6, 1, true); bench(3.45, LOWER, -1.24, -.6, -1, true);
   // upper deck, at the top of the stairs
   bench(-END + .36, UPPER, -.04, 1.2, 1); bench(-END + .36, UPPER, -1.24, -.66, 1);
+  // the upper deck over the lower one (right), facing bays like the deck below
+  bench(2.05, UPR, -.04, 1.2, 1); bench(3.45, UPR, -.04, 1.2, -1); bench(2.05, UPR, -1.24, -.6, 1); bench(3.45, UPR, -1.24, -.6, -1);
+  // beside the stair well, facing the seats at the top of the stairs
+  bench(-2.05, UPPER, -.04, 1.2, -1);
+  // the lower saloon on the left, over the other bogie
+  bench(-2.05, LOWER, -.04, 1.22, -1, true); bench(-3.45, LOWER, -.04, 1.22, 1, true);
   // grab handles on the aisle corners
 
-  /* ---- a passenger, baked in with the rest: one of the Mini Characters, posed seated ---- */
-  const riders = [[2, 'sit-phone', 3.45, LOWER, -.92, -1], [5, 'sit', -END + .36, UPPER, -.95, 1], [9, 'sit-phone', 3.45, LOWER, -.92, -1], [7, 'sit', -END + .36, UPPER, -.95, 1]];
-  const [kind, pose, cx, fy, z, face] = riders[idx % riders.length];
-  A.add(posedGeometry(kind, pose), new THREE.Matrix4().compose(V(cx - face * .06, fy + .47 - HIP_SIT * SCALE * .88 + .01, z), new THREE.Quaternion().setFromAxisAngle(V(0, 1, 0), face * Math.PI / 2), V(SCALE * .88, SCALE * .88, SCALE * .88)), 'vertex', { uvs: 0 }); // a little smaller, to suit the train seats
+  /* ---- passengers, baked in with the rest: Mini Characters posed seated, mostly by the platform-side windows ---- */
+  let seed = 7 + idx * 131; const r = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  const slim = sitters(), k = SCALE * .88; // a little smaller, to suit the train seats
+  seats.forEach(st => {
+    if (r() > (st.z > .5 ? .72 : st.z > 0 ? .4 : .22)) return; // window seats fill first; a few aisle and far-side seats too
+    const kind = slim[Math.floor(r() * slim.length)], pose = r() < .45 ? 'sit-phone' : 'sit';
+    A.add(posed(kind, pose), new THREE.Matrix4().compose(V(st.cx - st.face * .06, st.fy + .47 - HIP_SIT * k + .01, st.z), new THREE.Quaternion().setFromAxisAngle(V(0, 1, 0), st.face * Math.PI / 2), V(k, k, k)), 'vertex', { uvs: 0 });
+  });
 
   const g = new THREE.Group(); g.name = 'interior';
   g.add(A.mesh(mats.base), S.mesh(mats.seat), ...extra);
