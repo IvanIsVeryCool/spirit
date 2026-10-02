@@ -126,6 +126,11 @@ body.entered .replay{display:flex}
 .ql-bar{width:150px;height:2px;border-radius:2px;background:rgba(255,255,255,.25);overflow:hidden}
 .ql-bar i{display:block;height:100%;background:#fff;transform-origin:left;transform:scaleX(0)}
 #loader.quick .quick-load{display:flex}#loader.quick .tk-wrap{display:none}
+.ql-tap{display:none;color:#fff;border:1px solid rgba(255,255,255,.55);border-radius:999px;padding:11px 22px;font-size:13px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;background:rgba(255,255,255,.08);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);transition:background-color .25s}
+.ql-tap:hover,.ql-tap:focus-visible{background:rgba(255,255,255,.2)}
+#loader.tap{cursor:pointer}#loader.tap .ql-bar{display:none}#loader.tap .ql-tap{display:block;animation:qlTap .7s cubic-bezier(.2,.7,.2,1) both,qlPulse 2.4s ease-in-out .7s infinite}
+@keyframes qlTap{from{opacity:0;transform:translateY(8px)}}
+@keyframes qlPulse{50%{box-shadow:0 0 0 7px rgba(255,255,255,.1)}}
 #loader.out{opacity:0;visibility:hidden;pointer-events:none}
 .sunglow{position:absolute;left:22%;bottom:16%;width:520px;height:520px;margin:-260px 0 0 -260px;border-radius:50%;background:radial-gradient(circle,rgba(255,240,200,.95) 0 5%,rgba(255,200,140,.5) 12%,rgba(255,170,120,.18) 32%,transparent 62%);pointer-events:none}
 .stars{position:absolute;inset:0 0 55% 0;background-image:radial-gradient(1px 1px at 10% 20%,#fff9 50%,transparent),radial-gradient(1px 1px at 30% 8%,#fff8 50%,transparent),radial-gradient(1px 1px at 55% 15%,#fff7 50%,transparent),radial-gradient(1.5px 1.5px at 72% 6%,#fffa 50%,transparent),radial-gradient(1px 1px at 88% 22%,#fff8 50%,transparent),radial-gradient(1px 1px at 46% 30%,#fff5 50%,transparent);pointer-events:none}
@@ -223,7 +228,7 @@ body.static .board{position:relative;left:auto;bottom:auto;opacity:1;transform:n
     <g stroke="#2b2a46" stroke-width="1.5" fill="none" opacity=".75"><path d="M0 262 Q180 276 360 262 T720 262 T1080 262 T1440 262"/><path d="M0 274 H1440"/></g>
     <g fill="#2b2a46"><rect x="352" y="238" width="5" height="120"/><rect x="1072" y="238" width="5" height="120"/></g>
   </svg>
-  <div class="quick-load" aria-hidden="true"><span class="logo-img"></span><div class="ql-bar"><i id="ql-bar"></i></div></div>
+  <div class="quick-load"><span class="logo-img" aria-hidden="true"></span><div class="ql-bar" aria-hidden="true"><i id="ql-bar"></i></div><button class="ql-tap" id="ql-tap" type="button" tabindex="-1">Tap to board</button></div>
   <div class="tk-wrap" id="tk-wrap">
     <div class="ticket" id="ticket">
       <div class="paper" aria-hidden="true"></div>

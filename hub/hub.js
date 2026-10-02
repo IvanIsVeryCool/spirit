@@ -180,6 +180,9 @@ $('sound-btn').addEventListener('click', () => {
   setSound(!audio.enabled, true); audio.tick();
 });
 setInterval(soundLabel, 1000); // the browser can also resume or suspend on its own
+// Coming back the same day: start the sound right away, under the loading screen. Browsers that allow it play now;
+// the rest hold it until a press, so the loader then waits for one tap ("Tap to board") and you arrive with sound.
+if (!firstToday && !reduce && soundPref) setSound(true);
 
 /* arrival */
 function arrived() {
@@ -230,7 +233,7 @@ async function boot() {
   done++;
   $('tk-status').classList.add('done');
   if (!station) { document.body.classList.add('static'); enter(false); return; }
-  if (!firstToday && !reduce) { setTimeout(quickEnter, 350); return; }
+  if (!firstToday && !reduce) { setTimeout(() => (soundPref && held() ? tapToBoard() : quickEnter()), 350); return; }
   setTimeout(() => { $('gate').classList.add('ready'); $('enter-sound').focus({ preventScroll: true }); }, 350);
 }
 let introPlaying = false;
@@ -262,6 +265,11 @@ function quickEnter() {
   if (!station) { showBoard(); doorsOpen = true; renderBoard(); return; }
   station.park(); arrived();
   setTimeout(() => showBoard(), 700);
+}
+function tapToBoard() {
+  const loader = $('loader'); loader.classList.add('tap'); $('ql-tap').focus({ preventScroll: true });
+  const go = () => { loader.removeEventListener('click', go); removeEventListener('keydown', go); quickEnter(); };
+  loader.addEventListener('click', go); addEventListener('keydown', go); // the press itself starts the sound (unlockAudio)
 }
 // you're sitting on the bench, ticket in hand, and the train pulls in
 let song = null;

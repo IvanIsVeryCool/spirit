@@ -439,9 +439,13 @@ export class Station {
       arm.quaternion.copy(aimBasis(tip, new THREE.Vector3(0, 1, 0), dir, new THREE.Vector3(0, .3, 1)));
       arm.scale.setScalar(k); arm.position.copy(shoulder); rig.add(arm);
     });
+    // two holds: low on your lap, and lifted up in front of your face to read
     rig.position.set(0, 1.33, z0 - (this.mobile ? .38 : .32)); rig.lookAt(this.seat); rig.rotateX(-.12);
     if (this.mobile) rig.scale.setScalar(.62); // a narrow screen sees less, so hold it a little further off
     this.rig = rig; this.rigBase = rig.quaternion.clone(); this.rigPos = rig.position.clone();
+    rig.position.set(.03, 1.84, z0 - (this.mobile ? .58 : .5)); rig.lookAt(this.seat); rig.rotateX(.06);
+    this.rigUpQ = rig.quaternion.clone(); this.rigUp = rig.position.clone();
+    rig.position.copy(this.rigPos); rig.quaternion.copy(this.rigBase);
     // knees and sneakers below
     const denim = new THREE.MeshStandardMaterial({ color: 0x34405e, roughness: .9 }), shoe = new THREE.MeshStandardMaterial({ color: 0xf1ede6, roughness: .7 });
     [-1, 1].forEach(sd => {
@@ -477,7 +481,7 @@ export class Station {
   _introFrame(t, dt) {
     const I = this.intro, e = t - I.t0, cb = I.cb;
     const fire = (k, at, fn) => { if (e >= at && !I.fired[k]) { I.fired[k] = 1; fn && fn(); } };
-    fire('start', 0, cb.start); fire('sit', .25, cb.sit); fire('paper', 2.5, cb.paper); fire('bells', 3.4, cb.bells);
+    fire('start', 0, cb.start); fire('sit', .25, cb.sit); fire('lift', 1.15, cb.paper); fire('paper', 2.6, cb.paper); fire('bells', 3.4, cb.bells);
     fire('arrive', 5.2, () => { this.arrive(6, cb.stop); cb.arrive && cb.arrive(false); });
     // when the doors open, the view lifts out of your head and pulls back: you stay on the bench, headphones on
     fire('leave', 12.1, () => { this.introGroup.visible = false; this._me(true); cb.leave && cb.leave(); });
@@ -487,19 +491,24 @@ export class Station {
     else if (e < 12.1) c.position.copy(this.seat);
     else { const u = easeInOut(Math.min(1, (e - 12.1) / 1.5)); c.position.lerpVectors(this.seat, back, u); c.position.y += Math.sin(Math.PI * Math.min(1, u * 1.4)) * .3; } // up over your head, then back
     c.position.y += Math.sin(t * 1.7) * .005 + (e > 1.1 && e < 1.5 ? -Math.sin((e - 1.1) / .4 * Math.PI) * .03 : 0);
-    // where the attention goes: down at the ticket, up, a look left down the platform, then the horn pulls it right to the train
+    // the ticket: on your lap as you sit, lifted up to your face and looked over, then lowered as the train is coming
+    const lift = e < 1.1 ? 0 : e < 2.05 ? easeInOut((e - 1.1) / .95) : e < 3.55 ? 1 : e < 4.5 ? 1 - easeInOut((e - 3.55) / .95) : 0;
+    const fid = e > 2.6 && e < 3.4 ? Math.sin((e - 2.6) / .8 * Math.PI) : 0, read = Math.max(0, Math.min(1, (e - 1.8) / .5)) * Math.max(0, Math.min(1, (3.6 - e) / .4));
+    this.rig.position.lerpVectors(this.rigPos, this.rigUp, lift);
+    this.rig.position.z += Math.sin(lift * Math.PI) * .05; // it comes up toward you in an arc, not a straight line
+    this.rig.quaternion.slerpQuaternions(this.rigBase, this.rigUpQ, lift);
+    // reading it: tilted to catch the light, turned a little to look at the stamp, a small fidget
+    this.rig.rotateY(Math.sin((e - 1.8) * 1.3) * .14 * read); this.rig.rotateX(Math.sin(t * 1.7) * .02 - read * .05 * Math.sin((e - 2) * .9));
+    this.rig.rotateZ(fid * .1 + Math.sin(lift * Math.PI) * .06);
+    // where the attention goes: ahead as you sit, then the ticket as it comes up, then the train
     const front = this.cars[0].position.x + this.trainX - CAR_L / 2 - NOSE_L + .3, tgt = new THREE.Vector3();
     let tracking = false, reading = false;
     if (e < 1.0) tgt.set(0, 1.5, this.seat.z - 3.5);
-    else if (e < 3.6) { tgt.set(.02 + Math.sin(e * 1.1) * .025, 1.31, this.seat.z - .42); reading = true; }
+    else if (e < 3.6) { tgt.lerpVectors(this.rigPos, this.rigUp, .5 + .5 * lift); tgt.x += Math.sin(e * 1.1) * .02 * read; tgt.y -= .01; reading = true; } // the ticket comes up to meet the eyes
     // one long, smooth turn up and to the right, toward where the train comes from, that then follows its nose in
     else if (e < 11.4) { tgt.set(Math.max(-2.5, Math.min(18, front)), 2.0, 0); tracking = true; I.turn = I.turn || e; }
     else tgt.set(-1.2, 1.95, 0);
     this._head(tgt, t, dt, tracking, reading);
-    // the ticket gets a small fidget, then the hands drop away as you stand
-    const fid = e > 2.5 && e < 3.3 ? Math.sin((e - 2.5) / .8 * Math.PI) : 0;
-    this.rig.quaternion.copy(this.rigBase); this.rig.rotateZ(fid * .12); this.rig.rotateX(Math.sin(t * 1.7) * .02);
-    this.rig.position.copy(this.rigPos);
     if (e > 13.6) { this.intro = null; this.introGroup.visible = false; this._me(true); this.blendUntil = t + 2.8; cb.end && cb.end(); }
   }
 
