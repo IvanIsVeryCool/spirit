@@ -4,7 +4,7 @@ import { EffectComposer } from '/vendor/jsm/postprocessing/EffectComposer.js';
 import { RenderPass } from '/vendor/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from '/vendor/jsm/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from '/vendor/jsm/postprocessing/OutputPass.js';
-import { mergeStatic, addPeople, mergePeople, updatePeople, addPlatformProps, addBackground, updateBackground } from './scenery.js';
+import { mergeStatic, addPeople, updatePeople, addPlatformProps, addBackground, updateBackground } from './scenery.js';
 import { CAR_L, GAP, W, H, BASE, FLOOR, DOOR_W, DOOR_H, NOSE_L, bodyGeometry, capGeometry, noseGeometry, nosePoint, paintBody, paintNose, windowTexture, windowSlots } from './train.js';
 import { buildInterior } from './interior.js';
 import { Crowd } from './crowd.js';
@@ -77,7 +77,7 @@ export class Station {
     // hundreds of small static parts become one draw call per material
     this.cars.forEach(c => { c.userData.keep = true; }); mergeStatic(this.train);
     this.cars.forEach(c => { c.userData.keep = false; mergeStatic(c); });
-    mergeStatic(propGroup); mergePeople(this); mergeStatic(this.wireGroup);
+    mergeStatic(propGroup); mergeStatic(this.wireGroup);
     // frame-time watch: drop the resolution a notch on slower machines instead of stuttering
     this.prMax = Math.min(devicePixelRatio || 1, mobile ? 1.5 : 1.75); this.pr = this.prMax; this.ft = { last: 0, avg: 16, check: 0, calm: 0 };
 
@@ -477,14 +477,14 @@ export class Station {
     this.blendUntil = this.clock.elapsedTime + 2.5;
     I.cb.end && I.cb.end();
   }
-  _me(on) { if (this.listener) this.listener.g.visible = on; }
+  _me(on) { if (this.listener) this.listener.root.visible = on; }
   _introFrame(t, dt) {
     const I = this.intro, e = t - I.t0, cb = I.cb;
     const fire = (k, at, fn) => { if (e >= at && !I.fired[k]) { I.fired[k] = 1; fn && fn(); } };
-    fire('sit', .25, cb.sit); fire('paper', 2.5, cb.paper); fire('bells', 3.4, cb.bells);
+    fire('start', 0, cb.start); fire('sit', .25, cb.sit); fire('paper', 2.5, cb.paper); fire('bells', 3.4, cb.bells);
     fire('arrive', 5.2, () => { this.arrive(6, cb.stop); cb.arrive && cb.arrive(false); });
     // when the doors open, the view lifts out of your head and pulls back: you stay on the bench, headphones on
-    fire('leave', 12.1, () => { this.introGroup.visible = false; this._me(true); });
+    fire('leave', 12.1, () => { this.introGroup.visible = false; this._me(true); cb.leave && cb.leave(); });
     // where the eyes are: sit down, breathe, then rise up and back
     const stand0 = new THREE.Vector3(0, 2.86, this.seat.z + .75), back = new THREE.Vector3(.5, 2.4, this.seat.z + 2.3), c = this.camera;
     if (e < 1.3) c.position.lerpVectors(stand0, this.seat, easeInOut(e / 1.3));

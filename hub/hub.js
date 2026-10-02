@@ -163,12 +163,23 @@ function setSound(on, remember) {
   audio.setEnabled(on);
   if (remember) try { if (on) localStorage.removeItem('spirit-sound'); else localStorage.setItem('spirit-sound', 'off'); } catch (e) {}
   $('sound-btn').classList.toggle('on', on); $('sound-btn').setAttribute('aria-pressed', String(on));
-  $('sound-label').textContent = on ? 'Sound on' : 'Sound off';
+  soundLabel();
 }
-$('sound-btn').addEventListener('click', () => { setSound(!audio.enabled, true); audio.tick(); });
-// browsers hold audio until the first tap or key press, so start it then
-const unlockAudio = () => { if (audio.enabled && audio.ctx && audio.ctx.state === 'suspended') audio.ctx.resume().then(() => audio.setEnabled(true)); };
+// After a reload, browsers keep audio paused until the first click, tap or key press on the page.
+// Until then the button says so; the first press anywhere (the button included) starts the sound.
+const held = () => audio.enabled && (!audio.ctx || audio.ctx.state !== 'running');
+function soundLabel() { $('sound-label').textContent = !audio.enabled ? 'Sound off' : held() ? 'Tap for sound' : 'Sound on'; }
+let wokeAt = 0;
+const unlockAudio = () => {
+  if (!audio.enabled || !audio.ctx || audio.ctx.state === 'running') return;
+  wokeAt = performance.now(); audio.ctx.resume().then(() => { audio.setEnabled(true); soundLabel(); });
+};
 ['pointerdown', 'keydown', 'touchend'].forEach(ev => addEventListener(ev, unlockAudio, { capture: true, passive: true }));
+$('sound-btn').addEventListener('click', () => {
+  if (audio.enabled && performance.now() - wokeAt < 1000) { soundLabel(); audio.tick(); return; } // this press just woke the sound up
+  setSound(!audio.enabled, true); audio.tick();
+});
+setInterval(soundLabel, 1000); // the browser can also resume or suspend on its own
 
 /* arrival */
 function arrived() {
@@ -203,7 +214,8 @@ async function boot() {
   const stage = (async () => {
     if (reduce) return;
     try {
-      const { Station } = await import('./station.js');
+      const [{ Station }, { loadPeople }] = await Promise.all([import('./station.js'), import('./people.js')]);
+      await loadPeople(); // the Mini Characters, before the scene that uses them is built
       const logo = new Image(); logo.src = '/assets/logo.png'; await logo.decode().catch(() => {});
       station = new Station($('station'), { mobile, doors: DOORS, logo: logo.naturalWidth ? logo : null }); if (location.hash === '#debug') { window.__st = station; window.__audio = audio; } station.render();
     }
@@ -252,10 +264,13 @@ function quickEnter() {
   setTimeout(() => showBoard(), 700);
 }
 // you're sitting on the bench, ticket in hand, and the train pulls in
+let song = null;
 function playIntro() {
   audio.beginScene();
   introPlaying = true; document.body.classList.add('intro');
   station.startIntro(ticketCanvas(), {
+    // your headphones: a song plays while you're in your own head, and fades as the view pulls out
+    start: () => { song = audio.music(); }, leave: () => { if (song) song.stop(1.4); song = null; },
     sit: () => audio.sit(), paper: () => audio.paper(), bells: () => audio.bells(8.5),
     arrive: skipped => { if (!skipped) audio.arrive(6, { bells: false }); },
     stop: arrived, end: endIntro
@@ -263,7 +278,8 @@ function playIntro() {
 }
 function endIntro() {
   if (!introPlaying) return; introPlaying = false;
-  audio.endScene(2.5); // everything has played out by now; just let the reverb tails go document.body.classList.add('entered');
+  audio.endScene(2.5); // everything has played out by now; just let the reverb tails go
+  document.body.classList.add('entered');
   document.body.classList.remove('intro');
   setTimeout(() => showBoard(), 600);
 }
@@ -275,7 +291,7 @@ $('replay-btn').addEventListener('click', () => {
   playIntro();
 });
 // skipping cuts the opening's sounds too (bells, horn and the arrival are scheduled ahead), with a short fade
-function skipIntro() { if (!station || !introPlaying) return; audio.endScene(.4); station.skipIntro(); }
+function skipIntro() { if (!station || !introPlaying) return; if (song) song.stop(.4); song = null; audio.endScene(.4); station.skipIntro(); }
 $('skip').addEventListener('click', skipIntro);
 addEventListener('keydown', e => { if (introPlaying && (e.key === 'Escape' || e.key === ' ')) { e.preventDefault(); skipIntro(); } });
 $('enter-sound').addEventListener('click', () => enter(true));

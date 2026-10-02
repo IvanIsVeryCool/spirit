@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { Person, SCALE, HIP_SIT } from './people.js';
 
 // People waiting on the platform, the town on the hills, traffic behind the fence, clouds, birds,
 // and the small things a real platform has. Everything here is cheap: shared materials,
@@ -7,6 +8,7 @@ import * as THREE from 'three';
 const V = (x, y, z) => new THREE.Vector3(x, y, z);
 const glowMat = (hex, k) => { const m = new THREE.MeshBasicMaterial({ color: new THREE.Color(hex).multiplyScalar(k) }); m.toneMapped = false; return m; };
 const canvasTex = (w, h, draw) => { const c = document.createElement('canvas'); c.width = w; c.height = h; draw(c.getContext('2d'), w, h); const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; return t; };
+const mats = {}, mat = (hex, rough = .85) => mats[hex + '_' + rough] || (mats[hex + '_' + rough] = new THREE.MeshStandardMaterial({ color: hex, roughness: rough }));
 const rand = (() => { let s = 7; return () => (s = (s * 16807) % 2147483647) / 2147483647; })(); // same town every visit
 
 /* ---------- merging: many small static meshes into one draw call per material ---------- */
@@ -60,147 +62,27 @@ export function mergeStatic(root) {
   return merged;
 }
 
-/* ---------- people ----------
-   An original friendly-avatar style: a big round head with dot eyes, light brows, a small smile and rosy cheeks,
-   on a soft rounded body. The head is described once here (relative to the neck pivot) and used by person()
-   below, by the crowd's instanced parts (crowd.js) and, through person(), by the passengers inside the cars. */
-export const HEAD_R = .155;
-// toy-avatar proportions: the body is drawn at BODY_K of full size and the head at HEAD_K of that again,
-// so the head is about a third of the figure and sits straight on the shoulders
-export const BODY_K = .8, HEAD_K = 1.55;
-// the enlarged head is lowered onto the shoulders (no neck): its centre lands .17 above the neck pivot
-export const HEAD_DROP = .2 * HEAD_K - .17;
-// one smooth bean-shaped torso, hips to shoulders, turned on a lathe (origin at the hips)
-// a rounded toy shoe: a soft dome on a flat sole, toe forward (-z), origin at the ankle
-export function shoeGeometry() {
-  const top = new THREE.SphereGeometry(1, 20, 10, 0, Math.PI * 2, 0, Math.PI / 2); top.scale(.062, .07, .1); top.translate(0, -.075, -.035);
-  const sole = new THREE.CylinderGeometry(1, 1, 1, 20); sole.scale(.064, .018, .102); sole.translate(0, -.084, -.035);
-  return [top, sole];
-}
-// thin straight toy limbs
-export const LIMB_R = { thigh: .052, shin: .048, upper: .04, fore: .037 };
-export function torsoGeometry() {
-  const prof = [[0, -.09], [.12, -.085], [.185, -.04], [.205, .06], [.2, .2], [.18, .34], [.14, .45], [.08, .52], [0, .545]].map(([r, y]) => new THREE.Vector2(r, y));
-  const g = new THREE.LatheGeometry(prof, 28); g.scale(1.12, 1, .82); g.computeVertexNormals(); return g;
-}
-const HQ = (x = 0, y = 0, z = 0, rx = 0, ry = 0, rz = 0, sx = 1, sy = 1, sz = 1) => new THREE.Matrix4().compose(V(x, y, z), new THREE.Quaternion().setFromEuler(new THREE.Euler(rx, ry, rz)), V(sx, sy, sz));
-// each part: [geometry, matrix, colour]; colour 'skin' or 'hair' means the person's own
-export function headParts() {
-  const R = HEAD_R, fz = -R * .95, S = (r, w = 16, h = 12, ...a) => new THREE.SphereGeometry(r, w, h, ...a);
-  const smile = new THREE.TorusGeometry(.024, .0055, 6, 14, Math.PI);
-  return {
-    face: [
-      [S(R, 24, 18), HQ(0, .2, 0, 0, 0, 0, 1.03, .97, .97), 'skin'],                          // head
-      [S(.03, 10, 8), HQ(-R, .2, .005, 0, 0, 0, .45, 1, .8), 'skin'], [S(.03, 10, 8), HQ(R, .2, .005, 0, 0, 0, .45, 1, .8), 'skin'], // ears
-      [S(.015, 10, 8), HQ(0, .188, fz - .006), 'skin'],                                     // nose
-      ...[-1, 1].flatMap(sd => [
-        [S(.021, 12, 10), HQ(sd * .054, .214, fz + .003, 0, 0, 0, .78, 1.2, .5), 0x1d1715],   // eyes
-        [S(.0065, 8, 6), HQ(sd * .054 + .007, .227, fz - .006), 0xffffff],                  // a glint in each
-        [new THREE.BoxGeometry(.046, .01, .012), HQ(sd * .056, .262, fz + .01, 0, 0, -sd * .14), 0x2e211a], // brows
-        [S(.022, 10, 8), HQ(sd * .088, .172, fz + .02, 0, 0, 0, 1, .62, .35), 0xff9c94]     // cheeks
-      ]),
-      [smile, HQ(0, .162, fz + .004, 0, 0, Math.PI), 0x8a3a38]                             // smile
-    ],
-    short: [[S(R * 1.05, 24, 12, 0, Math.PI * 2, 0, Math.PI * .5), HQ(0, .212, .014, .36), 'hair'], [S(R * .95, 20, 14), HQ(0, .185, .03, 0, 0, 0, .99, .86, .84), 'hair']],
-    long: [[new THREE.CapsuleGeometry(.12, .2, 4, 12), HQ(0, .14, .07, 0, 0, 0, 1.1, 1, .9), 'hair']],
-    hat: [[S(R * 1.04, 24, 12, 0, Math.PI * 2, 0, Math.PI * .56), HQ(0, .215), 'hat'], [new THREE.TorusGeometry(R * .96, .026, 8, 24), HQ(0, .235, 0, Math.PI / 2), 'hat']]
-  };
-}
-
-export const SKIN = [0x8d5a3b, 0xc68863, 0xe0ac8a, 0x6b432b, 0xb57a52, 0xf0c3a2, 0x9b6a48];
-export const HAIR = [0x16110e, 0x2b1d14, 0x4a3020, 0x8a6a3a, 0x0e0c0b, 0x5a3a24];
-export const TOPS = [0x1f2a4d, 0xc9272c, 0x6d727c, 0x2f4a3a, 0xa8832e, 0xbdb6a8, 0x3a2f4a, 0x8a4a3a, 0x2c3a5a, 0x3f8f8a, 0xe0a030, 0x5c8de0, 0xd9545a];
-export const PANTS = [0x2c3a5a, 0x1d1f26, 0x8a7a5c, 0x3b4e6e, 0x4a4a52];
-const mats = {};
-const mat = (hex, rough = .85) => mats[hex + '_' + rough] || (mats[hex + '_' + rough] = new THREE.MeshStandardMaterial({ color: hex, roughness: rough }));
-const limb = (a, b, r, m) => {
-  const v = new THREE.Vector3().subVectors(b, a), mesh = new THREE.Mesh(new THREE.CapsuleGeometry(r, Math.max(.001, v.length()), 3, 8), m);
-  mesh.position.copy(a).addScaledVector(v, .5); mesh.quaternion.setFromUnitVectors(V(0, 1, 0), v.normalize()); return mesh;
-};
-let PHONE_SCREEN = null;
-
-// A figure facing -z (toward the train). pose: 'sit' | 'stand'; hands: 'lap' | 'phone' | 'pockets' | 'book'
-export function person({ pose = 'sit', hands = 'lap', top, pants, skin, hair, hat = null, bag = false, longHair = false, headphones = false, scale = 1 }) {
-  const g = new THREE.Group(), body = new THREE.Group(); g.add(body);
-  const M = { top: mat(top), pants: mat(pants, .9), skin: mat(skin, .6), hair: mat(hair, .7), shoe: mat(0xefece6, .7), sole: mat(0x2a2a2e, .9) };
-  const sit = pose === 'sit';
-  const hipY = sit ? .72 : .8, hipZ = sit ? .02 : 0;
-  // legs
-  [-1, 1].forEach(sd => {
-    const hip = V(sd * .1, hipY, hipZ);
-    // short toy legs: seated, the feet swing a little above the floor
-    const knee = sit ? V(sd * .12, hipY + .01, -.33) : V(sd * .1, .45, -.02);
-    const ankle = sit ? V(sd * .13, .27, -.39) : V(sd * .1, .1, 0);
-    body.add(limb(hip, knee, LIMB_R.thigh, M.pants), limb(knee, ankle, LIMB_R.shin, M.pants));
-    const [top, base] = shoeGeometry();
-    [[top, M.shoe], [base, M.sole]].forEach(([geo, m]) => { const sh = new THREE.Mesh(geo, m); sh.position.copy(ankle); body.add(sh); });
-  });
-  body.add(limb(V(-.08, hipY, hipZ), V(.08, hipY, hipZ), .085, M.pants));
-  // torso: a softened block, slightly leaning back when seated
-  const lean = sit ? .12 : 0, chest = V(0, hipY + .34, hipZ + lean * .4), shY = hipY + .5;
-  const torso = new THREE.Mesh(torsoGeometry(), M.top); torso.position.set(0, hipY, hipZ); torso.rotation.x = lean; body.add(torso);
-  // arms
-  const sh = [-1, 1].map(sd => V(sd * .235, shY - .01, hipZ + lean * .55));
-  [-1, 1].forEach((sd, i) => {
-    let elbow, hand;
-    if (hands === 'phone' || hands === 'book') { elbow = V(sd * .2, shY - .27, hipZ - .05); hand = V(sd * .07, shY - .2, hipZ - .27); }
-    else if (hands === 'pockets') { elbow = V(sd * .25, shY - .26, hipZ + .04); hand = V(sd * .17, hipY + .02, hipZ - .06); }
-    else { elbow = V(sd * .22, shY - .28, hipZ - .02); hand = V(sd * .14, hipY + .1, hipZ - .3); }
-    body.add(limb(sh[i], elbow, LIMB_R.upper, M.top), limb(elbow, hand, LIMB_R.fore, M.top));
-    if (hands !== 'pockets') { const h = new THREE.Mesh(new THREE.SphereGeometry(.052, 12, 10), M.skin); h.position.copy(hand); body.add(h); } // round mitten hands
-  });
-  if (hands === 'phone') {
-    const ph = new THREE.Mesh(new THREE.BoxGeometry(.075, .15, .012), mat(0x15161b, .3)); ph.position.set(0, shY - .17, hipZ - .3); ph.rotation.x = -.9; body.add(ph);
-    PHONE_SCREEN = PHONE_SCREEN || glowMat(0x9fc4ff, .9);
-    const sc = new THREE.Mesh(new THREE.PlaneGeometry(.062, .13), PHONE_SCREEN); sc.position.set(0, shY - .165, hipZ - .307); sc.rotation.x = -.9 - Math.PI; sc.rotation.z = Math.PI; body.add(sc);
-  }
-  if (hands === 'book') {
-    const bk = new THREE.Mesh(new THREE.BoxGeometry(.26, .19, .03), mat(0xb8402e, .8)); bk.position.set(0, shY - .15, hipZ - .31); bk.rotation.x = -1.0; body.add(bk);
-    const pg = new THREE.Mesh(new THREE.BoxGeometry(.24, .175, .032), mat(0xf3eee2, .9)); pg.position.copy(bk.position); pg.position.y += .006; pg.rotation.x = -1.0; body.add(pg);
-  }
-  if (bag) {
-    const b = new THREE.Mesh(new THREE.CapsuleGeometry(.13, .14, 4, 10), mat(bag, .85)); b.scale.set(1.15, 1, .6);
-    if (sit) b.position.set(.42, .7, .02); else b.position.set(0, shY - .2, hipZ + .2);
-    body.add(b);
-  }
-  // head on a neck pivot, so it can turn
-  const head = new THREE.Group(); head.position.set(0, shY + .06, hipZ + lean * .62); head.userData.keep = true; g.add(head);
-  const H = headParts(), colour = (c, hatCol) => c === 'skin' ? M.skin : c === 'hair' ? M.hair : c === 'hat' ? mat(hatCol, .9) : mat(c, c === 0xffffff ? .3 : .5);
-  const put = parts => parts.forEach(([geo, m, c]) => { const mesh = new THREE.Mesh(geo, colour(c, hat)); m.decompose(mesh.position, mesh.quaternion, mesh.scale); head.add(mesh); });
-  put(H.face);
-  if (hat) put(H.hat); else { put(H.short); if (longHair) put(H.long); }
-  if (headphones) { // a band over the top and two padded cups
-    const band = new THREE.Mesh(new THREE.TorusGeometry(HEAD_R * 1.12, .015, 6, 24, Math.PI), mat(0x1d1f26, .5)); band.position.set(0, .215, .01); head.add(band);
-    [-1, 1].forEach(sd => {
-      const cup = new THREE.Mesh(new THREE.CylinderGeometry(.06, .06, .05, 20), mat(0xc9272c, .45)); cup.rotation.z = Math.PI / 2; cup.position.set(sd * (HEAD_R + .02), .2, .01); head.add(cup);
-      const pad = new THREE.Mesh(new THREE.CylinderGeometry(.052, .052, .02, 18), mat(0x1d1f26, .8)); pad.rotation.z = Math.PI / 2; pad.position.set(sd * (HEAD_R - .004), .2, .01); head.add(pad);
-    });
-  }
-  head.scale.setScalar(HEAD_K); head.position.y -= HEAD_DROP; g.scale.setScalar(scale * BODY_K);
-  g.traverse(o => { if (o.isMesh) o.userData.cast = true; });
-  return { g, head, phone: hands === 'phone', reading: hands === 'book' };
-}
-
-// The people waiting on the platform, walking by and riding past live in crowd.js. This is just you:
+/* ---------- you ----------
+   You, from the opening: still on the middle bench once the camera pulls away, red headphones on, nodding along.
+   One of Kenney's Mini Characters (people.js) like everyone else; the crowd lives in crowd.js. */
 export function addPeople(st) {
-  const FLOOR = st.FLOOR, benchZ = st.front + 5.8, people = [];
-  // you, from the opening: still on the middle bench once the camera pulls away, headphones on, nodding along
-  const me = person({ pose: 'sit', hands: 'phone', top: 0x2b3352, pants: 0x34405e, skin: 0xc98a64, hair: 0x16110e, headphones: true });
-  me.g.position.set(0, FLOOR, benchZ); Object.assign(me, { yaw0: 0, seed: 0, look: 0, lookPitch: .3, music: true });
-  st.scene.add(me.g); people.push(me); st.listener = me;
-  st.people = people;
-  return people;
-}
-export function mergePeople(st) { st.people.forEach(p => { mergeStatic(p.g); mergeStatic(p.head); }); }
-
-// you, nodding along on the bench
-export function updatePeople(st, t) {
-  st.people.forEach(p => {
-    if (!p.music) return;
-    const beat = t * 1.68, ph = beat % 1, nod = Math.exp(-ph * 7) - .5 * Math.exp(-(1 - ph) * 9), sway = Math.sin(beat * Math.PI); // about 100 bpm
-    p.head.rotation.set(-(p.lookPitch + nod * .1), sway * .1, sway * .05);
-    p.g.rotation.z = sway * .012;
+  const me = new Person(0), H = me.bones.head; // model units here: the head is about .45 wide, its centre .17 above the neck
+  me.root.position.set(0, st.FLOOR + .52 - HIP_SIT * SCALE + .01, st.front + 5.8 + .06); me.pose('sit', { fade: 0 });
+  const band = new THREE.Mesh(new THREE.TorusGeometry(.25, .018, 8, 28, Math.PI), mat(0x1d1f26, .5)); band.position.set(0, .17, 0); H.add(band);
+  [-1, 1].forEach(sd => {
+    const cup = new THREE.Mesh(new THREE.CylinderGeometry(.085, .085, .06, 20), mat(0xc9272c, .45)); cup.rotation.z = Math.PI / 2; cup.position.set(sd * .245, .15, 0); H.add(cup);
+    const pad = new THREE.Mesh(new THREE.CylinderGeometry(.07, .07, .02, 18), mat(0x1d1f26, .8)); pad.rotation.z = Math.PI / 2; pad.position.set(sd * .27, .15, 0); H.add(pad);
   });
+  H.traverse(o => { if (o.isMesh) { o.userData.cast = true; o.userData.keep = true; } });
+  st.scene.add(me.root); st.listener = me;
+  return me;
+}
+// you nod on the beat (about 100 bpm) and sway every two
+export function updatePeople(st, t, dt) {
+  const me = st.listener; if (!me) return;
+  const beat = t * 1.68, ph = beat % 1, nod = Math.exp(-ph * 7) - .5 * Math.exp(-(1 - ph) * 9), sway = Math.sin(beat * Math.PI);
+  Object.assign(me.look, { pitch: .1 + nod * .1, yaw: sway * .1, roll: sway * .05 });
+  me.root.rotation.z = sway * .012; me.update(dt);
 }
 
 /* ---------- platform things ---------- */

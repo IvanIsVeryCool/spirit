@@ -22,13 +22,22 @@ try { soundPref = localStorage.getItem('spirit-sound') !== 'off'; } catch (e) {}
 function setSound(on, remember) {
   audio.setEnabled(on);
   $('sound-btn').classList.toggle('on', on); $('sound-btn').setAttribute('aria-pressed', String(on));
-  $('sound-label').textContent = on ? 'Sound on' : 'Sound off';
+  soundLabel();
   if (remember) try { if (on) localStorage.removeItem('spirit-sound'); else localStorage.setItem('spirit-sound', 'off'); } catch (e) {}
   if (hum) hum.set(on && ride && ride.state === 'ride' ? ride.speed : 0);
 }
-$('sound-btn').addEventListener('click', () => { setSound(!audio.enabled, true); audio.tick(); });
-const unlock = () => { if (audio.enabled && audio.ctx && audio.ctx.state === 'suspended') audio.ctx.resume().then(() => audio.setEnabled(true)); };
+// browsers keep audio paused on a new page until the first click, tap or key; until then the button says so,
+// and the first press anywhere (the button included) starts it
+const held = () => audio.enabled && (!audio.ctx || audio.ctx.state !== 'running');
+function soundLabel() { $('sound-label').textContent = !audio.enabled ? 'Sound off' : held() ? 'Tap for sound' : 'Sound on'; }
+let wokeAt = 0;
+const unlock = () => { if (!audio.enabled || !audio.ctx || audio.ctx.state === 'running') return; wokeAt = performance.now(); audio.ctx.resume().then(() => { audio.setEnabled(true); soundLabel(); }); };
 ['pointerdown', 'keydown', 'touchend'].forEach(ev => addEventListener(ev, unlock, { capture: true, passive: true }));
+$('sound-btn').addEventListener('click', () => {
+  if (audio.enabled && performance.now() - wokeAt < 1000) { soundLabel(); audio.tick(); return; } // this press just woke the sound up
+  setSound(!audio.enabled, true); audio.tick();
+});
+setInterval(soundLabel, 1000);
 
 /* ---------- data ---------- */
 const CACHE_KEY = 'spirit-cache-' + CONFIG.sheetId;

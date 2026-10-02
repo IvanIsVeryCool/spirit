@@ -157,6 +157,47 @@ export class StationAudio {
       stop: () => { dead = true; const n = ctx.currentTime; bus.gain.setTargetAtTime(0, n, .4); setTimeout(() => { rumble.stop(); tones.forEach(x => x.o.stop()); bus.disconnect(); }, 2500); }
     };
   }
+  // A little lo-fi song in your headphones during the opening (100 bpm, Fmaj7–Em7–Dm7–Cmaj7, warm electric piano,
+  // round bass, soft brushed drums, a few bell notes). It's dry and quiet, under the station sounds, and goes through
+  // the opening's own gains, so skipping cuts it too. Returns { stop(fade) }.
+  music() {
+    if (!this.ctx) return { stop() {} };
+    const ctx = this.ctx, bus = ctx.createGain(), tone = ctx.createBiquadFilter(), BEAT = 60 / 100;
+    tone.type = 'lowpass'; tone.frequency.value = 3200; bus.gain.value = 0;
+    bus.connect(tone).connect(this.outDry);
+    bus.gain.setValueAtTime(0, ctx.currentTime); bus.gain.linearRampToValueAtTime(.16, ctx.currentTime + 1.8);
+    const CHORDS = [[53, 57, 60, 64], [52, 55, 59, 62], [50, 53, 57, 60], [48, 52, 55, 59]];
+    const MEL = [[0, 76], [1.5, 74], [2, 72], [4, 74], [5.5, 72], [6, 69], [8, 72], [9.5, 71], [10, 69], [12, 67], [13, 69], [14.5, 72]];
+    const keys = (n, t, len, g) => { // electric piano: a sine with a faint octave, a soft attack and a gentle tremolo
+      [[1, 1], [2, .18]].forEach(([m, a]) => {
+        const o = ctx.createOscillator(), v = ctx.createGain(); o.type = 'sine'; o.frequency.value = NOTE(n) * m;
+        v.gain.setValueAtTime(.0001, t); v.gain.exponentialRampToValueAtTime(g * a, t + .02); v.gain.exponentialRampToValueAtTime(g * a * .35, t + .5); v.gain.exponentialRampToValueAtTime(.0001, t + len);
+        o.connect(v).connect(bus); o.start(t); o.stop(t + len + .05);
+      });
+    };
+    const bass = (n, t, len) => { const o = ctx.createOscillator(), v = ctx.createGain(); o.type = 'triangle'; o.frequency.value = NOTE(n); v.gain.setValueAtTime(.0001, t); v.gain.exponentialRampToValueAtTime(.32, t + .015); v.gain.exponentialRampToValueAtTime(.0001, t + len); o.connect(v).connect(bus); o.start(t); o.stop(t + len + .05); };
+    const kick = t => { const o = ctx.createOscillator(), v = ctx.createGain(); o.frequency.setValueAtTime(110, t); o.frequency.exponentialRampToValueAtTime(42, t + .12); v.gain.setValueAtTime(.0001, t); v.gain.exponentialRampToValueAtTime(.5, t + .005); v.gain.exponentialRampToValueAtTime(.0001, t + .3); o.connect(v).connect(bus); o.start(t); o.stop(t + .32); };
+    const hiss = (t, dur, type, f, peak) => { const src = ctx.createBufferSource(), fl = ctx.createBiquadFilter(), v = ctx.createGain(); src.buffer = this.noise; fl.type = type; fl.frequency.value = f; fl.Q.value = .8; v.gain.setValueAtTime(.0001, t); v.gain.exponentialRampToValueAtTime(peak, t + .004); v.gain.exponentialRampToValueAtTime(.0001, t + dur); src.connect(fl).connect(v).connect(bus); src.start(t, Math.random() * 2); src.stop(t + dur + .02); };
+    let bar = 0, next = ctx.currentTime + .1, dead = false;
+    const schedule = () => { // a bar at a time, a little ahead of the clock
+      if (dead) return;
+      while (next < ctx.currentTime + .6) {
+        const ch = CHORDS[bar % 4], t0 = next;
+        ch.forEach((n, i) => keys(n, t0 + i * .012, BEAT * 3.6, .05)); keys(ch[1] + 12, t0 + BEAT * 2.5, BEAT * 1.4, .025);
+        bass(ch[0] - 12, t0, BEAT * 1.7); bass(ch[0] - 12, t0 + BEAT * 2, BEAT * .8); bass(ch[2] - 12, t0 + BEAT * 3, BEAT * .9);
+        for (let b = 0; b < 4; b++) {
+          const t = t0 + b * BEAT, swing = BEAT * .56;
+          if (b === 0 || b === 2) kick(t + (b === 2 ? BEAT * .5 : 0)); if (b === 1 || b === 3) hiss(t, .18, 'bandpass', 1900, .1);
+          hiss(t, .05, 'highpass', 7000, .035); hiss(t + swing, .04, 'highpass', 7000, .02);
+        }
+        if (bar >= 2) MEL.filter(([b]) => Math.floor(b / 4) === bar % 4).forEach(([b, n]) => keys(n, t0 + (b % 4) * BEAT, BEAT * 1.5, .03));
+        bar++; next += BEAT * 4;
+      }
+      setTimeout(schedule, 200);
+    };
+    schedule();
+    return { stop: (fade = 1.2) => { if (dead) return; dead = true; const t = ctx.currentTime; bus.gain.cancelScheduledValues(t); bus.gain.setValueAtTime(bus.gain.value, t); bus.gain.linearRampToValueAtTime(0, t + fade); setTimeout(() => bus.disconnect(), fade * 1000 + 3000); } };
+  }
   // platform announcement chime
   chime() {
     if (!this.live) return;

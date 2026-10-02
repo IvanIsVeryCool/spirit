@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { CAR_L, FLOOR, DOOR_W, DOOR_H, shellRing, windowSlots } from './train.js';
-import { person } from './scenery.js';
+import { posedGeometry, SCALE, HIP_SIT } from './people.js';
 
 // The inside of each car, seen through its open door and flown through when you board:
 // a platform-level vestibule, stairs up to the upper deck, a step down to the lower deck,
@@ -63,7 +63,7 @@ class Baked {
     for (let i = 0; i < pos.count; i++) { P.push(V(pos.getX(i), pos.getY(i), pos.getZ(i)).applyMatrix4(m)); N.push(V(nor.getX(i), nor.getY(i), nor.getZ(i)).applyMatrix3(nm).normalize()); }
     for (let t = 0; t < P.length; t += 3) {
       const order = flip ? [0, 2, 1] : [0, 1, 2];
-      order.forEach(k => { const p = P[t + k], n = N[t + k]; this.vert(p, n, typeof paint === 'function' ? paint(p, n) : paint, uvs, lit); });
+      order.forEach(k => { const p = P[t + k], n = N[t + k]; this.vert(p, n, paint === 'vertex' ? _vc.fromBufferAttribute(g.attributes.color, t + k) : typeof paint === 'function' ? paint(p, n) : paint, uvs, lit); });
     }
     if (g !== geo) g.dispose();
   }
@@ -75,7 +75,7 @@ class Baked {
     const m = new THREE.Mesh(g, material); m.userData.noShadow = true; return m;
   }
 }
-const _lc = new THREE.Color();
+const _lc = new THREE.Color(), _vc = new THREE.Color();
 const M4 = new THREE.Matrix4(), I4 = new THREE.Matrix4();
 const boxGeo = (w, h, d) => new THREE.BoxGeometry(w, h, d, Math.max(1, Math.ceil(w / .35)), Math.max(1, Math.ceil(h / .35)), Math.max(1, Math.ceil(d / .35)));
 // an axis-aligned box from its extents
@@ -302,19 +302,10 @@ export function buildInterior(car, { ledMat, plateMat, idx = 0 }) {
   bench(-END + .36, UPPER, -.04, 1.2, 1); bench(-END + .36, UPPER, -1.24, -.66, 1);
   // grab handles on the aisle corners
 
-  /* ---- passengers, baked in with the rest ---- */
-  const riders = [
-    [{ hands: 'phone', top: 0x2f4a3a, pants: 0x1d1f26, skin: 0xc68863, hair: 0x16110e }, 3.45, LOWER, -.92, -1],
-    [{ hands: 'book', top: 0xa8832e, pants: 0x2c3a5a, skin: 0x6b432b, hair: 0x0e0c0b, longHair: true }, -END + .36, UPPER, -.95, 1],
-    [{ hands: 'lap', top: 0x3a2f4a, pants: 0x4a4a52, skin: 0xe0ac8a, hair: 0x8a6a3a, hat: 0x1f2a4d }, 3.45, LOWER, -.92, -1],
-    [{ hands: 'phone', top: 0x8a4a3a, pants: 0x3b4e6e, skin: 0xb57a52, hair: 0x2b1d14, longHair: true }, -END + .36, UPPER, -.95, 1]
-  ];
-  const rd = riders[idx % riders.length];
-  if (rd) {
-    const [spec, cx, fy, z, face] = rd, p = person({ pose: 'sit', ...spec });
-    p.g.rotation.y = face > 0 ? -Math.PI / 2 : Math.PI / 2; p.g.position.set(cx - face * .1, fy - .06, z); p.g.scale.setScalar(.97); p.g.updateMatrixWorld(true);
-    p.g.traverse(o => { if (!o.isMesh) return; const lit = !o.material.isMeshBasicMaterial; A.add(o.geometry, o.matrixWorld, lit ? o.material.color : o.material.color.clone().multiplyScalar(.6), { lit, uvs: 0 }); o.geometry.dispose(); });
-  }
+  /* ---- a passenger, baked in with the rest: one of the Mini Characters, posed seated ---- */
+  const riders = [[2, 'sit-phone', 3.45, LOWER, -.92, -1], [5, 'sit', -END + .36, UPPER, -.95, 1], [9, 'sit-phone', 3.45, LOWER, -.92, -1], [7, 'sit', -END + .36, UPPER, -.95, 1]];
+  const [kind, pose, cx, fy, z, face] = riders[idx % riders.length];
+  A.add(posedGeometry(kind, pose), new THREE.Matrix4().compose(V(cx - face * .06, fy + .47 - HIP_SIT * SCALE * .88 + .01, z), new THREE.Quaternion().setFromAxisAngle(V(0, 1, 0), face * Math.PI / 2), V(SCALE * .88, SCALE * .88, SCALE * .88)), 'vertex', { uvs: 0 }); // a little smaller, to suit the train seats
 
   const g = new THREE.Group(); g.name = 'interior';
   g.add(A.mesh(mats.base), S.mesh(mats.seat), ...extra);
