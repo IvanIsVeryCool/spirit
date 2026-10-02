@@ -8,6 +8,7 @@ import { mergeStatic, addPeople, updatePeople, addPlatformProps, addBackground, 
 import { CAR_L, GAP, W, H, BASE, FLOOR, DOOR_W, DOOR_H, NOSE_L, bodyGeometry, capGeometry, noseGeometry, nosePoint, paintBody, paintNose, windowTexture, windowSlots } from './train.js';
 import { buildInterior } from './interior.js';
 import { Crowd } from './crowd.js';
+import { addCity, updateCity } from './city.js';
 
 // A golden-hour Peninsula platform and a red-and-silver double-decker commuter train.
 const COL = {
@@ -72,7 +73,7 @@ export class Station {
 
     Object.assign(this, { FLOOR, CAR_L, NOSE_L, P: CAR_L + GAP });
     this._sky(); this._hills(); this._trees(); this._tracks(); this._platform(); this._wires(); this._props(); this._train(); this._motes();
-    const propGroup = addPlatformProps(this); addPeople(this); addBackground(this); this.crowd = new Crowd(this);
+    const propGroup = addPlatformProps(this); addPeople(this); addBackground(this); this.city = addCity(this); this.crowd = new Crowd(this);
     s.traverse(o => { if (o.isMesh && !o.userData.noShadow) { o.castShadow = !!o.userData.cast; o.receiveShadow = true; } });
     // hundreds of small static parts become one draw call per material
     this.cars.forEach(c => { c.userData.keep = true; }); mergeStatic(this.train);
@@ -626,7 +627,7 @@ export class Station {
     const pos = this.motes.geometry.attributes.position.array;
     for (let i = 0; i < pos.length; i += 3) { pos[i] -= speed * .003 * (pos[i + 2] < 4 ? 1 : .25) + .004; pos[i + 1] += Math.sin(t * .7 + i) * .0015; if (pos[i] < -35) pos[i] += 70; }
     this.motes.geometry.attributes.position.needsUpdate = true;
-    updatePeople(this, t, dt); updateBackground(this, t, dt); this.crowd.update(t, dt);
+    updatePeople(this, t, dt); updateBackground(this, t, dt); this.crowd.update(t, dt); updateCity(this.city, t, dt);
     this.sky.position.copy(c.position);
     this._adapt();
     this.composer.render();
