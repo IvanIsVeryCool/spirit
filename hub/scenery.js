@@ -71,6 +71,14 @@ export const BODY_K = .8, HEAD_K = 1.55;
 // the enlarged head is lowered onto the shoulders (no neck): its centre lands .17 above the neck pivot
 export const HEAD_DROP = .2 * HEAD_K - .17;
 // one smooth bean-shaped torso, hips to shoulders, turned on a lathe (origin at the hips)
+// a rounded toy shoe: a soft dome on a flat sole, toe forward (-z), origin at the ankle
+export function shoeGeometry() {
+  const top = new THREE.SphereGeometry(1, 20, 10, 0, Math.PI * 2, 0, Math.PI / 2); top.scale(.062, .07, .1); top.translate(0, -.075, -.035);
+  const sole = new THREE.CylinderGeometry(1, 1, 1, 20); sole.scale(.064, .018, .102); sole.translate(0, -.084, -.035);
+  return [top, sole];
+}
+// thin straight toy limbs
+export const LIMB_R = { thigh: .052, shin: .048, upper: .04, fore: .037 };
 export function torsoGeometry() {
   const prof = [[0, -.09], [.12, -.085], [.185, -.04], [.205, .06], [.2, .2], [.18, .34], [.14, .45], [.08, .52], [0, .545]].map(([r, y]) => new THREE.Vector2(r, y));
   const g = new THREE.LatheGeometry(prof, 28); g.scale(1.12, 1, .82); g.computeVertexNormals(); return g;
@@ -123,11 +131,11 @@ export function person({ pose = 'sit', hands = 'lap', top, pants, skin, hair, ha
     // short toy legs: seated, the feet swing a little above the floor
     const knee = sit ? V(sd * .12, hipY + .01, -.33) : V(sd * .1, .45, -.02);
     const ankle = sit ? V(sd * .13, .27, -.39) : V(sd * .1, .1, 0);
-    body.add(limb(hip, knee, .08, M.pants), limb(knee, ankle, .062, M.pants));
-    const shoe = new THREE.Mesh(new THREE.BoxGeometry(.11, .09, .27), M.shoe); shoe.position.set(sd * (sit ? .13 : .1), ankle.y - .055, ankle.z - .07); body.add(shoe);
-    const sole = new THREE.Mesh(new THREE.BoxGeometry(.115, .025, .28), M.sole); sole.position.set(shoe.position.x, ankle.y - .088, shoe.position.z); body.add(sole);
+    body.add(limb(hip, knee, LIMB_R.thigh, M.pants), limb(knee, ankle, LIMB_R.shin, M.pants));
+    const [top, base] = shoeGeometry();
+    [[top, M.shoe], [base, M.sole]].forEach(([geo, m]) => { const sh = new THREE.Mesh(geo, m); sh.position.copy(ankle); body.add(sh); });
   });
-  body.add(limb(V(-.1, hipY, hipZ), V(.1, hipY, hipZ), .1, M.pants));
+  body.add(limb(V(-.08, hipY, hipZ), V(.08, hipY, hipZ), .085, M.pants));
   // torso: a softened block, slightly leaning back when seated
   const lean = sit ? .12 : 0, chest = V(0, hipY + .34, hipZ + lean * .4), shY = hipY + .5;
   const torso = new THREE.Mesh(torsoGeometry(), M.top); torso.position.set(0, hipY, hipZ); torso.rotation.x = lean; body.add(torso);
@@ -138,7 +146,7 @@ export function person({ pose = 'sit', hands = 'lap', top, pants, skin, hair, ha
     if (hands === 'phone' || hands === 'book') { elbow = V(sd * .2, shY - .27, hipZ - .05); hand = V(sd * .07, shY - .2, hipZ - .27); }
     else if (hands === 'pockets') { elbow = V(sd * .25, shY - .26, hipZ + .04); hand = V(sd * .17, hipY + .02, hipZ - .06); }
     else { elbow = V(sd * .22, shY - .28, hipZ - .02); hand = V(sd * .14, hipY + .1, hipZ - .3); }
-    body.add(limb(sh[i], elbow, .06, M.top), limb(elbow, hand, .05, M.top));
+    body.add(limb(sh[i], elbow, LIMB_R.upper, M.top), limb(elbow, hand, LIMB_R.fore, M.top));
     if (hands !== 'pockets') { const h = new THREE.Mesh(new THREE.SphereGeometry(.052, 12, 10), M.skin); h.position.copy(hand); body.add(h); } // round mitten hands
   });
   if (hands === 'phone') {

@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { SKIN, HAIR, TOPS, PANTS, headParts, torsoGeometry, BODY_K, HEAD_K, HEAD_DROP } from './scenery.js';
+import { SKIN, HAIR, TOPS, PANTS, headParts, torsoGeometry, shoeGeometry, LIMB_R, BODY_K, HEAD_K, HEAD_DROP } from './scenery.js';
 
 // Everyone on and around the platform who isn't you: people waiting on the benches and by the yellow line,
 // people walking past (some with a phone, a suitcase or a dog), cyclists, an e-bike and an e-scooter on the
@@ -49,10 +49,10 @@ function geometries() {
     // the head and hair from scenery.js; skin and hair colours come from each person's instance colour
     head: bake(H.face.map(tint)), hair: bake(H.short.map(tint)), longHair: bake(H.long.map(tint)), hat: bake(H.hat.map(tint)),
     torso: bake([[torsoGeometry(), T()]]),
-    pelvis: bake([[cap(.1, .2), T(0, 0, 0, 0, 0, Math.PI / 2)]]),
-    upper: hang(.06, L.upper), fore: hang(.05, L.fore), hand: bake([[sph(.052, 12, 10), T(0, -.02)]]),
-    thigh: hang(.08, L.thigh), shin: hang(.062, L.shin),
-    shoe: bake([BOX(.11, .09, .27, T(0, -.055, -.07)), BOX(.115, .025, .28, T(0, -.0875, -.07), sole)]),
+    pelvis: bake([[cap(.085, .16), T(0, 0, 0, 0, 0, Math.PI / 2)]]),
+    upper: hang(LIMB_R.upper, L.upper), fore: hang(LIMB_R.fore, L.fore), hand: bake([[sph(.052, 12, 10), T(0, -.02)]]),
+    thigh: hang(LIMB_R.thigh, L.thigh), shin: hang(LIMB_R.shin, L.shin),
+    shoe: bake((([top, base]) => [[top, T()], [base, T(), sole]])(shoeGeometry())),
     bag: bake([[cap(.13, .14), T(0, 0, 0, 0, 0, 0, 1.15, 1, .6)]]),
     phone: bake([BOX(.075, .15, .012, T(), 0x15161b)]),
     screen: bake([[new THREE.PlaneGeometry(.062, .13), T(0, 0, .0065)]]),
@@ -262,12 +262,12 @@ export class Crowd {
     const j = this.j, ph = a.ph, amp = .3 + a.cur * .1;
     j.pelvis.set(0, 0, 0); j.lean = -.04; j.twist = -.07 * Math.sin(ph); j.roll = .02 * Math.sin(ph); j.pockets = false;
     hips(j);
-    for (let i = 0; i < 2; i++) { const q = ph + i * Math.PI, th = amp * Math.sin(q), kn = .1 + .72 * Math.pow(Math.max(0, Math.cos(q)), 1.5); leg(j, i, th, kn); j.foot[i] = .55 * th - .25 * kn; }
+    for (let i = 0; i < 2; i++) { const q = ph + i * Math.PI, th = amp * Math.sin(q), kn = .04 + .38 * Math.pow(Math.max(0, Math.cos(q)), 1.5); leg(j, i, th, kn); j.foot[i] = .45 * th - .2 * kn; } // a stiff little toy stride
     const low = Math.min(j.an[0].y, j.an[1].y), lift = L.ankle - low; // the planted foot sets the height: a natural bob
     j.pelvis.set(.022 * Math.sin(ph), lift, 0); hips(j);
     for (let i = 0; i < 2; i++) { j.kn[i].y += lift; j.an[i].y += lift; j.kn[i].x = j.an[i].x = j.hip[i].x; }
     shoulders(j);
-    for (let i = 0; i < 2; i++) arm(j, i, -.36 * amp * 2.4 * Math.sin(ph + i * Math.PI), .22 + .2 * Math.max(0, Math.sin(ph + i * Math.PI)));
+    for (let i = 0; i < 2; i++) arm(j, i, -.36 * amp * 2.2 * Math.sin(ph + i * Math.PI), .08, .07); // straight arms, held a little out from the body
     // what they carry
     const side = -a.dir > 0 ? 1 : 0; // the hand on the train side holds the dog's leash
     if (a.prop === 'phone') { arm(j, 1, .18, 1.32); }
