@@ -65,6 +65,16 @@ export function mergeStatic(root) {
    on a soft rounded body. The head is described once here (relative to the neck pivot) and used by person()
    below, by the crowd's instanced parts (crowd.js) and, through person(), by the passengers inside the cars. */
 export const HEAD_R = .155;
+// toy-avatar proportions: the body is drawn at BODY_K of full size and the head at HEAD_K of that again,
+// so the head is about a third of the figure and sits straight on the shoulders
+export const BODY_K = .8, HEAD_K = 1.55;
+// the enlarged head is lowered onto the shoulders (no neck): its centre lands .17 above the neck pivot
+export const HEAD_DROP = .2 * HEAD_K - .17;
+// one smooth bean-shaped torso, hips to shoulders, turned on a lathe (origin at the hips)
+export function torsoGeometry() {
+  const prof = [[0, -.09], [.12, -.085], [.185, -.04], [.205, .06], [.2, .2], [.18, .34], [.14, .45], [.08, .52], [0, .545]].map(([r, y]) => new THREE.Vector2(r, y));
+  const g = new THREE.LatheGeometry(prof, 28); g.scale(1.12, 1, .82); g.computeVertexNormals(); return g;
+}
 const HQ = (x = 0, y = 0, z = 0, rx = 0, ry = 0, rz = 0, sx = 1, sy = 1, sz = 1) => new THREE.Matrix4().compose(V(x, y, z), new THREE.Quaternion().setFromEuler(new THREE.Euler(rx, ry, rz)), V(sx, sy, sz));
 // each part: [geometry, matrix, colour]; colour 'skin' or 'hair' means the person's own
 export function headParts() {
@@ -72,7 +82,6 @@ export function headParts() {
   const smile = new THREE.TorusGeometry(.024, .0055, 6, 14, Math.PI);
   return {
     face: [
-      [new THREE.CapsuleGeometry(.05, .06, 3, 10), HQ(0, .02), 'skin'],                       // neck
       [S(R, 24, 18), HQ(0, .2, 0, 0, 0, 0, 1.03, .97, .97), 'skin'],                          // head
       [S(.03, 10, 8), HQ(-R, .2, .005, 0, 0, 0, .45, 1, .8), 'skin'], [S(.03, 10, 8), HQ(R, .2, .005, 0, 0, 0, .45, 1, .8), 'skin'], // ears
       [S(.015, 10, 8), HQ(0, .188, fz - .006), 'skin'],                                     // nose
@@ -107,22 +116,21 @@ export function person({ pose = 'sit', hands = 'lap', top, pants, skin, hair, ha
   const g = new THREE.Group(), body = new THREE.Group(); g.add(body);
   const M = { top: mat(top), pants: mat(pants, .9), skin: mat(skin, .6), hair: mat(hair, .7), shoe: mat(0xefece6, .7), sole: mat(0x2a2a2e, .9) };
   const sit = pose === 'sit';
-  const hipY = sit ? .62 : .93, hipZ = sit ? .02 : 0;
+  const hipY = sit ? .72 : .8, hipZ = sit ? .02 : 0;
   // legs
   [-1, 1].forEach(sd => {
     const hip = V(sd * .1, hipY, hipZ);
-    const knee = sit ? V(sd * .12, hipY + .02, -.42) : V(sd * .1, .5, -.02);
-    const ankle = sit ? V(sd * .13, .1, -.48) : V(sd * .1, .1, 0);
+    // short toy legs: seated, the feet swing a little above the floor
+    const knee = sit ? V(sd * .12, hipY + .01, -.33) : V(sd * .1, .45, -.02);
+    const ankle = sit ? V(sd * .13, .27, -.39) : V(sd * .1, .1, 0);
     body.add(limb(hip, knee, .08, M.pants), limb(knee, ankle, .062, M.pants));
-    const shoe = new THREE.Mesh(new THREE.BoxGeometry(.11, .09, .27), M.shoe); shoe.position.set(sd * (sit ? .13 : .1), .045, ankle.z - .07); body.add(shoe);
-    const sole = new THREE.Mesh(new THREE.BoxGeometry(.115, .025, .28), M.sole); sole.position.set(shoe.position.x, .012, shoe.position.z); body.add(sole);
+    const shoe = new THREE.Mesh(new THREE.BoxGeometry(.11, .09, .27), M.shoe); shoe.position.set(sd * (sit ? .13 : .1), ankle.y - .055, ankle.z - .07); body.add(shoe);
+    const sole = new THREE.Mesh(new THREE.BoxGeometry(.115, .025, .28), M.sole); sole.position.set(shoe.position.x, ankle.y - .088, shoe.position.z); body.add(sole);
   });
   body.add(limb(V(-.1, hipY, hipZ), V(.1, hipY, hipZ), .1, M.pants));
   // torso: a softened block, slightly leaning back when seated
   const lean = sit ? .12 : 0, chest = V(0, hipY + .34, hipZ + lean * .4), shY = hipY + .5;
-  const torso = new THREE.Mesh(new THREE.CapsuleGeometry(.19, .22, 6, 16), M.top); torso.scale.set(1.12, 1, .8);
-  torso.position.copy(chest); torso.rotation.x = lean; body.add(torso);
-  const hood = new THREE.Mesh(new THREE.TorusGeometry(.1, .04, 6, 14), M.top); hood.position.set(0, shY + .03, hipZ + lean * .6 + .02); hood.rotation.x = Math.PI / 2 - .3; body.add(hood);
+  const torso = new THREE.Mesh(torsoGeometry(), M.top); torso.position.set(0, hipY, hipZ); torso.rotation.x = lean; body.add(torso);
   // arms
   const sh = [-1, 1].map(sd => V(sd * .235, shY - .01, hipZ + lean * .55));
   [-1, 1].forEach((sd, i) => {
@@ -160,7 +168,7 @@ export function person({ pose = 'sit', hands = 'lap', top, pants, skin, hair, ha
       const pad = new THREE.Mesh(new THREE.CylinderGeometry(.052, .052, .02, 18), mat(0x1d1f26, .8)); pad.rotation.z = Math.PI / 2; pad.position.set(sd * (HEAD_R - .004), .2, .01); head.add(pad);
     });
   }
-  g.scale.setScalar(scale);
+  head.scale.setScalar(HEAD_K); head.position.y -= HEAD_DROP; g.scale.setScalar(scale * BODY_K);
   g.traverse(o => { if (o.isMesh) o.userData.cast = true; });
   return { g, head, phone: hands === 'phone', reading: hands === 'book' };
 }

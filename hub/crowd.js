@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { SKIN, HAIR, TOPS, PANTS, headParts } from './scenery.js';
+import { SKIN, HAIR, TOPS, PANTS, headParts, torsoGeometry, BODY_K, HEAD_K, HEAD_DROP } from './scenery.js';
 
 // Everyone on and around the platform who isn't you: people waiting on the benches and by the yellow line,
 // people walking past (some with a phone, a suitcase or a dog), cyclists, an e-bike and an e-scooter on the
@@ -32,7 +32,7 @@ const hang = (r, len) => bake([[cap(r, len), T(0, -len / 2, 0)]]); // a limb han
 const sph = (r, w = 12, h = 10, ...a) => new THREE.SphereGeometry(r, w, h, ...a);
 const tube = (a, b, r, c) => { const d = new THREE.Vector3().subVectors(b, a), m = new THREE.Matrix4().compose(a.clone().addScaledVector(d, .5), new THREE.Quaternion().setFromUnitVectors(V(0, 1, 0), d.clone().normalize()), V(1, 1, 1)); return [new THREE.CylinderGeometry(r, r, d.length(), 8), m, c]; };
 const BOX = (w, h, d, m, c) => [new THREE.BoxGeometry(w, h, d), m, c];
-const L = { thigh: .43, shin: .46, upper: .28, fore: .26, ankle: .1 };
+const L = { thigh: .34, shin: .36, upper: .28, fore: .26, ankle: .1 }; // short toy legs
 
 function geometries() {
   const eye = 0x17120f, sole = 0x2a2a2e, dark = 0x1e2026, grey = 0x9aa0a8;
@@ -43,12 +43,12 @@ function geometries() {
     ...[-1, 1].map(sd => tube(V(sd * .18, .97, -.38), V(sd * .25, .97, -.38), .02, dark)),
     BOX(.12, .045, .26, T(0, .93, .22), dark), ...extra
   ]);
-  const H = headParts(), tint = ([g, m, c]) => [g, m, typeof c === 'string' ? 0xffffff : c];
+  const H = headParts(), HK = new THREE.Matrix4().makeTranslation(0, -HEAD_DROP, 0).multiply(new THREE.Matrix4().makeScale(HEAD_K, HEAD_K, HEAD_K)), tint = ([g, m, c]) => [g, HK.clone().multiply(m), typeof c === 'string' ? 0xffffff : c];
   const bike = { bb: V(0, .3, .02), seat: V(0, .86, .2), ht: V(0, .86, -.42), hl: V(0, .7, -.45), ra: V(0, .34, .55), fa: V(0, .34, -.55) };
   return {
     // the head and hair from scenery.js; skin and hair colours come from each person's instance colour
     head: bake(H.face.map(tint)), hair: bake(H.short.map(tint)), longHair: bake(H.long.map(tint)), hat: bake(H.hat.map(tint)),
-    torso: bake([[cap(.19, .22, 16), T(0, .33, 0, 0, 0, 0, 1.12, 1, .8)], [new THREE.TorusGeometry(.1, .04, 6, 14), T(0, .53, .02, Math.PI / 2 - .3)]]),
+    torso: bake([[torsoGeometry(), T()]]),
     pelvis: bake([[cap(.1, .2), T(0, 0, 0, 0, 0, Math.PI / 2)]]),
     upper: hang(.06, L.upper), fore: hang(.05, L.fore), hand: bake([[sph(.052, 12, 10), T(0, -.02)]]),
     thigh: hang(.08, L.thigh), shin: hang(.062, L.shin),
@@ -119,7 +119,7 @@ function outfit(o = {}) {
     top: Col(o.top ?? pick(TOPS)), pants: Col(o.pants ?? pick(PANTS)), skin: Col(o.skin ?? pick(SKIN)), hair: Col(o.hairCol ?? pick(HAIR)),
     style: o.style ?? (r < .25 ? 'long' : r < .4 ? 'hat' : 'short'), hat: Col(o.hat ?? pick([0x1f2a4d, 0x7a2a2a, 0x2f4a3a, 0x3a2f4a, 0xa8832e])),
     bag: o.bag === undefined ? (rnd() < .35 ? Col(pick([0x2b2f3a, 0x1d3a5a, 0x5a2f2f, 0x3a4a3a])) : null) : (o.bag ? Col(o.bag) : null),
-    scale: o.scale ?? .93 + rnd() * .1, shoe: Col(o.shoe ?? pick([0xd9d5cc, 0xcfc9be, 0x3a3c44, 0x8a6a4a, 0xb9bcc4]))
+    scale: (o.scale ?? .93 + rnd() * .1) * BODY_K, shoe: Col(o.shoe ?? pick([0xd9d5cc, 0xcfc9be, 0x3a3c44, 0x8a6a4a, 0xb9bcc4]))
   };
 }
 
@@ -171,7 +171,7 @@ export class Crowd {
       a.type = type; a.y = road ? 0 : F; a.z = (road ? this.lanes.road : this.lanes.ride)[a.dir > 0 ? 0 : 1];
       a.v = type === 'scooter' ? 3.6 + rnd() * .8 : type === 'ebike' ? 5.6 + rnd() : 4.2 + rnd() * 1.4; a.crank = rnd() * 6; a.spin = 0;
       a.o = outfit({ style: type === 'scooter' && rnd() < .5 ? 'short' : 'hat', hat: pick([0xc9272c, 0x9aa0a8, 0x1f2a4d, 0x2a2d35, 0xd9a520]), bag: rnd() < .4 ? pick([0x2b2f3a, 0x1d3a5a]) : 0 });
-      a.o.scale = 1; // riders are sized to their bikes
+      a.o.scale = BODY_K * 1.04; // riders and their bikes are drawn at the same toy scale
       a.frame = Col(pick(type === 'scooter' ? [0x2a2d35, 0x3f8f8a, 0xd9d6d0] : [0x2c5a8a, 0xc9272c, 0x2f4a3a, 0xe8e4da, 0x1d1f26, 0xe8b923]));
     }
   }
@@ -238,13 +238,13 @@ export class Crowd {
   }
 
   _idle(a, t) {
-    const j = this.j, sit = a.pose === 'sit', hipY = sit ? .62 : .99, hipZ = sit ? .02 : 0;
+    const j = this.j, sit = a.pose === 'sit', hipY = sit ? .72 : .8, hipZ = sit ? .02 : 0;
     j.pelvis.set(0, hipY, hipZ); j.lean = sit ? .12 : 0; j.twist = 0; j.roll = 0; j.pockets = a.hands === 'pockets';
     shoulders(j); hips(j);
     for (let i = 0; i < 2; i++) {
       const sd = i ? 1 : -1;
       if (sit) { j.an[i].set(sd * .13, L.ankle, -.52); ik(j.hip[i], j.an[i], L.thigh, L.shin, 1, j.kn[i]); }
-      else { j.kn[i].set(sd * .1, .56, -.02); j.an[i].set(sd * .1, L.ankle, 0); }
+      else { j.kn[i].set(sd * .1, .45, -.02); j.an[i].set(sd * .1, L.ankle, 0); }
       j.foot[i] = 0;
       const sY = hipY + .5;
       if (a.hands === 'phone' || a.hands === 'book') { j.el[i].set(sd * .2, sY - .27, hipZ - .05); j.ha[i].set(sd * .07, sY - .2, hipZ - .27); }
@@ -303,10 +303,10 @@ export class Crowd {
     const j = this.j, p = this.p, type = a.type, scoot = type === 'scooter', yaw = -a.dir * Math.PI / 2;
     j.pockets = false; j.roll = .015 * Math.sin(t * 1.3 + a.ph); j.twist = 0;
     if (scoot) {
-      j.pelvis.set(0, .95, .02); j.lean = -.16; hips(j);
+      j.pelvis.set(0, .9, .02); j.lean = -.16; hips(j);
       [[-1, -.12], [1, .2]].forEach(([sd, z], i) => { j.an[i].set(sd * .07, .265, z); ik(j.hip[i], j.an[i], L.thigh, L.shin, 1, j.kn[i]); j.foot[i] = i ? -.2 : 0; });
     } else {
-      const up = type === 'ebike'; j.pelvis.set(0, 1.02, .16); j.lean = up ? -.3 : -.55; hips(j);
+      const up = type === 'ebike'; j.pelvis.set(0, .9, .16); j.lean = up ? -.3 : -.55; hips(j);
       for (let i = 0; i < 2; i++) {
         const c = a.crank + i * Math.PI, py = .3 + .17 * Math.cos(c), pz = .02 - .17 * Math.sin(c), sd = i ? 1 : -1;
         j.an[i].set(sd * .11, py + .09, pz + .05); ik(j.hip[i], j.an[i], L.thigh, L.shin, 1, j.kn[i]); j.foot[i] = .2 * Math.sin(c);
