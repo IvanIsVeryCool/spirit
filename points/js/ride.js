@@ -6,12 +6,23 @@ import { UnrealBloomPass } from '/vendor/jsm/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from '/vendor/jsm/postprocessing/OutputPass.js';
 import { CAR_L, GAP, W, H, FLOOR, NOSE_L, DOOR_W, DOOR_H, bodyGeometry, capGeometry, noseGeometry, paintBody, paintNose, windowTexture, windowSlots } from '/hub/train.js';
 import { mergeStatic } from '/hub/scenery.js';
+import { DOORS } from '/hub/doors.js';
 
-// The ride to Spirit Points: the Spirit Line runs north up an illustrated Peninsula at golden hour,
-// stopping at each station, and pulls in beside a big station billboard where the standings live.
+// The ride: the Spirit Line runs north from Nueva up an illustrated Peninsula at golden hour, stops at Hillsdale,
+// then at the junction past it the line fans out into a branch for each car (Spirit Points, Weekly Newsletter,
+// Events, Meet the Cabinet). The train takes its car's branch to the terminal, where a big billboard stands.
 
-export const STOPS = ['Nueva', 'Hayward Park', 'San Mateo', 'Burlingame', 'Spirit Points'];
-const STOP_U = [.05, .28, .5, .72, .93];
+// the trunk, south to north, ending at the junction
+const TRUNK = [V2(60, 520), V2(40, 380), V2(20, 240), V2(0, 80), V2(-12, -60), V2(-20, -180), V2(-24, -280)];
+const NUEVA = 2, HILLSDALE = 4;
+const FAN = [-32, -10, 12, 34]; // each branch's heading off north, in degrees (west is negative), in DOORS order
+function V2(x, z) { return new THREE.Vector3(x, 0, z); }
+// the control points of the line to branch i: the trunk, then a gentle turn onto the branch, then on past the terminal
+function linePoints(i) {
+  const J = TRUNK[TRUNK.length - 1], t0 = new THREE.Vector3(-.04, 0, -1).normalize(), th = FAN[i] * Math.PI / 180, d = new THREE.Vector3(Math.sin(th), 0, -Math.cos(th));
+  const at = (k, along, extra = 0) => J.clone().addScaledVector(k, along).addScaledVector(t0, extra);
+  return [...TRUNK.map(p => p.clone()), at(t0.clone().lerp(d, .45).normalize(), 85), at(d, 190, 25), at(d, 290, 25), at(d, 380, 25)];
+}
 const COL = { skyTop: '#1c2a66', skyMid: '#7468ab', horizon: '#ffb07a', sun: '#ffd08e' };
 const V = (x, y, z) => new THREE.Vector3(x, y, z);
 let seed = 5; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
@@ -30,8 +41,8 @@ function drawLED(ctx, lines) {
 }
 
 export class Ride {
-  constructor(cv, { mobile, logo }) {
-    this.mobile = mobile; this.logo = logo;
+  constructor(cv, { mobile, logo, dest = 0 }) {
+    this.mobile = mobile; this.logo = logo; this.dest = dest; // dest: which car's branch to ride (index in DOORS)
     const r = this.renderer = new THREE.WebGLRenderer({ canvas: cv, antialias: !mobile, powerPreference: 'high-performance' });
     r.toneMapping = THREE.ACESFilmicToneMapping; r.outputColorSpace = THREE.SRGBColorSpace;
     if (!mobile) { r.shadowMap.enabled = true; r.shadowMap.type = THREE.PCFSoftShadowMap; }
@@ -102,33 +113,43 @@ export class Ride {
     const hills = new THREE.Mesh(hg, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: .95, flatShading: true })); hills.userData.noShadow = true; this.scene.add(hills);
   }
   _line() {
-    const pts = [V(110, 0, 640), V(60, 0, 420), V(20, 0, 210), V(-12, 0, 20), V(-35, 0, -170), V(-72, 0, -360), V(-100, 0, -560), V(-118, 0, -760), V(-128, 0, -980)];
-    const c = this.curve = new THREE.CatmullRomCurve3(pts, false, 'centripetal'); this.L = c.getLength();
+    // every branch is its own curve; they share the trunk's control points, so they part ways at the junction like switches
+    this.lines = DOORS.map((_, i) => new THREE.CatmullRomCurve3(linePoints(i), false, 'centripetal'));
+    const c = this.curve = this.lines[this.dest]; this.L = c.getLength();
+    const tSplit = (TRUNK.length - 2) / (linePoints(0).length - 1); // where the branches start to diverge, in curve parameter
     const g = new THREE.Group(); this.scene.add(g);
-    // ballast, two tracks and their ties, and catenary poles
-    const ribbon = (off, w, y, mat, n = 600) => {
-      const pos = [], idx = [];
-      for (let i = 0; i <= n; i++) { const u = i / n, p = c.getPointAt(u), t = c.getTangentAt(u), nn = V(-t.z, 0, t.x); [-1, 1].forEach(sd => { const q = p.clone().addScaledVector(nn, off + sd * w / 2); pos.push(q.x, y, q.z); }); if (i) { const a = (i - 1) * 2; idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2); } }
+    const pieces = [{ c, t0: 0, t1: tSplit, offs: [0, 4.6], bal: [2.3, 13] }, ...this.lines.map(l => ({ c: l, t0: tSplit, t1: 1, offs: [0], bal: [0, 6] }))];
+    const nn = t => V(-t.z, 0, t.x);
+    const ribbon = (pc, off, w, y, mat) => {
+      const pos = [], idx = [], n = Math.ceil((pc.t1 - pc.t0) * 600);
+      for (let i = 0; i <= n; i++) { const u = pc.t0 + (pc.t1 - pc.t0) * i / n, p = pc.c.getPoint(u), q0 = nn(pc.c.getTangent(u)); [-1, 1].forEach(sd => { const q = p.clone().addScaledVector(q0, off + sd * w / 2); pos.push(q.x, y, q.z); }); if (i) { const a = (i - 1) * 2; idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2); } }
       const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); geo.setIndex(idx); geo.computeVertexNormals();
-      const m = new THREE.Mesh(geo, mat); m.userData.keep = true; g.add(m); return m;
+      const m = new THREE.Mesh(geo, mat); m.userData.keep = true; g.add(m);
     };
-    ribbon(2.3, 13, .03, new THREE.MeshStandardMaterial({ color: 0x5d534b, roughness: 1 }));
-    const rail = new THREE.MeshStandardMaterial({ color: 0x9aa0a8, metalness: .8, roughness: .35 });
-    [0, 4.6].forEach(o => [-.72, .72].forEach(d => ribbon(o + d, .12, .2, rail)));
-    const nT = Math.floor(this.L / 1.25), ties = new THREE.InstancedMesh(new THREE.BoxGeometry(2.6, .1, .24), new THREE.MeshStandardMaterial({ color: 0x3b312a, roughness: .95 }), nT * 2), m = new THREE.Matrix4(), q = new THREE.Quaternion();
-    for (let i = 0; i < nT; i++) { const u = i / nT, p = c.getPointAt(u), t = c.getTangentAt(u), nn = V(-t.z, 0, t.x); q.setFromUnitVectors(V(1, 0, 0), nn); [0, 4.6].forEach((o, k) => { m.compose(p.clone().addScaledVector(nn, o).setY(.08), q, V(1, 1, 1)); ties.setMatrixAt(i * 2 + k, m); }); }
-    ties.userData.noShadow = true; g.add(ties);
-    const nP = Math.floor(this.L / 32), poles = new THREE.InstancedMesh(new THREE.BoxGeometry(.4, 7.6, .4), new THREE.MeshStandardMaterial({ color: 0x6b717b, metalness: .6, roughness: .5 }), nP * 2), wire = [];
-    for (let i = 0; i < nP; i++) {
-      const u = i / nP, p = c.getPointAt(u), t = c.getTangentAt(u), nn = V(-t.z, 0, t.x);
-      m.compose(p.clone().addScaledVector(nn, 8.2).setY(3.8), q.identity(), V(1, 1, 1)); poles.setMatrixAt(i * 2, m);
-      m.compose(p.clone().addScaledVector(nn, 4.3).setY(6.7), q.setFromUnitVectors(V(0, 1, 0), nn), V(.3, 1.04, .3)); poles.setMatrixAt(i * 2 + 1, m);
-      if (i) { const a = c.getPointAt((i - 1) / nP); wire.push(a.x, 6.4, a.z, p.x, 6.4, p.z); }
-    }
-    poles.userData.cast = true; g.add(poles);
+    const ballast = new THREE.MeshStandardMaterial({ color: 0x5d534b, roughness: 1 }), rail = new THREE.MeshStandardMaterial({ color: 0x9aa0a8, metalness: .8, roughness: .35 });
+    pieces.forEach(pc => { ribbon(pc, pc.bal[0], pc.bal[1], .03, ballast); pc.offs.forEach(o => [-.72, .72].forEach(d => ribbon(pc, o + d, .12, .2, rail))); });
+    // ties, catenary poles and the wire, sampled evenly along each piece
+    const ties = [], poles = [], wire = [], m = new THREE.Matrix4(), q = new THREE.Quaternion();
+    pieces.forEach(pc => {
+      const len = pc.c.getLength() * (pc.t1 - pc.t0), nT = Math.floor(len / 1.25), nP = Math.max(1, Math.floor(len / 32)); let prev = null;
+      for (let i = 0; i < nT; i++) { const u = pc.t0 + (pc.t1 - pc.t0) * i / nT, p = pc.c.getPoint(u), n = nn(pc.c.getTangent(u)); q.setFromUnitVectors(V(1, 0, 0), n); pc.offs.forEach(o => ties.push(m.clone().compose(p.clone().addScaledVector(n, o).setY(.08), q, V(1, 1, 1)))); }
+      for (let i = 0; i <= nP; i++) {
+        const u = pc.t0 + (pc.t1 - pc.t0) * i / nP, p = pc.c.getPoint(u), n = nn(pc.c.getTangent(u)), side = pc.offs.length > 1 ? 8.2 : 4, arm = pc.offs.length > 1 ? 4.3 : 2;
+        poles.push(m.clone().compose(p.clone().addScaledVector(n, side).setY(3.8), new THREE.Quaternion(), V(1, 1, 1)));
+        poles.push(m.clone().compose(p.clone().addScaledVector(n, arm).setY(6.7), new THREE.Quaternion().setFromUnitVectors(V(0, 1, 0), n), V(.3, pc.offs.length > 1 ? 1.04 : .55, .3)));
+        if (prev) wire.push(prev.x, 6.4, prev.z, p.x, 6.4, p.z); prev = p;
+      }
+    });
+    const inst = (geo, mat, list, shadow) => { const im = new THREE.InstancedMesh(geo, mat, list.length); list.forEach((x, i) => im.setMatrixAt(i, x)); if (shadow) im.userData.cast = true; else im.userData.noShadow = true; g.add(im); };
+    inst(new THREE.BoxGeometry(2.6, .1, .24), new THREE.MeshStandardMaterial({ color: 0x3b312a, roughness: .95 }), ties, false);
+    inst(new THREE.BoxGeometry(.4, 7.6, .4), new THREE.MeshStandardMaterial({ color: 0x6b717b, metalness: .6, roughness: .5 }), poles, true);
     const wg = new THREE.BufferGeometry(); wg.setAttribute('position', new THREE.Float32BufferAttribute(wire, 3)); g.add(new THREE.LineSegments(wg, new THREE.LineBasicMaterial({ color: 0x22242b })));
-    // samples of the line for keeping buildings off it
-    this.linePts = Array.from({ length: 160 }, (_, i) => c.getPointAt(i / 159));
+    // samples of every line, for keeping buildings off them
+    this.linePts = this.lines.flatMap((l, i) => Array.from({ length: 90 }, (_, k) => l.getPoint(i === this.dest ? k / 89 : tSplit + (1 - tSplit) * k / 89)));
+    // the stops on this ride: Nueva and Hillsdale on the trunk, then this car's terminal near the end of its branch
+    const uNear = v => { let best = 0, bd = 1e18; for (let k = 0; k <= 800; k++) { const d = c.getPointAt(k / 800).distanceToSquared(v); if (d < bd) { bd = d; best = k / 800; } } return best; };
+    this.stopU = [uNear(TRUNK[NUEVA]), uNear(TRUNK[HILLSDALE]), (this.L - 100) / this.L];
+    this.names = ['Nueva', 'Hillsdale', DOORS[this.dest].title];
   }
   _clear(x, z, d) { for (const p of this.linePts) if ((p.x - x) ** 2 + (p.z - z) ** 2 < d * d) return false; return x < shore(z) - 30; }
   // the towns along the line: blocks near the stations, houses between, trees everywhere, lit windows coming on
@@ -141,10 +162,10 @@ export class Ride {
     const roofGeo = new THREE.CylinderGeometry(.62, .62, 1, 3, 1); roofGeo.rotateZ(Math.PI / 2); roofGeo.rotateX(Math.PI / 6);
     const roofs = new THREE.InstancedMesh(roofGeo, new THREE.MeshStandardMaterial({ roughness: .9, flatShading: true }), nB);
     const m = new THREE.Matrix4(), q = new THREE.Quaternion(), cc = new THREE.Color(); let k = 0, kr = 0;
-    const stopPts = STOP_U.map(u => this.curve.getPointAt(u));
+    const stopPts = [this.curve.getPointAt(this.stopU[0]), this.curve.getPointAt(this.stopU[1]), ...this.lines.map(l => l.getPointAt((l.getLength() - 100) / l.getLength()))];
     for (let tries = 0; k < nB && tries < nB * 6; tries++) {
       const near = rnd() < .55, sp = stopPts[Math.floor(rnd() * stopPts.length)];
-      const x = near ? sp.x + (rnd() - .5) * 340 : -360 + rnd() * 640, z = near ? sp.z + (rnd() - .5) * 300 : -1150 + rnd() * 1900;
+      const x = near ? sp.x + (rnd() - .5) * 340 : -400 + rnd() * 680, z = near ? sp.z + (rnd() - .5) * 300 : -900 + rnd() * 1500;
       const dense = near && Math.hypot(x - sp.x, z - sp.z) < 110;
       if (!this._clear(x, z, dense ? 34 : 22) || x < -400) continue;
       const w = dense ? 9 + rnd() * 8 : 7 + rnd() * 5, d = dense ? 9 + rnd() * 7 : 7 + rnd() * 5, h = dense ? 5 + rnd() * 7 : 4 + rnd() * 2.5;
@@ -167,22 +188,25 @@ export class Ride {
     const g = new THREE.Group(); this.scene.add(g); this.stops = [];
     const conc = new THREE.MeshStandardMaterial({ color: 0x8d857a, roughness: .92 }), dark = new THREE.MeshStandardMaterial({ color: 0x1f2a26, metalness: .5, roughness: .55 }), yellow = new THREE.MeshStandardMaterial({ color: 0xe8b923, roughness: .6 });
     const roof = new THREE.MeshStandardMaterial({ color: 0x9a3a2e, roughness: .7 });
-    STOP_U.forEach((u, i) => {
-      const p = this.curve.getPointAt(u), t = this.curve.getTangentAt(u), n = V(-t.z, 0, t.x), yaw = Math.atan2(-t.x, -t.z);
+    const station = (curve, u, name, len = 56) => {
+      const p = curve.getPointAt(u), t = curve.getTangentAt(u), n = V(-t.z, 0, t.x), yaw = Math.atan2(-t.x, -t.z);
       const st = new THREE.Group(); st.position.copy(p); st.rotation.y = yaw; g.add(st); // local: -z along the line, -x toward the platform
-      const front = -(W / 2 + .12), len = i === 4 ? 70 : 56;
+      const front = -(W / 2 + .12);
       const slab = new THREE.Mesh(new THREE.BoxGeometry(6, FLOOR, len), conc); slab.position.set(front - 3, FLOOR / 2, 0); st.add(slab);
       const strip = new THREE.Mesh(new THREE.BoxGeometry(.5, .01, len), yellow); strip.position.set(front - .3, FLOOR + .005, 0); st.add(strip);
       const canopy = new THREE.Mesh(new THREE.BoxGeometry(4.2, .25, len * .6), roof); canopy.position.set(front - 3.4, 4.2, 0); canopy.userData.cast = true; st.add(canopy);
       for (let zz = -len * .27; zz <= len * .27; zz += len * .135) { const post = new THREE.Mesh(new THREE.BoxGeometry(.18, 3.7, .18), dark); post.position.set(front - 4.2, FLOOR + 1.85, zz); post.userData.cast = true; st.add(post); }
       // the name sign, white with a red bar like the one on the home platform
-      const c = canvas(512, 112, (x, w, h) => { x.fillStyle = '#fff'; x.fillRect(0, 0, w, h); x.fillStyle = '#c9272c'; x.fillRect(0, 0, 18, h); x.fillStyle = '#16181f'; x.font = '900 54px Archivo, Arial, sans-serif'; x.textBaseline = 'middle'; x.fillText(STOPS[i].toUpperCase(), 40, h / 2 + 3, w - 60); });
+      const c = canvas(512, 112, (x, w, h) => { x.fillStyle = '#fff'; x.fillRect(0, 0, w, h); x.fillStyle = '#c9272c'; x.fillRect(0, 0, 18, h); x.fillStyle = '#16181f'; x.font = '900 54px Archivo, Arial, sans-serif'; x.textBaseline = 'middle'; x.fillText(name.toUpperCase(), 40, h / 2 + 3, w - 60); });
       const signMat = new THREE.MeshBasicMaterial({ map: tex(c) });
       [-1, 1].forEach(sd => { const sign = new THREE.Mesh(new THREE.PlaneGeometry(5.6, 1.22), signMat); sign.position.set(front - 4.6, 3.1, sd * len * .2); sign.rotation.y = Math.PI / 2; st.add(sign); const back = new THREE.Mesh(new THREE.BoxGeometry(.1, 1.32, 5.8), dark); back.position.set(front - 4.66, 3.1, sd * len * .2); st.add(back); });
-      this.stops.push({ name: STOPS[i], u, p, t, n, label: p.clone().addScaledVector(n, -6).setY(11) });
-    });
+      return { name, u, p, t, n, label: p.clone().addScaledVector(n, -6).setY(11) };
+    };
+    // this ride's stops, and the other cars' terminals at the ends of their branches
+    this.stops = this.stopU.map((u, i) => station(this.curve, u, this.names[i], i === 2 ? 70 : 56));
+    this.alts = this.lines.map((l, i) => i === this.dest ? null : station(l, (l.getLength() - 100) / l.getLength(), DOORS[i].title)).filter(Boolean);
     // Spirit Points: a big billboard on posts across the tracks from the platform, facing east, so you read it with the sunset behind
-    const sp = this.stops[4], bb = this.billboard = new THREE.Group(); bb.position.copy(sp.p).addScaledVector(sp.n, 26); bb.rotation.y = Math.atan2(sp.n.x, sp.n.z); g.add(bb);
+    const sp = this.stops[2], bb = this.billboard = new THREE.Group(); bb.position.copy(sp.p).addScaledVector(sp.n, 26); bb.rotation.y = Math.atan2(sp.n.x, sp.n.z); g.add(bb);
     const steel = new THREE.MeshStandardMaterial({ color: 0x6b717b, metalness: .7, roughness: .45 });
     const posts = [-1, 1].map(sd => { const m = new THREE.Mesh(new THREE.BoxGeometry(.9, 1, .9), steel); m.userData.keep = true; m.userData.cast = true; bb.add(m); return { m, sd }; });
     const frame = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshStandardMaterial({ color: 0x15161b, metalness: .4, roughness: .6 })); frame.userData.keep = true; frame.userData.cast = true; bb.add(frame);
@@ -232,7 +256,7 @@ export class Ride {
     }
   }
   // arc length of the train's front when its middle is at stop i
-  stopS(i) { return STOP_U[i] * this.L + NOSE_L + 2 * (CAR_L + GAP) - GAP / 2; }
+  stopS(i) { return this.stopU[i] * this.L + NOSE_L + 2 * (CAR_L + GAP) - GAP / 2; }
   placeTrain(sFront) {
     this.sFront = sFront; const L = this.L;
     this.cars.forEach((car, i) => {
@@ -251,10 +275,10 @@ export class Ride {
   }
   // straight to the billboard (a reload, or no time for the ride)
   jumpToBoard() {
-    this.leg = STOPS.length - 1; this.placeTrain(this.stopS(this.leg)); this.state = 'board'; this.cb = this.cb || {};
+    this.leg = this.names.length - 1; this.placeTrain(this.stopS(this.leg)); this.state = 'board'; this.cb = this.cb || {};
     const f = this.finalPose(); this.camera.position.copy(f.pos); this.look.copy(f.look); this.from = f.pos.clone(); this.fromLook = f.look.clone(); this.at = 99;
   }
-  skip() { if (this.state !== 'ride') return; this.leg = STOPS.length - 1; this.placeTrain(this.stopS(this.leg)); this.speed = 0; this._arrive(true); }
+  skip() { if (this.state !== 'ride') return; this.leg = this.names.length - 1; this.placeTrain(this.stopS(this.leg)); this.speed = 0; this._arrive(true); }
   _arrive(skipped) {
     this.state = 'arrive'; this.at = 0; this.from = this.camera.position.clone(); this.fromLook = this.look.clone();
     this.cb.arrive && this.cb.arrive(skipped);
@@ -262,7 +286,7 @@ export class Ride {
   update(dt) {
     this.t += dt;
     if (this.state === 'ride') {
-      const last = STOPS.length - 1, go = this.leg === last - 1 ? 3.6 : 2.7;
+      const last = this.names.length - 1, go = this.leg === last - 1 ? 3.8 : 2.6;
       if (this.dwell > 0) { this.dwell -= dt; this.speed = 0; if (this.dwell <= 0) { this.legT = 0; this.cb.depart && this.cb.depart(this.leg); } }
       else {
         this.legT += dt; const p = Math.min(1, this.legT / go), a = this.stopS(this.leg), b = this.stopS(this.leg + 1);

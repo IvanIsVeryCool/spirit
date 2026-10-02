@@ -141,16 +141,19 @@ document.addEventListener('visibilitychange', () => { if (!document.hidden) load
 setInterval(() => { if (!document.hidden) load(true); }, Math.max(15, CONFIG.refreshSeconds) * 1000);
 
 /* ---------- the ride ---------- */
-let ride = null, Ride = null, STOPS = [], hum = null, pins = [], nextShown = -1;
+let ride = null, Ride = null, STOPS = [], hum = null, pins = [], altPins = [], nextShown = -1, NAME_W = 13;
 function routeUI() {
   const line = $('r-line');
   STOPS.forEach((n, i) => { const s = document.createElement('div'); s.className = 'r-stop'; s.innerHTML = `<i></i><span>${n}</span>`; line.appendChild(s); });
-  pins = STOPS.map(n => { const p = document.createElement('div'); p.className = 'pin'; p.innerHTML = `<span>${esc(n)}</span>`; $('pins').appendChild(p); return p; });
+  const pin = (n, cls) => { const p = document.createElement('div'); p.className = cls; p.innerHTML = `<span>${esc(n)}</span>`; $('pins').appendChild(p); return p; };
+  pins = STOPS.map(n => pin(n, 'pin'));
+  altPins = ride.alts.map(a => pin(a.name, 'pin alt')); // the other cars' branches, seen as the line fans out
+  NAME_W = Math.max(...STOPS.map(n => n.length));
 }
 function setNext(i, here) {
   const key = i + (here ? 'h' : ''); if (key === nextShown) return; nextShown = key;
   $('r-lbl').textContent = here ? (i === STOPS.length - 1 ? 'Arriving' : 'This stop') : 'Next stop';
-  if (flap($('r-next'), pad(STOPS[i].toUpperCase(), 13))) audio.clatter(.6);
+  if (flap($('r-next'), pad(STOPS[i].toUpperCase(), NAME_W))) audio.clatter(.6);
   $('r-sr').textContent = `${$('r-lbl').textContent}: ${STOPS[i]}`;
 }
 function layoutBoard() {
@@ -179,7 +182,10 @@ function updateRideUI() {
     const reached = Math.floor(f + .001), target = ride.dwell > 0 || ride.state !== 'ride' ? reached : Math.min(last, reached + 1);
     stops.forEach((s, i) => { s.classList.toggle('past', i < target); s.classList.toggle('next', i === target); });
   }
-  ride.stops.forEach((s, i) => { const p = pins[i], q = ride.project(s.label), near = i >= Math.floor(f) && i <= Math.floor(f) + 1; if (q && near && ride.state === 'ride') { p.style.transform = `translate(${q.x}px,${q.y}px) translate(-50%,-100%)`; p.classList.add('show'); } else p.classList.remove('show'); });
+  // a name pin over a station, hidden when it would sit under the top bar
+  const pinAt = (p, v, on) => { const q = on && ride.project(v); if (q && q.y > 100) { p.style.transform = `translate(${q.x}px,${q.y}px) translate(-50%,-100%)`; p.classList.add('show'); } else p.classList.remove('show'); };
+  ride.alts.forEach((a, i) => pinAt(altPins[i], a.label, ride.state === 'ride' && ride.leg === last - 1));
+  ride.stops.forEach((s, i) => pinAt(pins[i], s.label, ride.state === 'ride' && i >= Math.floor(f) && i <= Math.floor(f) + 1));
 }
 
 let last = performance.now();
@@ -204,10 +210,10 @@ async function boot() {
   const stage = (async () => {
     if (reduce) return;
     try {
-      ({ Ride, STOPS } = await import('./ride.js'));
+      ({ Ride } = await import('./ride.js'));
       const logo = new Image(); logo.src = '/assets/logo.png'; await logo.decode().catch(() => {});
       ride = new Ride($('gl'), { mobile, logo: logo.naturalWidth ? logo : null });
-      if (location.hash === '#debug') window.__ride = ride;
+      STOPS = ride.names; if (location.hash === '#debug') window.__ride = ride;
       layoutBoard(); await new Promise(r => setTimeout(r, 30)); await ride.warm();
     } catch (e) { console.warn(e); ride = null; }
   })().then(progress);

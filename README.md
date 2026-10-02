@@ -5,7 +5,7 @@
   pulls in. Each car's door is a section of the Spirit Cabinet, and the LED departure
   board lists the same cars. The ticket and that opening play on your first visit each day; later visits go straight to the platform, with a Replay intro button.
 - `/points/` is the live Spirit Points standings. Boarding the Spirit Points car rides the train up a map of the
-  Peninsula to the Spirit Points station, where the standings are on a big billboard (scores from the Google Sheet).
+  Peninsula via Hillsdale, onto the Spirit Points branch, where the standings are on a big billboard (scores from the Google Sheet).
 
 ## Adding or opening a train car
 Edit `hub/doors.js`. Each entry is one car, front to back:
