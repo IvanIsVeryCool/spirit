@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from '/vendor/jsm/loaders/GLTFLoader.js';
 import { mergeStatic } from './scenery.js';
+import { mergeGeometries } from '/vendor/jsm/utils/BufferGeometryUtils.js';
 
 // The town behind the station, from Kenney's kits (all CC0):
 // "City Kit Industrial" (assets/city): factories and warehouses past the road, chimneys, tanks, water towers,
@@ -12,10 +13,12 @@ import { mergeStatic } from './scenery.js';
 const NAMES = ['building-a', 'building-b', 'building-c', 'building-d', 'building-e', 'building-f', 'building-g', 'building-h', 'building-i', 'building-j', 'building-k', 'building-l', 'building-m', 'building-n', 'building-o', 'building-p', 'building-q', 'building-r', 'building-s', 'building-t',
   'chimney-large', 'chimney-medium', 'detail-tank-large', 'detail-tank', 'shipping-container-a', 'shipping-container-b', 'shipping-container-c', 'water-tower', 'windmill', 'solar-panel-landscape-group'];
 const TREES = ['tree_default', 'tree_oak', 'tree_detailed', 'tree_fat', 'tree_tall', 'tree_cone'], PALMS = ['tree_palmTall', 'tree_palmBend', 'tree_palmDetailedTall'], BUSHES = ['plant_bushLarge', 'plant_bushDetailed', 'plant_bush'];
-const SHOPS = ['building-a', 'building-b', 'building-c', 'building-d', 'building-e', 'building-f', 'building-g', 'building-h'], TOWERS = ['building-skyscraper-a', 'building-skyscraper-b', 'building-skyscraper-c', 'building-skyscraper-d', 'building-skyscraper-e'], LOW = ['low-detail-building-a', 'low-detail-building-b', 'low-detail-building-c', 'low-detail-building-d', 'low-detail-building-e', 'low-detail-building-wide-a', 'low-detail-building-wide-b'];
+const SHOPS = ['building-a', 'building-b', 'building-c', 'building-d', 'building-e', 'building-f', 'building-g', 'building-h'], TOWERS = ['building-skyscraper-a', 'building-skyscraper-b', 'building-skyscraper-c', 'building-skyscraper-d', 'building-skyscraper-e'];
+export const LOW = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'wide-a', 'wide-b'].map(k => 'low-detail-building-' + k);
+export { SHOPS };
 const CARS = ['sedan', 'suv', 'taxi', 'van', 'delivery', 'truck', 'hatchback-sports', 'suv-luxury'];
 // one kit: its models, every mesh sharing one material per material name (so merging joins them into a few draw calls)
-async function loadKit(loader, dir, names, tune) {
+export async function loadKit(loader, dir, names, tune) {
   const list = await Promise.all(names.map(n => loader.loadAsync(`/assets/${dir}/${n}.glb`))), shared = {}, out = {};
   list.forEach((g, i) => {
     g.scene.traverse(o => { if (!o.isMesh) return; const k = o.material.name; if (!shared[k]) { shared[k] = o.material; tune(o.material); } o.material = shared[k]; });
@@ -23,13 +26,33 @@ async function loadKit(loader, dir, names, tune) {
   });
   return out;
 }
+const tuneTown = m => { m.roughness = .85; m.metalness = 0; m.envMapIntensity = .35; m.color.setScalar(.8); };
+// The commercial kit, on its own: the towns along the Spirit Points ride use it too
+let TOWN = null;
+export const loadTown = () => TOWN || (TOWN = loadKit(new GLTFLoader(), 'commercial', [...SHOPS, ...LOW], tuneTown));
+// A copy of the kit's material with its windows lit for the evening: the kit is one palette texture, and the
+// windows are its pale blue glass swatch (columns 10-11 of 16, row 2 of 4), so only that swatch glows, warm.
+export function townMaterial(base, glow = .7) {
+  const m = base.clone(), img = base.map.image, w = img.width, h = img.height, c = document.createElement('canvas'); c.width = w; c.height = h;
+  const x = c.getContext('2d'); x.fillStyle = '#000'; x.fillRect(0, 0, w, h);
+  const g = x.createLinearGradient(0, h * .25, 0, h * .5); g.addColorStop(0, '#ffd9a0'); g.addColorStop(1, '#f2a860');
+  x.fillStyle = g; x.fillRect(w * 10 / 16, h * .25, w * 2 / 16, h * .25);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.flipY = base.map.flipY;
+  m.emissiveMap = t; m.emissive = new THREE.Color(1, 1, 1); m.emissiveIntensity = glow; return m;
+}
+// one model as a single geometry (position, normal, uv), for instancing
+export function modelGeometry(obj) {
+  obj.updateMatrixWorld(true); const list = [];
+  obj.traverse(o => { if (!o.isMesh) return; const g = new THREE.BufferGeometry(), src = o.geometry; ['position', 'normal', 'uv'].forEach(k => g.setAttribute(k, src.attributes[k].clone())); if (src.index) g.setIndex(src.index); list.push(g.applyMatrix4(o.matrixWorld)); });
+  return mergeGeometries(list.map(g => g.index ? g.toNonIndexed() : g));
+}
 const NATURE_COL = { leafsGreen: 0x2f5233, woodBark: 0x5a4030, grass: 0x3c5e38, _defaultMat: 0x5a4030 }; // deep evening greens, to sit in the golden-hour light
 let LIB = null, KIT = null;
 export async function loadCity() {
   if (LIB) return LIB;
   const loader = new GLTFLoader(), kits = Promise.all([
     loadKit(loader, 'nature', [...TREES, ...PALMS, ...BUSHES], m => { m.color.set(NATURE_COL[m.name] ?? 0x6a4c36); m.roughness = .95; m.metalness = 0; m.envMapIntensity = .3; }),
-    loadKit(loader, 'commercial', [...SHOPS, ...TOWERS, ...LOW], m => { m.roughness = .85; m.metalness = 0; m.envMapIntensity = .35; m.color.setScalar(.8); }),
+    loadKit(loader, 'commercial', [...SHOPS, ...TOWERS, ...LOW], tuneTown),
     loadKit(loader, 'cars', CARS, m => { m.roughness = .45; m.metalness = .15; m.envMapIntensity = .6; })
   ]);
   const list = await Promise.all(NAMES.map(n => loader.loadAsync(`/assets/city/${n}.glb`)));
@@ -87,6 +110,20 @@ export function addCity(st) {
   }
   [[-26, -13.4], [10, -14.6], [31, -13.2], [-48, -17.5], [57, -13.6], [-70, -14]].forEach(([x, z], i) => { const name = PALMS[i % PALMS.length], h = 8.5 + rnd() * 2; kput(KIT.nature, name, x, z, rnd() * 6.28, h / KIT.nature[name].userData.size.y); });
   for (let x = -110; x < 110; x += 2.5 + rnd() * 5) { if (!free(x, -13.4)) continue; const name = BUSHES[Math.floor(rnd() * BUSHES.length)]; kput(KIT.nature, name, x, -13.2 - rnd() * .5, rnd() * 6.28, (1 + rnd() * .6) / KIT.nature[name].userData.size.y); }
+  // the hillside town (where scenery.js put its simple houses): low-rise shops and blocks from the commercial kit, windows lit
+  if (st.bg && st.bg.houses) {
+    st.bg.houses.forEach(o => o.parent && o.parent.remove(o));
+    const hill = new THREE.Group(); s.add(hill);
+    const lit = townMaterial(KIT.shops[SHOPS[0]].getObjectByProperty('isMesh', true).material, .9); lit.color.setRGB(.74, .6, .54); // warmed by the low sun, like the old houses
+    for (let i = 0, n = st.mobile ? 50 : 90; i < n; i++) {
+      const x = -170 + rnd() * 340, z = -50 - rnd() * 18, y = 1.4 + (-z - 50) * .38 + rnd() * 1.5, yaw = (rnd() - .5) * .5 + (rnd() < .5 ? 0 : Math.PI);
+      let o;
+      if (rnd() < .35) { const name = SHOPS[Math.floor(rnd() * SHOPS.length)]; o = kput(KIT.shops, name, x, z, yaw, 4.5 + rnd() * 1.5, y - 1); }
+      else { const name = LOW[Math.floor(rnd() * LOW.length)], sz = KIT.shops[name].userData.size; o = kput(KIT.shops, name, x, z, yaw, 1, y - 1); o.scale.set((4 + rnd() * 3) / sz.x, (3 + rnd() * 4.5) / sz.y, (4 + rnd() * 2) / sz.z); }
+      hill.attach(o); o.traverse(m => { if (m.isMesh) { m.material = lit; m.userData.noShadow = true; } });
+    }
+    mergeStatic(hill);
+  }
   mergeStatic(g);
   // downtown on the horizon, between the far hills: towers and blocks in the evening haze (the fog does most of the work)
   const sky = new THREE.Group(); s.add(sky);

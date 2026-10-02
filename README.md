@@ -18,6 +18,14 @@ A car with no `href` shows a "coming soon" panel. Give it an `href` (a page in t
 site such as `/newsletter/`, or any link like a Google Doc) to make its door lead there,
 and change `status` to something like 'Live' or 'New'.
 
+## Your own headphone song
+In the opening, a song plays in your headphones. To use your own recording, upload an
+MP3 named exactly `headphones.mp3` into `assets/audio/` (on GitHub: open the repo, then
+Add file → Upload files, and type `assets/audio/` before the name, or drag it into that
+folder). It loops quietly under the station sounds and fades out as the camera pulls
+away. Delete the file to go back to the built-in song. Only upload music you wrote or
+are licensed to put on a public website; keep the file under 25 MB.
+
 ## Updating spirit points
 Add one row per event to the "Spirit Points Scores" Google Sheet:
 

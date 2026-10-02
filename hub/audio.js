@@ -161,8 +161,26 @@ export class StationAudio {
   // echoing clean-guitar arpeggios, a deep round bass, half-time drums and a soft pad. It's quiet and dry (not in the
   // station's reverb, since it's in your ears), under the station sounds, and goes through the opening's own gains,
   // so skipping cuts it too. Returns { stop(fade) }.
+  // Your own song for the headphones: if assets/audio/headphones.mp3 is on the site, it's decoded while the page
+  // loads and music() plays it instead of the built-in loop. No file, no change.
+  async loadTrack(url) {
+    try {
+      const r = await fetch(url); if (!r.ok) return;
+      const AC = window.OfflineAudioContext || window.webkitOfflineAudioContext; if (!AC) return;
+      this.track = await new AC(2, 1, 44100).decodeAudioData(await r.arrayBuffer());
+    } catch (e) { this.track = null; }
+  }
+  _playTrack() {
+    const ctx = this.ctx, src = ctx.createBufferSource(), bus = ctx.createGain(), t = ctx.currentTime;
+    src.buffer = this.track; src.loop = true;
+    bus.gain.setValueAtTime(0, t); bus.gain.linearRampToValueAtTime(.24, t + 1.6); // a finished recording is loud: keep it under the station
+    src.connect(bus).connect(this.outDry); src.start(t);
+    let dead = false;
+    return { stop: (fade = 1.2) => { if (dead) return; dead = true; const n = ctx.currentTime; bus.gain.cancelScheduledValues(n); bus.gain.setValueAtTime(bus.gain.value, n); bus.gain.linearRampToValueAtTime(0, n + fade); src.stop(n + fade + .05); setTimeout(() => bus.disconnect(), fade * 1000 + 300); } };
+  }
   music() {
     if (!this.ctx) return { stop() {} };
+    if (this.track) return this._playTrack();
     const ctx = this.ctx, bus = ctx.createGain(), tone = ctx.createBiquadFilter(), BEAT = 60 / 84;
     tone.type = 'lowpass'; tone.frequency.value = 3800; bus.gain.value = 0;
     bus.connect(tone).connect(this.outDry);

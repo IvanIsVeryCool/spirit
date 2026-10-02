@@ -219,7 +219,7 @@ async function boot() {
   const stage = (async () => {
     if (reduce) return;
     try {
-      ({ Ride } = await import('./ride.js'));
+      ({ Ride } = await import('./ride.js')); await Ride.load(); // the town buildings
       const logo = new Image(); logo.src = '/assets/logo.png'; await logo.decode().catch(() => {});
       ride = new Ride($('gl'), { mobile, logo: logo.naturalWidth ? logo : null });
       STOPS = ride.names; if (location.hash === '#debug') window.__ride = ride;

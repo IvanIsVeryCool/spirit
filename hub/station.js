@@ -498,14 +498,14 @@ export class Station {
     this.rig.position.lerpVectors(this.rigPos, this.rigUp, lift);
     this.rig.position.z += Math.sin(lift * Math.PI) * .05; // it comes up toward you in an arc, not a straight line
     this.rig.quaternion.slerpQuaternions(this.rigBase, this.rigUpQ, lift);
-    // reading it: tilted to catch the light, turned a little to look at the stamp, a small fidget
-    this.rig.rotateY(Math.sin((e - 1.8) * 1.3) * .14 * read); this.rig.rotateX(Math.sin(t * 1.7) * .02 - read * .05 * Math.sin((e - 2) * .9));
-    this.rig.rotateZ(fid * .1 + Math.sin(lift * Math.PI) * .06);
+    // reading it: one slow tilt toward the light and a little turn toward the stamp; held this close, anything quicker reads as shaking
+    this.rig.rotateY(Math.sin((e - 1.8) * .9) * .06 * read); this.rig.rotateX(Math.sin(t * 1.1) * .006 - read * .04 * Math.sin((e - 2) * .7));
+    this.rig.rotateZ(fid * .03 + Math.sin(lift * Math.PI) * .05);
     // where the attention goes: ahead as you sit, then the ticket as it comes up, then the train
     const front = this.cars[0].position.x + this.trainX - CAR_L / 2 - NOSE_L + .3, tgt = new THREE.Vector3();
     let tracking = false, reading = false;
     if (e < 1.0) tgt.set(0, 1.5, this.seat.z - 3.5);
-    else if (e < 3.6) { tgt.lerpVectors(this.rigPos, this.rigUp, .5 + .5 * lift); tgt.x += Math.sin(e * 1.1) * .02 * read; tgt.y -= .01; reading = true; } // the ticket comes up to meet the eyes
+    else if (e < 3.6) { tgt.lerpVectors(this.rigPos, this.rigUp, .5 + .5 * lift); tgt.y -= .01; reading = true; } // the ticket comes up to meet the eyes
     // one long, smooth turn up and to the right, toward where the train comes from, that then follows its nose in
     else if (e < 11.4) { tgt.set(Math.max(-2.5, Math.min(18, front)), 2.0, 0); tracking = true; I.turn = I.turn || e; }
     else tgt.set(-1.2, 1.95, 0);
@@ -518,17 +518,17 @@ export class Station {
   _head(tgt, t, dt, tracking, reading) {
     const h = this.head, c = this.camera, d = tgt.clone().sub(c.position).normalize();
     let ty = Math.atan2(-d.x, -d.z), tp = Math.asin(Math.max(-1, Math.min(1, d.y)));
-    if (!tracking && t > h.next) { // little glances while holding a look
-      const k = reading ? .25 : 1;
+    if (!tracking && !reading && t > h.next) { // little glances while holding a look (not while reading: the ticket would jump about)
+      const k = 1;
       h.jy = (Math.random() - .5) * .05 * k; h.jp = (Math.random() - .5) * .03 * k; h.next = t + .7 + Math.random() * 1.3;
     }
-    if (tracking) { h.jy *= .9; h.jp *= .9; }
+    if (tracking || reading) { h.jy *= .9; h.jp *= .9; }
     ty += h.jy; tp += h.jp;
     const err = Math.abs(ty - h.yaw);
     tp -= Math.min(1, err / .7) * .05; // the head drops slightly mid-turn
     // the big turn off the ticket is slow and unhurried (critically damped, no overshoot), then it tracks more tightly
     const ramp = this.intro && this.intro.turn ? Math.min(1, (t - this.intro.t0 - this.intro.turn) / 2.6) : 1;
-    const w = tracking ? 2.2 + 3.3 * ramp * ramp : reading ? 4 : 4.6, z = tracking ? 1 : .78;
+    const w = tracking ? 2.2 + 3.3 * ramp * ramp : reading ? 3.2 : 4.6, z = tracking || reading ? 1 : .78; // no overshoot while reading
     for (let n = Math.ceil(dt / .02), i = 0; i < n; i++) {
       const s = dt / n;
       h.vy += (w * w * (ty - h.yaw) - 2 * z * w * h.vy) * s; h.yaw += h.vy * s;
@@ -632,9 +632,11 @@ export class Station {
       this.look.lerp(this.camLook, 1 - Math.pow(this.blendUntil > t ? .3 : .04, dt));
     }
     if (!this.intro) c.lookAt(this.look);
-    const shake = Math.min(1, speed / 25) * (this.intro ? .5 : 1); if (shake > .02) c.position.y += (Math.random() - .5) * .03 * shake;
-    const pos = this.motes.geometry.attributes.position.array;
-    for (let i = 0; i < pos.length; i += 3) { pos[i] -= speed * .003 * (pos[i + 2] < 4 ? 1 : .25) + .004; pos[i + 1] += Math.sin(t * .7 + i) * .0015; if (pos[i] < -35) pos[i] += 70; }
+    // the ground rumbles and the air stirs only once the train is close (alongside, or its nose within ~25 m)
+    const gap = this.cars[0].position.x + this.trainX - CAR_L / 2 - NOSE_L - c.position.x, near = Math.max(0, Math.min(1, 1 - (gap - 6) / 20));
+    const shake = Math.min(1, speed / 25) * near * (this.intro ? .5 : 1); if (shake > .02) c.position.y += (Math.random() - .5) * .03 * shake;
+    const pos = this.motes.geometry.attributes.position.array, gust = speed * near;
+    for (let i = 0; i < pos.length; i += 3) { pos[i] -= gust * .003 * (pos[i + 2] < 4 ? 1 : .25) + .004; pos[i + 1] += Math.sin(t * .7 + i) * .0015; if (pos[i] < -35) pos[i] += 70; }
     this.motes.geometry.attributes.position.needsUpdate = true;
     updatePeople(this, t, dt); updateBackground(this, t, dt); this.crowd.update(t, dt); updateCity(this.city, t, dt);
     this.sky.position.copy(c.position);

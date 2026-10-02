@@ -144,7 +144,7 @@ function windowsTex(lit) {
   });
 }
 export function addBackground(st) {
-  const s = st.scene, out = { cars: [], birds: null, clouds: [] };
+  const s = st.scene, out = { cars: [], birds: null, clouds: [], houses: [] };
   // houses on the hillside, catching the last light; some windows already lit
   const N = st.mobile ? 50 : 90;
   const wallGeo = new THREE.BoxGeometry(1, 1, 1), roofGeo = new THREE.CylinderGeometry(.62, .62, 1, 3, 1); roofGeo.rotateZ(Math.PI / 2); roofGeo.rotateX(Math.PI / 6);
@@ -162,7 +162,7 @@ export function addBackground(st) {
       m.compose(V(x, y + h + .32 * d * .5, z), q, V(w * 1.04, d * .55, d * 1.05)); roof.setMatrixAt(i, m);
       roof.setColorAt(i, c.set([0x9a4a32, 0x5a4a48, 0xa85a3a, 0x6a5450][Math.floor(rand() * 4)]));
     }
-    [wall, roof].forEach(o => { o.userData.noShadow = true; o.userData.keep = true; s.add(o); });
+    [wall, roof].forEach(o => { o.userData.noShadow = true; o.userData.keep = true; s.add(o); out.houses.push(o); }); // city.js swaps these for the commercial kit's buildings
   });
   // a radio mast up on the ridge with a blinking light
   const mast = new THREE.Mesh(new THREE.CylinderGeometry(.25, 1.6, 26, 4, 6, true), new THREE.MeshBasicMaterial({ color: 0x2a2440, wireframe: true }));

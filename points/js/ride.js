@@ -6,6 +6,9 @@ import { UnrealBloomPass } from '/vendor/jsm/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from '/vendor/jsm/postprocessing/OutputPass.js';
 import { CAR_L, GAP, W, H, FLOOR, NOSE_L, DOOR_W, DOOR_H, bodyGeometry, capGeometry, noseGeometry, paintBody, paintNose, windowTexture, windowSlots } from '/hub/train.js';
 import { mergeStatic } from '/hub/scenery.js';
+import { loadTown, townMaterial, modelGeometry, SHOPS, LOW } from '/hub/city.js';
+// the towns are Kenney's City Kit Commercial (CC0, assets/commercial): call Ride.load() before new Ride()
+let TOWN = null;
 import { DOORS } from '/hub/doors.js';
 
 // The ride: the Spirit Line runs north from Nueva up an illustrated Peninsula at golden hour, stops at Hillsdale,
@@ -41,6 +44,7 @@ function drawLED(ctx, lines) {
 }
 
 export class Ride {
+  static async load() { try { TOWN = await loadTown(); } catch (e) { console.warn(e); TOWN = null; } }
   constructor(cv, { mobile, logo, dest = 0 }) {
     this.mobile = mobile; this.logo = logo; this.dest = dest; // dest: which car's branch to ride (index in DOORS)
     const r = this.renderer = new THREE.WebGLRenderer({ canvas: cv, antialias: !mobile, powerPreference: 'high-performance' });
@@ -155,26 +159,47 @@ export class Ride {
   // the towns along the line: blocks near the stations, houses between, trees everywhere, lit windows coming on
   _towns() {
     const s = this.scene, mob = this.mobile, nB = mob ? 650 : 1500, nT = mob ? 700 : 1600;
-    const win = canvas(128, 64, (x, w, h) => { x.fillStyle = '#000'; x.fillRect(0, 0, w, h); for (let r = 0; r < 3; r++) for (let c = 0; c < 6; c++) { x.fillStyle = rnd() < .45 ? (rnd() < .5 ? '#ffcf8a' : '#ffe2b0') : '#16141c'; x.fillRect(6 + c * 20, 6 + r * 20, 10, 10); } });
-    const white = canvas(4, 4, x => { x.fillStyle = '#fff'; x.fillRect(0, 0, 4, 4); });
-    const box = new THREE.BoxGeometry(1, 1, 1); box.translate(0, .5, 0);
-    const blocks = new THREE.InstancedMesh(box, new THREE.MeshStandardMaterial({ map: tex(white), emissiveMap: tex(win), emissive: 0xffffff, emissiveIntensity: .85, roughness: .9 }), nB);
-    const roofGeo = new THREE.CylinderGeometry(.62, .62, 1, 3, 1); roofGeo.rotateZ(Math.PI / 2); roofGeo.rotateX(Math.PI / 6);
-    const roofs = new THREE.InstancedMesh(roofGeo, new THREE.MeshStandardMaterial({ roughness: .9, flatShading: true }), nB);
-    const m = new THREE.Matrix4(), q = new THREE.Quaternion(), cc = new THREE.Color(); let k = 0, kr = 0;
+    const m = new THREE.Matrix4(), q = new THREE.Quaternion(), cc = new THREE.Color();
     const stopPts = [this.curve.getPointAt(this.stopU[0]), this.curve.getPointAt(this.stopU[1]), ...this.lines.map(l => l.getPointAt((l.getLength() - 100) / l.getLength()))];
-    for (let tries = 0; k < nB && tries < nB * 6; tries++) {
+    const spots = []; // [x, z, dense]
+    for (let tries = 0; spots.length < nB && tries < nB * 6; tries++) {
       const near = rnd() < .55, sp = stopPts[Math.floor(rnd() * stopPts.length)];
       const x = near ? sp.x + (rnd() - .5) * 340 : -400 + rnd() * 680, z = near ? sp.z + (rnd() - .5) * 300 : -900 + rnd() * 1500;
       const dense = near && Math.hypot(x - sp.x, z - sp.z) < 110;
       if (!this._clear(x, z, dense ? 34 : 22) || x < -400) continue;
-      const w = dense ? 9 + rnd() * 8 : 7 + rnd() * 5, d = dense ? 9 + rnd() * 7 : 7 + rnd() * 5, h = dense ? 5 + rnd() * 7 : 4 + rnd() * 2.5;
-      const yaw = Math.atan2(-.05, 1) + (rnd() < .5 ? 0 : Math.PI / 2) + (rnd() - .5) * .2; q.setFromAxisAngle(V(0, 1, 0), yaw);
-      m.compose(V(x, 0, z), q, V(w, h, d)); blocks.setMatrixAt(k, m);
-      blocks.setColorAt(k, cc.set([0xcdb79a, 0xc29f80, 0xb07e60, 0xc8c0b2, 0xa89886, 0x9c8c7c][Math.floor(rnd() * 6)])); k++;
-      if (!dense) { m.compose(V(x, h + .32 * d * .5, z), q, V(w * 1.04, d * .55, d * 1.05)); roofs.setMatrixAt(kr, m); roofs.setColorAt(kr++, cc.set([0x9a4a32, 0x5a4a48, 0xa85a3a, 0x6a5450][Math.floor(rnd() * 4)])); }
+      spots.push([x, z, dense]);
     }
-    blocks.count = k; roofs.count = kr; [blocks, roofs].forEach(o => { o.userData.cast = true; s.add(o); });
+    const yawOf = () => Math.atan2(-.05, 1) + (rnd() < .5 ? 0 : Math.PI / 2) + (rnd() - .5) * .2;
+    if (TOWN) {
+      // town centres by the stations: the kit's shops and apartment blocks; everywhere else its low-detail blocks, scaled into houses and terraces
+      const lit = townMaterial(TOWN[SHOPS[0]].getObjectByProperty('isMesh', true).material, .85);
+      // grouped by model and by a 400 m band along the line, so the camera and the shadow pass can skip what's out of view
+      const kinds = {}, add = (name, mat, z) => { const key = name + '|' + Math.floor((z + 1200) / 400); (kinds[key] = kinds[key] || []).push(mat.clone()); };
+      const cheap = LOW.filter(n => !/-(a|b|g|h|j|m|wide-b)$/.test(n)); // the lightest blocks (160 triangles or fewer) for the houses between towns
+      let shops = mob ? 25 : 60; // the full shop models are ~1,500 triangles each: only the centres get them
+      spots.forEach(([x, z, dense]) => {
+        q.setFromAxisAngle(V(0, 1, 0), yawOf());
+        if (dense && shops > 0 && rnd() < .5) { shops--; const name = SHOPS[Math.floor(rnd() * SHOPS.length)], k = 9 + rnd() * 4; add(name, m.compose(V(x, 0, z), q, V(k, k * (.9 + rnd() * .5), k)), z); }
+        else { const set = dense ? LOW : cheap, name = set[Math.floor(rnd() * set.length)], sz = TOWN[name].userData.size, w = dense ? 9 + rnd() * 8 : 7 + rnd() * 5, d = dense ? 9 + rnd() * 7 : 7 + rnd() * 5, h = dense ? 6 + rnd() * 9 : 4 + rnd() * 3; add(name, m.compose(V(x, 0, z), q, V(w / sz.x, h / sz.y, d / sz.z)), z); }
+      });
+      const geos = {};
+      Object.entries(kinds).forEach(([key, mats]) => {
+        const name = key.split('|')[0], im = new THREE.InstancedMesh(geos[name] || (geos[name] = modelGeometry(TOWN[name])), lit, mats.length);
+        mats.forEach((mm, i) => { im.setMatrixAt(i, mm); im.setColorAt(i, cc.setHSL(.06 + rnd() * .04, .3, .6 + rnd() * .16)); }); // warm stucco, sandstone and brick tones
+        im.computeBoundingSphere(); im.userData.cast = true; s.add(im);
+      });
+    } else { // the kit didn't load: plain blocks with lit windows
+      const win = canvas(128, 64, (x, w, h) => { x.fillStyle = '#000'; x.fillRect(0, 0, w, h); for (let r = 0; r < 3; r++) for (let c = 0; c < 6; c++) { x.fillStyle = rnd() < .45 ? (rnd() < .5 ? '#ffcf8a' : '#ffe2b0') : '#16141c'; x.fillRect(6 + c * 20, 6 + r * 20, 10, 10); } });
+      const white = canvas(4, 4, x => { x.fillStyle = '#fff'; x.fillRect(0, 0, 4, 4); });
+      const box = new THREE.BoxGeometry(1, 1, 1); box.translate(0, .5, 0);
+      const blocks = new THREE.InstancedMesh(box, new THREE.MeshStandardMaterial({ map: tex(white), emissiveMap: tex(win), emissive: 0xffffff, emissiveIntensity: .85, roughness: .9 }), spots.length);
+      spots.forEach(([x, z, dense], k) => {
+        const w = dense ? 9 + rnd() * 8 : 7 + rnd() * 5, d = dense ? 9 + rnd() * 7 : 7 + rnd() * 5, h = dense ? 5 + rnd() * 7 : 4 + rnd() * 2.5;
+        q.setFromAxisAngle(V(0, 1, 0), yawOf()); m.compose(V(x, 0, z), q, V(w, h, d)); blocks.setMatrixAt(k, m);
+        blocks.setColorAt(k, cc.set([0xcdb79a, 0xc29f80, 0xb07e60, 0xc8c0b2, 0xa89886, 0x9c8c7c][Math.floor(rnd() * 6)]));
+      });
+      blocks.userData.cast = true; s.add(blocks);
+    }
     const trees = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, 0), new THREE.MeshStandardMaterial({ roughness: .95, flatShading: true }), nT); let kt = 0;
     for (let tries = 0; kt < nT && tries < nT * 5; tries++) {
       const x = -420 + rnd() * 700, z = -1200 + rnd() * 1950; if (!this._clear(x, z, 12)) continue;

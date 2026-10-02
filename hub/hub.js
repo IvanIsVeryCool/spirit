@@ -218,7 +218,7 @@ async function boot() {
     if (reduce) return;
     try {
       const [{ Station }, { loadPeople }, { loadCity }] = await Promise.all([import('./station.js'), import('./people.js'), import('./city.js')]);
-      await Promise.all([loadPeople(), loadCity()]); // the Mini Characters, before the scene that uses them is built
+      await Promise.all([loadPeople(), loadCity(), audio.loadTrack('/assets/audio/headphones.mp3')]); // the Mini Characters before the scene that uses them; your headphone song if there is one
       const logo = new Image(); logo.src = '/assets/logo.png'; await logo.decode().catch(() => {});
       station = new Station($('station'), { mobile, doors: DOORS, logo: logo.naturalWidth ? logo : null }); if (location.hash === '#debug') { window.__st = station; window.__audio = audio; } station.render();
     }
