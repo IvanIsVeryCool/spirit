@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { SKIN, HAIR, TOPS, PANTS } from './scenery.js';
+import { SKIN, HAIR, TOPS, PANTS, headParts } from './scenery.js';
 
 // Everyone on and around the platform who isn't you: people waiting on the benches and by the yellow line,
 // people walking past (some with a phone, a suitcase or a dog), cyclists, an e-bike and an e-scooter on the
@@ -43,16 +43,14 @@ function geometries() {
     ...[-1, 1].map(sd => tube(V(sd * .18, .97, -.38), V(sd * .25, .97, -.38), .02, dark)),
     BOX(.12, .045, .26, T(0, .93, .22), dark), ...extra
   ]);
+  const H = headParts(), tint = ([g, m, c]) => [g, m, typeof c === 'string' ? 0xffffff : c];
   const bike = { bb: V(0, .3, .02), seat: V(0, .86, .2), ht: V(0, .86, -.42), hl: V(0, .7, -.45), ra: V(0, .34, .55), fa: V(0, .34, -.55) };
   return {
-    head: bake([[cap(.045, .11), T(0, .015)], [sph(.112, 16, 12), T(0, .17, 0, 0, 0, 0, .92, 1.06, 1)], [sph(.022, 8, 6), T(0, .16, -.1)],
-      ...[-1, 1].flatMap(sd => [[sph(.013, 6, 5), T(sd * .038, .185, -.098), eye], [sph(.024, 8, 6), T(sd * .097, .165, .005, 0, 0, 0, .5, 1, .8)]])]),
-    hair: bake([[sph(.119, 16, 10, 0, Math.PI * 2, 0, Math.PI * .5), T(0, .18, .016, .38)], [sph(.105, 14, 10), T(0, .15, .032, 0, 0, 0, .96, .86, .82)]]),
-    longHair: bake([[cap(.085, .18), T(0, .11, .07, 0, 0, 0, 1.1, 1, 1)]]),
-    hat: bake([[sph(.113, 16, 10, 0, Math.PI * 2, 0, Math.PI * .55), T(0, .18)], [new THREE.TorusGeometry(.104, .022, 6, 18), T(0, .2, 0, Math.PI / 2)]]),
-    torso: bake([[cap(.175, .26, 12), T(0, .34, 0, 0, 0, 0, 1.2, 1, .75)], [new THREE.TorusGeometry(.1, .04, 6, 14), T(0, .53, .02, Math.PI / 2 - .3)]]),
+    // the head and hair from scenery.js; skin and hair colours come from each person's instance colour
+    head: bake(H.face.map(tint)), hair: bake(H.short.map(tint)), longHair: bake(H.long.map(tint)), hat: bake(H.hat.map(tint)),
+    torso: bake([[cap(.19, .22, 16), T(0, .33, 0, 0, 0, 0, 1.12, 1, .8)], [new THREE.TorusGeometry(.1, .04, 6, 14), T(0, .53, .02, Math.PI / 2 - .3)]]),
     pelvis: bake([[cap(.1, .2), T(0, 0, 0, 0, 0, Math.PI / 2)]]),
-    upper: hang(.06, L.upper), fore: hang(.05, L.fore), hand: bake([[sph(.045, 10, 8), T(0, -.02, 0, 0, 0, 0, 1, .8, 1.2)]]),
+    upper: hang(.06, L.upper), fore: hang(.05, L.fore), hand: bake([[sph(.052, 12, 10), T(0, -.02)]]),
     thigh: hang(.08, L.thigh), shin: hang(.062, L.shin),
     shoe: bake([BOX(.11, .09, .27, T(0, -.055, -.07)), BOX(.115, .025, .28, T(0, -.0875, -.07), sole)]),
     bag: bake([[cap(.13, .14), T(0, 0, 0, 0, 0, 0, 1.15, 1, .6)]]),
