@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from '/vendor/jsm/loaders/GLTFLoader.js';
 import { mergeStatic } from './scenery.js';
 
-// PREVIEW: an industrial district behind the station, from Kenney's "City Kit Industrial" (CC0, assets/city).
+// An industrial district behind the station, from Kenney's "City Kit Industrial" (CC0, assets/city).
 // Factories and warehouses past the road, chimneys and tanks among them, a water tower, shipping containers
 // by the tracks, and wind turbines turning on the hills.
 
