@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { Person, SCALE, HIP_SIT } from './people.js';
+import { Person, seatAt } from './people.js';
 
 // People waiting on the platform, the town on the hills, traffic behind the fence, clouds, birds,
 // and the small things a real platform has. Everything here is cheap: shared materials,
@@ -67,7 +67,7 @@ export function mergeStatic(root) {
    One of Kenney's Mini Characters (people.js) like everyone else; the crowd lives in crowd.js. */
 export function addPeople(st) {
   const me = new Person(0), H = me.bones.head; // model units here: the head is about .45 wide, its centre .17 above the neck
-  me.root.position.set(0, st.FLOOR + .52 - HIP_SIT * SCALE + .01, st.front + 5.8 + .06); me.pose('sit', { fade: 0 });
+  const seat = seatAt(0, st.FLOOR + .52, st.front + 5.8 + .21); me.root.position.set(0, seat.y, seat.z); me.pose('sit', { fade: 0 });
   const band = new THREE.Mesh(new THREE.TorusGeometry(.25, .018, 8, 28, Math.PI), mat(0x1d1f26, .5)); band.position.set(0, .17, 0); H.add(band);
   [-1, 1].forEach(sd => {
     const cup = new THREE.Mesh(new THREE.CylinderGeometry(.085, .085, .06, 20), mat(0xc9272c, .45)); cup.rotation.z = Math.PI / 2; cup.position.set(sd * .245, .15, 0); H.add(cup);

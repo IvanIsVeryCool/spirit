@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { Person, KINDS, SCALE, HIP_SIT } from './people.js';
+import { Person, KINDS, SCALE, HIP_SIT, seatAt, sitters } from './people.js';
 
 // Everyone on and around the platform who isn't you: people waiting on the benches and by the yellow line,
 // people walking past (some with a phone, a suitcase or a dog), cyclists, an e-bike and an e-scooter on the
@@ -91,7 +91,8 @@ export class Crowd {
       wheel: P('wheel', 8, { rough: .5 }), bike: P('bike', 3, { rough: .35 }), ebike: P('ebike', 2, { rough: .35 }), scooter: P('scooter', 2, { rough: .4 }), crank: P('crank', 4, { rough: .4 })
     };
     this.root = new THREE.Matrix4();
-    let kindAt = 3; const person = () => { const p = new Person(kindAt); kindAt = (kindAt + 5) % KINDS.length; s.add(p.root); return p; }; // every few, a different character
+    let kindAt = 3, sitAt = 0; const SIT = sitters();
+    const person = (sit = false) => { const k = sit ? SIT[(sitAt++ * 2 + 1) % SIT.length] : kindAt; if (!sit) kindAt = (kindAt + 5) % KINDS.length; const p = new Person(k); s.add(p.root); return p; }; // every few, a different character
     const F = st.FLOOR, front = st.front, PP = st.P, benchZ = front + 5.8;
     // lanes far enough forward that, from the resting camera, passers-by stay below the doors on screen
     // (phones sit closer to the train, so their lanes are nearer; bikes only use the forecourt path on desktop)
@@ -102,9 +103,10 @@ export class Crowd {
       [-PP - .3, front + 2.3, .3, 'stand', 'lap'], [PP + .4, front + 2.6, -.2, 'stand', 'phone'], [-3 * PP - 1.6, front + 3.2, .9, 'stand', 'lap'], [3 * PP + 1.8, front + 2.9, -.5, 'stand', 'phone']
     ];
     this.idle = idle.map(([x, z, yaw, pose, hands]) => {
-      const sit = pose === 'sit', busy = hands !== 'lap', p = person();
+      const sit = pose === 'sit', busy = hands !== 'lap', p = person(sit);
       // seated: hips on the bench seat (top at .52), backs near the backrest
-      p.root.position.set(x, sit ? F + .52 - HIP_SIT * SCALE + .01 : F, sit ? z + .06 : z); p.root.rotation.y = yaw;
+      const seat = seatAt(p.kind, F + .52, z + .21); // backs against the backrest, not through it
+      p.root.position.set(x, sit ? seat.y : F, sit ? seat.z : z); p.root.rotation.y = yaw;
       p.pose(sit ? (busy ? 'sit-phone' : 'sit') : (busy ? 'idle-phone' : 'idle'), { fade: 0, phase: rnd() });
       return { x, z, yaw, sit, hands, busy, p, look: 0, pitch: busy ? .35 : 0, target: 0, next: 2 + rnd() * 4, seed: rnd() * 10 };
     });
@@ -124,6 +126,7 @@ export class Crowd {
     const F = this.st.FLOOR; a.on = true; a.p.root.visible = true; a.dir = rnd() < .5 ? 1 : -1; a.x = mid ? (rnd() - .5) * this.span * 1.4 : -a.dir * this.span; a.look = 0; a.glance = 0; a.nextGlance = 0;
     if (a.kind === 'walk') {
       const r = rnd(); a.prop = r < .18 ? 'case' : r < .32 && !this.dogInUse ? 'dog' : r < .5 ? 'phone' : null;
+      a.caseCol = Col(pick([0x30323a, 0x8a2a2a, 0x2c3a5a, 0x3f6f5a])); // chosen once, so it doesn't flicker
       if (a.prop === 'dog') { this.dogInUse = true; a.dogCol = Col(pick([0x8a6a4a, 0x2a2420, 0xd8c8a8, 0x6a4a30])); a.dph = 0; }
       a.v = a.prop === 'phone' ? .8 + rnd() * .15 : .95 + rnd() * .3; a.y = F; a.z = this.lanes.walk[a.dir > 0 ? 0 : 1] + (rnd() - .5) * .2;
       // the leash and the suitcase go in the hand facing the camera, so they're seen
@@ -199,7 +202,7 @@ export class Crowd {
     if (a.prop === 'phone') { const h = p.hand('right', _v), m = new THREE.Matrix4().compose(h.add(_w.set(0, .03, 0)), _q.setFromEuler(_e.set(-.7, yaw, 0, 'YXZ')), _s.set(1, 1, 1)); this.p.phone.push(m); this.p.screen.push(m); }
     if (a.prop === 'case') { // trailing on its wheels, handle in hand
       const h = this._local(p.hand(a.side, _v)), len = 1.02, back = Math.sqrt(Math.max(.01, len * len - h.y * h.y));
-      this._push(this.p.suitcase, new THREE.Matrix4().compose(V(h.x, 0, h.z + back), _q.setFromUnitVectors(UP, V(0, h.y, -back).normalize()), _s.set(.85, .85, .85)), Col(pick([0x30323a, 0x8a2a2a, 0x2c3a5a, 0x3f6f5a])));
+      this._push(this.p.suitcase, new THREE.Matrix4().compose(V(h.x, 0, h.z + back), _q.setFromUnitVectors(UP, V(0, h.y, -back).normalize()), _s.set(.85, .85, .85)), a.caseCol);
     }
     if (a.prop === 'dog') this._dog(a, p.hand(a.side, new THREE.Vector3()), a.side === 'right' ? 1 : -1, dt);
   }

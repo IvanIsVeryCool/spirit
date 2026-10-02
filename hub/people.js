@@ -17,9 +17,11 @@ let LIB = null;
 export async function loadPeople() {
   if (LIB) return LIB;
   const loader = new GLTFLoader(), gltfs = await Promise.all(KINDS.map(k => loader.loadAsync(`/assets/people/character-${k}.glb`)));
-  let material = null;
+  let material = null; const back = [];
   const models = gltfs.map(g => {
     const skinned = []; g.scene.traverse(o => { if (o.isSkinnedMesh) skinned.push(o); });
+    // how far each character reaches behind its spine (backpacks, hair buns), in model units: for sitting against a backrest
+    back.push(Math.max(...skinned.map(m => { m.geometry.computeBoundingBox(); return -m.geometry.boundingBox.min.z; })));
     const [body, ...rest] = skinned;
     // body and head share the same joints and bind pose, so they become one mesh on the body's skeleton
     body.geometry = mergeGeometries(skinned.map(m => m.geometry.clone()));
@@ -42,9 +44,14 @@ export async function loadPeople() {
   const cv = document.createElement('canvas'); cv.width = img.naturalWidth || 1; cv.height = img.naturalHeight || 1;
   const cx = cv.getContext('2d', { willReadFrequently: true }); if (img.naturalWidth) cx.drawImage(img, 0, 0);
   const palette = cx.getImageData(0, 0, cv.width, cv.height);
-  return (LIB = { models, clips, material, hand, palette });
+  return (LIB = { models, clips, material, hand, palette, back });
 }
 export const library = () => LIB;
+// where to put a seated character's root so its back (or backpack, or hair) just meets a backrest at backZ
+// (in front of it, toward -z), at the seat height seatY
+export const seatAt = (kind, seatY, backZ) => ({ y: seatY - HIP_SIT * SCALE + .01, z: backZ - LIB.back[kind % LIB.back.length] * SCALE * .92 });
+// characters slim enough behind to sit back on a bench (no big buns or packs): their seats stay on the bench
+export const sitters = () => LIB.back.map((b, i) => [b, i]).filter(([b]) => b < .22).map(([, i]) => i);
 
 // clips cut down to some bones (only) or without some (except), so poses can be layered
 const CUT = {};
@@ -126,4 +133,26 @@ export function posedGeometry(kind, pose, t = .3) {
   const out = new THREE.BufferGeometry(); out.setAttribute('position', new THREE.BufferAttribute(pos, 3)); out.setAttribute('color', new THREE.BufferAttribute(col, 3));
   if (g.index) out.setIndex(g.index.clone());
   const flat = out.toNonIndexed(); flat.computeVertexNormals(); return flat;
+}
+
+// One limb of a character as its own still mesh, in that limb bone's space (origin at the shoulder or hip):
+// for the hands you see in the opening, which are your own character's arms. Returns { geometry, tip, material }.
+export function limbGeometry(kind, bone) {
+  const model = LIB.models[kind % LIB.models.length], mesh = model.getObjectByName('person'), sk = mesh.skeleton;
+  const j = sk.bones.findIndex(b => b.name === bone), inv = sk.boneInverses[j], src = mesh.geometry;
+  const pos = src.attributes.position, nor = src.attributes.normal, uv = src.attributes.uv, si = src.attributes.skinIndex, sw = src.attributes.skinWeight;
+  const mine = k => si.getX(k) === j && sw.getX(k) > .5, idx = src.index, P = [], N = [], U = [], v = new THREE.Vector3(), nm = new THREE.Matrix3().getNormalMatrix(inv);
+  for (let f = 0; f < idx.count; f += 3) {
+    const tri = [idx.getX(f), idx.getX(f + 1), idx.getX(f + 2)]; if (!tri.every(mine)) continue;
+    tri.forEach(k => { v.fromBufferAttribute(pos, k).applyMatrix4(inv); P.push(v.x, v.y, v.z); v.fromBufferAttribute(nor, k).applyMatrix3(nm).normalize(); N.push(v.x, v.y, v.z); U.push(uv.getX(k), uv.getY(k)); });
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(P, 3)); g.setAttribute('normal', new THREE.Float32BufferAttribute(N, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(U, 2));
+  return { geometry: g, tip: LIB.hand[bone].clone(), material: LIB.material };
+}
+// a rotation that turns a limb (pointing along `from` with `up` its upper side, in its own space) to point along `to`, upper side toward `upTo`
+export function aimBasis(from, up, to, upTo) {
+  const basis = (a, b) => { const x = a.clone().normalize(), z = new THREE.Vector3().crossVectors(x, b).normalize(), y = new THREE.Vector3().crossVectors(z, x); return new THREE.Matrix4().makeBasis(x, y, z); };
+  const m = basis(to, upTo).multiply(basis(from, up).invert());
+  return new THREE.Quaternion().setFromRotationMatrix(m);
 }

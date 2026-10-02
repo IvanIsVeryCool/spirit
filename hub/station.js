@@ -8,6 +8,7 @@ import { mergeStatic, addPeople, updatePeople, addPlatformProps, addBackground, 
 import { CAR_L, GAP, W, H, BASE, FLOOR, DOOR_W, DOOR_H, NOSE_L, bodyGeometry, capGeometry, noseGeometry, nosePoint, paintBody, paintNose, windowTexture, windowSlots } from './train.js';
 import { buildInterior } from './interior.js';
 import { Crowd } from './crowd.js';
+import { limbGeometry, aimBasis, library } from './people.js';
 import { addCity, updateCity } from './city.js';
 
 // A golden-hour Peninsula platform and a red-and-silver double-decker commuter train.
@@ -426,23 +427,17 @@ export class Station {
     pg.computeVertexNormals();
     rig.add(new THREE.Mesh(pg, new THREE.MeshStandardMaterial({ map: tt, roughness: .85, side: THREE.DoubleSide, alphaTest: .5 })));
     const along = (mesh, a, b) => { const v = new THREE.Vector3().subVectors(b, a); mesh.position.copy(a).addScaledVector(v, .5); mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), v.clone().normalize()); return v.length(); };
-    const skin = new THREE.MeshStandardMaterial({ color: 0xc98a64, roughness: .6 });
-    const sleeve = new THREE.MeshStandardMaterial({ color: 0x2b3352, roughness: .92 });
-    const cuff = new THREE.MeshStandardMaterial({ color: COL.red, roughness: .9 });
+    // your own hands: the arms (sleeve and blocky fist) of the character you are on the bench, gripping the ticket's ends.
+    // Each arm runs from below and behind the ticket up to its edge; rig space faces the eye (+z toward you).
+    // a copy of the people's material that glows a little, so hands this close aren't lost in the backlight of the sunset
+    const armMat = library().material.clone(); armMat.emissiveMap = armMat.map; armMat.emissive = new THREE.Color(.28, .24, .22);
     [-1, 1].forEach(sd => {
-      const h = new THREE.Group(); h.position.set(sd * .15, -.005, 0);
-      const palm = new THREE.Mesh(new THREE.SphereGeometry(1, 20, 14), skin); palm.scale.set(.036, .05, .022); palm.position.set(sd * .022, 0, -.02); h.add(palm);
-      for (let k = 0; k < 4; k++) { // fingers curl behind the ticket
-        const f = new THREE.Mesh(new THREE.CapsuleGeometry(.0105, .042, 4, 10), skin);
-        f.position.set(-sd * .012, .034 - k * .021, -.026); f.rotation.z = sd * Math.PI / 2; h.add(f);
-      }
-      // wrist and sleeve run back toward you
-      const wristA = new THREE.Vector3(sd * .045, -.02, -.01), wristB = new THREE.Vector3(sd * .09, -.12, .13);
-      const wrist = new THREE.Mesh(new THREE.CylinderGeometry(.024, .026, 1, 12), skin); wrist.scale.y = along(wrist, wristA, wristB); h.add(wrist);
-      const c = new THREE.Mesh(new THREE.CylinderGeometry(.036, .036, .03, 16), cuff); along(c, wristB, wristB.clone().add(new THREE.Vector3(sd * .012, -.03, .04))); h.add(c);
-      const slA = wristB.clone().add(new THREE.Vector3(sd * .01, -.02, .03)), slB = new THREE.Vector3(sd * .17, -.42, .55);
-      const sl = new THREE.Mesh(new THREE.CylinderGeometry(.04, .052, 1, 14), sleeve); sl.scale.y = along(sl, slA, slB); h.add(sl);
-      rig.add(h);
+      const bone = sd < 0 ? 'arm-right' : 'arm-left', { geometry, tip, material } = limbGeometry(0, bone);
+      const k = .88, grip = new THREE.Vector3(sd * .17, -.02, -.03); // fists a touch bigger than life, the toy proportion
+      const dir = new THREE.Vector3(-sd * .22, .62, -.75).normalize(), shoulder = grip.clone().addScaledVector(dir, -tip.length() * k);
+      const arm = new THREE.Mesh(geometry, armMat);
+      arm.quaternion.copy(aimBasis(tip, new THREE.Vector3(0, 1, 0), dir, new THREE.Vector3(0, .3, 1)));
+      arm.scale.setScalar(k); arm.position.copy(shoulder); rig.add(arm);
     });
     rig.position.set(0, 1.33, z0 - (this.mobile ? .38 : .32)); rig.lookAt(this.seat); rig.rotateX(-.12);
     if (this.mobile) rig.scale.setScalar(.62); // a narrow screen sees less, so hold it a little further off
@@ -497,10 +492,8 @@ export class Station {
     let tracking = false, reading = false;
     if (e < 1.0) tgt.set(0, 1.5, this.seat.z - 3.5);
     else if (e < 3.6) { tgt.set(.02 + Math.sin(e * 1.1) * .025, 1.31, this.seat.z - .42); reading = true; }
-    else if (e < 4.5) tgt.set(1.6, 2.05, 0);       // up, a little to the right
-    else if (e < 5.9) tgt.set(-12, 2.25, 0);       // the bells: down the platform to the left
-    else if (e < 6.4) tgt.set(-3, 2.1, 0);         // the horn: back toward it
-    else if (e < 11.4) { tgt.set(Math.max(-2.5, Math.min(18, front)), 2.0, 0); tracking = true; }
+    // one long, smooth turn up and to the right, toward where the train comes from, that then follows its nose in
+    else if (e < 11.4) { tgt.set(Math.max(-2.5, Math.min(18, front)), 2.0, 0); tracking = true; I.turn = I.turn || e; }
     else tgt.set(-1.2, 1.95, 0);
     this._head(tgt, t, dt, tracking, reading);
     // the ticket gets a small fidget, then the hands drop away as you stand
@@ -523,7 +516,9 @@ export class Station {
     ty += h.jy; tp += h.jp;
     const err = Math.abs(ty - h.yaw);
     tp -= Math.min(1, err / .7) * .05; // the head drops slightly mid-turn
-    const w = tracking ? 5.5 : reading ? 4 : 4.6, z = tracking ? 1 : .78;
+    // the big turn off the ticket is slow and unhurried (critically damped, no overshoot), then it tracks more tightly
+    const ramp = this.intro && this.intro.turn ? Math.min(1, (t - this.intro.t0 - this.intro.turn) / 2.6) : 1;
+    const w = tracking ? 2.2 + 3.3 * ramp * ramp : reading ? 4 : 4.6, z = tracking ? 1 : .78;
     for (let n = Math.ceil(dt / .02), i = 0; i < n; i++) {
       const s = dt / n;
       h.vy += (w * w * (ty - h.yaw) - 2 * z * w * h.vy) * s; h.yaw += h.vy * s;
