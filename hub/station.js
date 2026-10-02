@@ -76,7 +76,7 @@ export class Station {
     const fill = new THREE.DirectionalLight(0x8d9cff, .5); fill.position.set(14, 8, 18); s.add(fill);
 
     Object.assign(this, { FLOOR, CAR_L, NOSE_L, P: CAR_L + GAP });
-    this._sky(); this._hills(); this._trees(); this._tracks(); this._platform(); this._wires(); this._props(); this._train(); this._motes(); this._billboard();
+    this._sky(); this._hills(); this._trees(); this._tracks(); this._platform(); this._wires(); this._props(); this._train(); this._motes(); this._flyer();
     const propGroup = addPlatformProps(this); addPeople(this); addBackground(this); this.city = addCity(this); this.crowd = new Crowd(this);
     s.traverse(o => { if (o.isMesh && !o.userData.noShadow) { o.castShadow = !!o.userData.cast; o.receiveShadow = true; } });
     // hundreds of small static parts become one draw call per material
@@ -455,53 +455,77 @@ export class Station {
   redrawSigns() {
     this.doors.forEach((d, i) => { d.led.key = ''; this.drawSign(i); });
     if (this.noseMesh) this._paintNose();
-    if (this.boardFace) this._paintBillboard();
+    if (this.flyer) this._paintBanner();
   }
-  // A big roadside billboard behind the far road, standing over the train in the platform view: "NUEVA SPIRIT",
-  // on two steel legs with a catwalk, lit by four lamps on arms over the top.
-  _billboard() {
-    const g = new THREE.Group(), BW = 22, BH = 6.6, Y = 11, Z = -17.2; g.position.set(0, 0, Z); this.scene.add(g);
-    const steel = new THREE.MeshStandardMaterial({ color: 0x2c2f37, roughness: .6, metalness: .55 }), dark = new THREE.MeshStandardMaterial({ color: 0x1b1d22, roughness: .7, metalness: .3 });
-    const box = (w, h, d, m, x, y, z) => { const o = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m); o.position.set(x, y, z); o.userData.cast = true; g.add(o); return o; };
-    this.boardFace = new THREE.Mesh(new THREE.PlaneGeometry(BW, BH), new THREE.MeshStandardMaterial({ roughness: .9, color: 0xe2e2e2, emissive: 0xffffff, emissiveIntensity: .22, envMapIntensity: .4 }));
-    this.boardFace.position.set(0, Y, .17); g.add(this.boardFace);
-    box(BW + .5, BH + .5, .3, dark, 0, Y, 0);                                                    // the frame and backing
-    [-1, 1].forEach(sd => {
-      box(.9, Y - BH / 2, .9, steel, sd * 6.2, (Y - BH / 2) / 2, -.6);                            // legs
-      box(.25, 3.4, .25, steel, sd * 6.2, Y - BH / 2 - 1.2, .2).rotation.z = sd * .5;            // braces
-    });
-    box(BW + .8, .12, 1.1, steel, 0, Y - BH / 2 - .35, .75);                                     // catwalk
-    for (let k = 0; k <= 10; k++) box(.05, .9, .05, steel, -BW / 2 - .3 + k * (BW + .6) / 10, Y - BH / 2 + .1, 1.27);
-    box(BW + .7, .05, .05, steel, 0, Y - BH / 2 + .55, 1.27);
-    // lamps on arms over the top, shining down on the face
-    const lampMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(2.2, 1.9, 1.4) }); lampMat.toneMapped = false;
-    [-.375, -.125, .125, .375].forEach(f => {
-      box(.08, .08, 1.5, steel, f * BW, Y + BH / 2 + .35, .7);
-      box(.6, .16, .34, dark, f * BW, Y + BH / 2 + .32, 1.45);
-      const l = new THREE.Mesh(new THREE.PlaneGeometry(.5, .26), lampMat); l.rotation.x = Math.PI / 2; l.position.set(f * BW, Y + BH / 2 + .235, 1.45); g.add(l);
-    });
-    g.traverse(o => { if (o.isMesh && o !== this.boardFace) o.userData.noShadow = !o.userData.cast; });
-    this.boardFace.userData.keep = true; this.boardGroup = g;
-    this._paintBillboard(); mergeStatic(g);
+  // A small plane towing a "NUEVA SPIRIT" banner across the sky behind the train, every half minute or so
+  // (not during the opening). Our own plane: white, a red stripe, a spinning propeller. The banner ripples as it's towed.
+  _flyer() {
+    const g = new THREE.Group(), plane = new THREE.Group(); g.add(plane); this.scene.add(g);
+    const white = new THREE.MeshStandardMaterial({ color: 0xd9d6cf, roughness: .6, metalness: .05, envMapIntensity: .5 }), red = new THREE.MeshStandardMaterial({ color: 0xc9272c, roughness: .5 });
+    const dark = new THREE.MeshStandardMaterial({ color: 0x1c2233, roughness: .2, metalness: .3 }), grey = new THREE.MeshStandardMaterial({ color: 0x6b707a, roughness: .5, metalness: .5 });
+    const part = (geo, m, x, y, z, rz = 0) => { const o = new THREE.Mesh(geo, m); o.position.set(x, y, z); o.rotation.z = rz; plane.add(o); return o; };
+    // the plane flies toward +x: fuselage along x, nose at +x
+    part(new THREE.CylinderGeometry(.42, .2, 6.4, 12), white, 0, 0, 0, Math.PI / 2);                 // fuselage, tapering to the tail
+    part(new THREE.SphereGeometry(.44, 12, 8), white, 3.2, 0, 0).scale.set(1.2, 1, 1);               // nose
+    part(new THREE.BoxGeometry(5.2, .05, .16), red, -.2, -.06, .42);                                  // the red stripe, both sides
+    part(new THREE.BoxGeometry(5.2, .05, .16), red, -.2, -.06, -.42);
+    part(new THREE.BoxGeometry(1.3, .42, .74), dark, 1.6, .38, 0);                                    // canopy
+    part(new THREE.BoxGeometry(1.5, .1, 10.4), white, 1.2, .3, 0);                                    // wing
+    [-1, 1].forEach(sd => part(new THREE.BoxGeometry(1.52, .11, .7), red, 1.2, .3, sd * 4.9));       // red wingtips
+    part(new THREE.BoxGeometry(.9, .07, 3.4), white, -2.9, .1, 0);                                    // tailplane
+    part(new THREE.BoxGeometry(1.1, 1.3, .08), red, -2.95, .7, 0).rotation.z = .25;                   // fin
+    [-1, 1].forEach(sd => { part(new THREE.CylinderGeometry(.04, .04, .9, 6), grey, 1.6, -.7, sd * .7); part(new THREE.CylinderGeometry(.2, .2, .1, 12), dark, 1.6, -1.12, sd * .7).rotation.x = Math.PI / 2; });
+    const prop = new THREE.Group(); prop.position.set(3.75, 0, 0); plane.add(prop);
+    [0, Math.PI / 2].forEach(r => { const b = new THREE.Mesh(new THREE.BoxGeometry(.05, 2.1, .14), dark); b.rotation.x = r; prop.add(b); });
+    const disc = new THREE.Mesh(new THREE.CircleGeometry(1.05, 24), new THREE.MeshBasicMaterial({ color: 0x9aa0aa, transparent: true, opacity: .16, depthWrite: false, side: THREE.DoubleSide }));
+    disc.rotation.y = Math.PI / 2; prop.add(disc); prop.userData.keep = true;
+    // the tow line and the banner behind it (its leading edge on a weighted pole)
+    const L = 15, BH = 2.7, lead = -3.4 - 9;
+    const line = new THREE.Mesh(new THREE.CylinderGeometry(.025, .025, 9.2, 4), grey); line.rotation.z = Math.PI / 2 + .09; line.position.set(-3.4 - 4.6, -.45, 0); g.add(line);
+    const pole = new THREE.Mesh(new THREE.CylinderGeometry(.06, .06, BH + .3, 6), grey); pole.position.set(lead, -1.0 - BH / 2, 0); g.add(pole);
+    const geo = new THREE.PlaneGeometry(L, BH, 30, 3); geo.translate(-L / 2, 0, 0);
+    const banner = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ roughness: .8, side: THREE.DoubleSide, emissive: 0xffffff, emissiveIntensity: .08 }));
+    banner.position.set(lead, -1.0 - BH / 2, 0); banner.userData.keep = true; g.add(banner);
+    g.traverse(o => { if (o.isMesh) o.userData.noShadow = true; });
+    mergeStatic(plane);
+    // phones see a narrow slice of sky lower down: there it flies lower, closer and slower, across the middle of the view
+    this.flyer = { g, prop, banner, base: Float32Array.from(geo.attributes.position.array), L, span: this.mobile ? 48 : 150, v: this.mobile ? 6.5 : 15, y: this.mobile ? 12.8 : 15.5, z: this.mobile ? -28 : -34, gap: 32, next: 6, on: false };
+    g.position.set(-999, 0, 0);
+    this._paintBanner();
   }
-  _paintBillboard() {
-    const W = 2048, H = Math.round(2048 * 6.6 / 22), c = document.createElement('canvas'); c.width = W; c.height = H; const x = c.getContext('2d');
-    // the poster: deep blue, lit from the lamps above (brighter at the top), a navy band along the bottom
-    const bg = x.createLinearGradient(0, 0, 0, H); bg.addColorStop(0, '#2a5fc4'); bg.addColorStop(1, '#183f91'); x.fillStyle = bg; x.fillRect(0, 0, W, H);
-    [.125, .375, .625, .875].forEach(f => { const r = x.createRadialGradient(f * W, -40, 10, f * W, -40, 520); r.addColorStop(0, 'rgba(255,236,200,.28)'); r.addColorStop(1, 'rgba(255,236,200,0)'); x.fillStyle = r; x.fillRect(0, 0, W, H); });
-    x.fillStyle = '#0e2a66'; x.fillRect(0, H - 70, W, 70); x.fillStyle = 'rgba(255,255,255,.85)'; x.fillRect(0, H - 80, W, 6);
-    // the logo, white in a white-edged square, and the name in white
-    const S = H - 210, L = 90, T = 70; x.strokeStyle = '#fff'; x.lineWidth = 12; x.beginPath(); x.roundRect(L + 6, T + 6, S - 12, S - 12, 24); x.stroke();
-    if (this.logo) x.drawImage(this.logo, L + S * .14, T + S * .14, S * .72, S * .72);
-    const tx = L + S + 90, fs = Math.round(S * .62); x.textBaseline = 'alphabetic';
+  _paintBanner() {
+    const W = 2048, H = Math.round(2048 * 2.7 / 15), c = document.createElement('canvas'); c.width = W; c.height = H; const x = c.getContext('2d');
+    // blue cloth, white hems, the logo in a white-edged square and the name in white
+    const bg = x.createLinearGradient(0, 0, 0, H); bg.addColorStop(0, '#2a5fc4'); bg.addColorStop(1, '#1b4499'); x.fillStyle = bg; x.fillRect(0, 0, W, H);
+    x.fillStyle = 'rgba(255,255,255,.9)'; x.fillRect(0, 10, W, 8); x.fillRect(0, H - 18, W, 8);
+    const S = H - 100, L0 = 50, T = 50; x.strokeStyle = '#fff'; x.lineWidth = 10; x.beginPath(); x.roundRect(L0 + 5, T + 5, S - 10, S - 10, 18); x.stroke();
+    if (this.logo) x.drawImage(this.logo, L0 + S * .14, T + S * .14, S * .72, S * .72);
+    const tx = L0 + S + 60, fs = Math.round(S * .78); x.textBaseline = 'alphabetic'; x.fillStyle = '#fff';
     x.font = `900 ${fs}px Archivo, "Arial Black", sans-serif`; try { x.fontStretch = 'expanded'; } catch (e) {}
-    const avail = W - tx - 90, w1 = x.measureText('NUEVA ').width, w2 = x.measureText('SPIRIT').width, k = Math.min(1, avail / (w1 + w2));
-    x.save(); x.translate(tx, T + S * .5 + fs * .36); x.scale(k, 1);
-    x.fillStyle = '#ffffff'; x.fillText('NUEVA ', 0, 0); x.fillStyle = '#ffffff'; x.fillText('SPIRIT', w1, 0); x.restore();
-    // a little weathering
-    const d = x.getImageData(0, 0, W, H), a = d.data; for (let i = 0; i < a.length; i += 4) { const n = (Math.random() - .5) * 10; a[i] += n; a[i + 1] += n; a[i + 2] += n; } x.putImageData(d, 0, 0);
+    const w = x.measureText('NUEVA SPIRIT').width, k = Math.min(1, (W - tx - 60) / w);
+    x.save(); x.translate(tx, T + S * .5 + fs * .36); x.scale(k, 1); x.fillText('NUEVA SPIRIT', 0, 0); x.restore();
     const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8;
-    const m = this.boardFace.material; if (m.map) m.map.dispose(); m.map = t; m.emissiveMap = t; m.needsUpdate = true;
+    const m = this.flyer.banner.material; if (m.map) m.map.dispose(); m.map = t; m.emissiveMap = t; m.needsUpdate = true;
+  }
+  _flyby(t, dt) {
+    const F = this.flyer; if (!F) return;
+    if (!F.on) {
+      if (this.intro || t < F.next) return;
+      const cx = this.mobile ? this.camera.position.x : 0; F.x0 = cx - F.span; F.x1 = cx + F.span;
+      F.on = true; F.t0 = t; this.onFlyby && this.onFlyby((F.x1 - F.x0) / F.v, F.span / F.v);
+    }
+    const e = t - F.t0, x = F.x0 + e * F.v;
+    if (x > F.x1) { F.on = false; F.next = t + F.gap; F.g.position.x = -999; return; }
+    F.g.position.set(x, F.y + Math.sin(e * .7) * .35, F.z); F.g.rotation.x = Math.sin(e * .9) * .04;
+    F.prop.rotation.x += dt * 70;
+    // the banner ripples, more toward its free end, and sags a little
+    const pos = F.banner.geometry.attributes.position, b = F.base;
+    for (let i = 0; i < pos.count; i++) {
+      const bx = b[i * 3], f = -bx / F.L;
+      pos.setZ(i, Math.sin(bx * .9 + e * 7) * .28 * f + Math.sin(bx * .37 - e * 3.1) * .12 * f);
+      pos.setY(i, b[i * 3 + 1] - f * f * .35);
+    }
+    pos.needsUpdate = true;
   }
 
   /* ---------- first-person opening: you sit on the bench and wait ---------- */
@@ -869,7 +893,7 @@ export class Station {
     const pos = this.motes.geometry.attributes.position.array, gust = speed * near;
     for (let i = 0; i < pos.length; i += 3) { pos[i] -= gust * .003 * (pos[i + 2] < 4 ? 1 : .25) + .004; pos[i + 1] += Math.sin(t * .7 + i) * .0015; if (pos[i] < -35) pos[i] += 70; }
     this.motes.geometry.attributes.position.needsUpdate = true;
-    updatePeople(this, t, dt); updateBackground(this, t, dt); this.crowd.update(t, dt); updateCity(this.city, t, dt);
+    updatePeople(this, t, dt); updateBackground(this, t, dt); this._flyby(t, dt); this.crowd.update(t, dt); updateCity(this.city, t, dt);
     this.sky.position.copy(c.position);
     this._adapt();
     this.composer.render();

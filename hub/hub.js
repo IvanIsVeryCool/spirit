@@ -255,7 +255,7 @@ async function boot() {
       const [{ Station }, { loadPeople }, { loadCity }] = await Promise.all([import('./station.js'), import('./people.js'), import('./city.js')]);
       await Promise.all([loadPeople(), loadCity(), audio.loadTrack('/assets/audio/headphones.mp3', '/assets/audio/headphones_loop.mp3')]); // the Mini Characters before the scene that uses them; your headphone song if there is one
       const logo = new Image(); logo.src = '/assets/logo.png'; await logo.decode().catch(() => {});
-      station = new Station($('station'), { mobile, doors: DOORS, logo: logo.naturalWidth ? logo : null }); if (location.hash === '#debug') { window.__st = station; window.__audio = audio; } station.render();
+      station = new Station($('station'), { mobile, doors: DOORS, logo: logo.naturalWidth ? logo : null }); if (location.hash === '#debug') { window.__st = station; window.__audio = audio; } station.onFlyby = (dur, mid) => audio.plane(dur, mid); station.render();
     }
     catch (e) { console.warn(e); station = null; }
   })().then(() => done++);

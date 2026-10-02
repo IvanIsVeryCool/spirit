@@ -250,6 +250,21 @@ export class StationAudio {
     const t0 = this.ctx.currentTime;
     [[72, 0], [76, .32], [79, .64]].forEach(([n, d]) => this._bell(NOTE(n), t0 + d, .06, 2.2, 0));
   }
+  // a small propeller plane going over, left to right: a buzzing engine with the prop's beat, loudest overhead (at `mid` s)
+  plane(dur, mid) {
+    if (!this.live) return;
+    const ctx = this.ctx, t = ctx.currentTime, g = ctx.createGain(), f = ctx.createBiquadFilter(), am = ctx.createGain(), lfo = ctx.createOscillator(), depth = ctx.createGain();
+    f.type = 'lowpass'; f.frequency.value = 620; f.Q.value = .7;
+    g.gain.setValueAtTime(.0001, t); g.gain.exponentialRampToValueAtTime(.022, t + mid); g.gain.exponentialRampToValueAtTime(.0001, t + dur);
+    lfo.frequency.value = 21; depth.gain.value = .35; am.gain.value = .65; lfo.connect(depth).connect(am.gain);
+    [[84, 'sawtooth', .6], [168, 'square', .18], [252, 'sawtooth', .12]].forEach(([fr, type, v]) => {
+      const o = ctx.createOscillator(), og = ctx.createGain(); o.type = type; o.frequency.setValueAtTime(fr * 1.04, t); o.frequency.linearRampToValueAtTime(fr * .96, t + dur); og.gain.value = v; // a touch of Doppler
+      o.connect(og).connect(am); o.start(t); o.stop(t + dur + .1);
+    });
+    am.connect(f).connect(g);
+    let out = g; if (ctx.createStereoPanner) { const pn = ctx.createStereoPanner(); pn.pan.setValueAtTime(-.8, t); pn.pan.linearRampToValueAtTime(.8, t + dur); g.connect(pn); out = pn; }
+    out.connect(this.dry); out.connect(this.verbIn); lfo.start(t); lfo.stop(t + dur + .1);
+  }
   // the cab's sliding door: a pneumatic sigh, the leaf running in its track, a soft stop
   cabDoor() {
     if (!this.live) return;
