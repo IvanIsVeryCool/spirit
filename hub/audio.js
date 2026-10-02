@@ -26,6 +26,25 @@ export class StationAudio {
     const lfo = ctx.createOscillator(), la = ctx.createGain(); lfo.frequency.value = .09; la.gain.value = .03; lfo.connect(la).connect(wg.gain); lfo.start();
     wind.connect(wf).connect(wg); wg.connect(this.dry); wg.connect(this.verbIn); wind.start();
     const hum = ctx.createOscillator(), hg = ctx.createGain(); hum.frequency.value = 58; hg.gain.value = .012; hum.connect(hg).connect(this.dry); hum.start();
+    this.outDry = this.dry; this.outVerb = this.verbIn;
+    if (this.sceneWanted) this.beginScene();
+  }
+  // Everything the opening plays (bells, horn, the train pulling in, foley) goes through its own pair of gains,
+  // so skipping the opening can fade all of it out at once, including sounds already scheduled ahead.
+  beginScene() {
+    this.endScene(0);
+    if (!this.ctx) { this.sceneWanted = true; return; } // sound comes on later: start routing then
+    this.sceneWanted = false;
+    const s = this.scene = [this.ctx.createGain(), this.ctx.createGain()];
+    s[0].connect(this.dry); s[1].connect(this.verbIn); [this.outDry, this.outVerb] = s;
+  }
+  endScene(fade = .4) {
+    this.sceneWanted = false;
+    const s = this.scene; if (!s) return;
+    this.scene = null; this.outDry = this.dry; this.outVerb = this.verbIn;
+    const t = this.ctx.currentTime;
+    s.forEach(g => { g.gain.cancelScheduledValues(t); g.gain.setValueAtTime(g.gain.value, t); g.gain.linearRampToValueAtTime(0, t + Math.max(.01, fade)); });
+    setTimeout(() => s.forEach(g => g.disconnect()), fade * 1000 + 200);
   }
   setEnabled(on) {
     this.enabled = on;
@@ -40,7 +59,7 @@ export class StationAudio {
   get live() { return this.enabled && this.ctx && this.ctx.state === 'running'; }
   _out(g, pan) {
     if (pan != null && this.ctx.createStereoPanner) { const p = this.ctx.createStereoPanner(); p.pan.value = pan; g.connect(p); g = p; }
-    g.connect(this.dry); g.connect(this.verbIn); return g;
+    g.connect(this.outDry); g.connect(this.outVerb); return g;
   }
   _noise(t, dur, type, f0, f1, q, peak, attack, pan) {
     const ctx = this.ctx, src = ctx.createBufferSource(); src.buffer = this.noise;
@@ -62,7 +81,7 @@ export class StationAudio {
     const ctx = this.ctx, o = ctx.createOscillator(), g = ctx.createGain();
     o.type = 'triangle'; o.frequency.setValueAtTime(150, t); o.frequency.exponentialRampToValueAtTime(55, t + .05);
     g.gain.setValueAtTime(.0001, t); g.gain.exponentialRampToValueAtTime(gain, t + .004); g.gain.exponentialRampToValueAtTime(.0001, t + .08);
-    o.connect(g).connect(this.dry); o.start(t); o.stop(t + .1);
+    o.connect(g).connect(this.outDry); o.start(t); o.stop(t + .1);
   }
   // a three-chime horn: one long, one short, pitched slightly high while approaching
   _horn(t, pattern, pan = .6) {
@@ -95,8 +114,8 @@ export class StationAudio {
     if (bells) for (let k = 0, x = 0; x < dur - .4; k++, x += .46) this._bell(1520, t + x, .05 * Math.min(1, (k + 1) / 3) * Math.min(1, (dur - x) / 1.5), .5, -.55);
     this._horn(t + .5, [1.3, .45], .75);
     let pan = null;
-    if (ctx.createStereoPanner) { pan = ctx.createStereoPanner(); pan.pan.setValueAtTime(.95, t); pan.pan.linearRampToValueAtTime(-.05, t + dur); pan.connect(this.dry); pan.connect(this.verbIn); }
-    const dest = pan || this.dry;
+    if (ctx.createStereoPanner) { pan = ctx.createStereoPanner(); pan.pan.setValueAtTime(.95, t); pan.pan.linearRampToValueAtTime(-.05, t + dur); pan.connect(this.outDry); pan.connect(this.outVerb); }
+    const dest = pan || this.outDry;
     const rumble = ctx.createBufferSource(); rumble.buffer = this.noise; rumble.loop = true;
     const rf = ctx.createBiquadFilter(); rf.type = 'lowpass'; rf.frequency.setValueAtTime(1100, t); rf.frequency.exponentialRampToValueAtTime(150, t + dur);
     const rg = ctx.createGain(); rg.gain.setValueAtTime(.0001, t); rg.gain.exponentialRampToValueAtTime(.5, t + dur * .35); rg.gain.exponentialRampToValueAtTime(.0001, t + dur + .5);
@@ -173,7 +192,7 @@ export class StationAudio {
     const o = ctx.createOscillator(), g = ctx.createGain(); o.type = 'triangle';  // bench creak
     o.frequency.setValueAtTime(140, t + .35); o.frequency.exponentialRampToValueAtTime(96, t + .7);
     g.gain.setValueAtTime(.0001, t + .35); g.gain.exponentialRampToValueAtTime(.05, t + .4); g.gain.exponentialRampToValueAtTime(.0001, t + .75);
-    o.connect(g).connect(this.dry); o.start(t + .35); o.stop(t + .8);
+    o.connect(g).connect(this.outDry); o.start(t + .35); o.stop(t + .8);
     this._click(t + .38, .2);
   }
   paper() {
@@ -205,7 +224,7 @@ export class StationAudio {
       const o = ctx.createOscillator(), g = ctx.createGain(); o.type = 'square'; o.frequency.value = (i ? 1568 : 1319) * p;
       const f = ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 2600;
       g.gain.setValueAtTime(.0001, t + d); g.gain.exponentialRampToValueAtTime(.03, t + d + .006); g.gain.exponentialRampToValueAtTime(.0001, t + d + .08);
-      o.connect(f).connect(g); g.connect(this.dry); o.start(t + d); o.stop(t + d + .1);
+      o.connect(f).connect(g); g.connect(this.outDry); o.start(t + d); o.stop(t + d + .1);
     });
   }
   punch() {

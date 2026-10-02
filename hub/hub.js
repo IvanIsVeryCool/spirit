@@ -205,7 +205,7 @@ async function boot() {
     try {
       const { Station } = await import('./station.js');
       const logo = new Image(); logo.src = '/assets/logo.png'; await logo.decode().catch(() => {});
-      station = new Station($('station'), { mobile, doors: DOORS, logo: logo.naturalWidth ? logo : null }); if (location.hash === '#debug') window.__st = station; station.render();
+      station = new Station($('station'), { mobile, doors: DOORS, logo: logo.naturalWidth ? logo : null }); if (location.hash === '#debug') { window.__st = station; window.__audio = audio; } station.render();
     }
     catch (e) { console.warn(e); station = null; }
   })().then(() => done++);
@@ -253,6 +253,7 @@ function quickEnter() {
 }
 // you're sitting on the bench, ticket in hand, and the train pulls in
 function playIntro() {
+  audio.beginScene();
   introPlaying = true; document.body.classList.add('intro');
   station.startIntro(ticketCanvas(), {
     sit: () => audio.sit(), paper: () => audio.paper(), bells: () => audio.bells(8.5),
@@ -261,7 +262,8 @@ function playIntro() {
   });
 }
 function endIntro() {
-  if (!introPlaying) return; introPlaying = false; document.body.classList.add('entered');
+  if (!introPlaying) return; introPlaying = false;
+  audio.endScene(2.5); // everything has played out by now; just let the reverb tails go document.body.classList.add('entered');
   document.body.classList.remove('intro');
   setTimeout(() => showBoard(), 600);
 }
@@ -272,8 +274,10 @@ $('replay-btn').addEventListener('click', () => {
   $('board').classList.remove('show'); audio.tick();
   playIntro();
 });
-$('skip').addEventListener('click', () => { if (station && introPlaying) station.skipIntro(); });
-addEventListener('keydown', e => { if (introPlaying && (e.key === 'Escape' || e.key === ' ')) { e.preventDefault(); station.skipIntro(); } });
+// skipping cuts the opening's sounds too (bells, horn and the arrival are scheduled ahead), with a short fade
+function skipIntro() { if (!station || !introPlaying) return; audio.endScene(.4); station.skipIntro(); }
+$('skip').addEventListener('click', skipIntro);
+addEventListener('keydown', e => { if (introPlaying && (e.key === 'Escape' || e.key === ' ')) { e.preventDefault(); skipIntro(); } });
 $('enter-sound').addEventListener('click', () => enter(true));
 $('enter-quiet').addEventListener('click', () => enter(false));
 

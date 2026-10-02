@@ -78,7 +78,8 @@ The README covers the owner-facing basics: how to add a car and how to update sc
   - Look up and right, then left down the platform with the crossing bells at 3.4.
   - The train starts arriving at 5.2 (a 6-second arrival). The head then tracks the train's nose.
   - At 12.1 the first-person rig is swapped for the seated listener (`st.listener`, you with red headphones), and the camera lifts up over your head and pulls back behind the bench (1.5 s). Hand-off to the platform view at 13.6.
-  - The listener is hidden during the cutscene (`_me(false)`) and shown again at 12.1, on skip and at the end. His head nods on the beat in `updatePeople` (`p.music`); no music is played.
+  - The listener is hidden during the cutscene (`_me(false)`) and shown again at 12.1, on skip and at the end.
+  - **Cutscene sound:** `audio.beginScene()` (in `playIntro`) routes every sound the opening plays through its own gains (`outDry`/`outVerb`), because bells, horn and the arrival are scheduled seconds ahead. Skipping calls `audio.endScene(.4)` to fade all of it out; the natural end lets the reverb tails go (`endScene(2.5)`). New sound methods should connect to `this.outDry`/`this.outVerb`, not `dry`/`verbIn`. His head nods on the beat in `updatePeople` (`p.music`); no music is played.
 - **Head motion:** `_head` uses critically damped and slightly underdamped springs on yaw and pitch.
   On top of that: small random glances while holding a look, a slight dip during big turns, tilt into turns, and a breathing sway.
 - **Daily flow:**
