@@ -11,6 +11,7 @@ import { CABINET } from './doors.js';
 import { Crowd } from './crowd.js';
 import { limbGeometry, aimBasis, library, Person } from './people.js';
 import { addCity, updateCity, cityLoaded } from './city.js';
+import { pavers, concrete, ballast, grass, chainlink, tactile, tiled } from './surfaces.js';
 
 // A golden-hour Peninsula platform and a red-and-silver double-decker commuter train.
 const COL = {
@@ -52,7 +53,7 @@ export class Station {
   constructor(canvas, { mobile, doors, logo }) {
     this.mobile = mobile; this.data = doors; this.count = doors.length; this.logo = logo;
     const r = this.renderer = new THREE.WebGLRenderer({ canvas, antialias: !mobile, powerPreference: 'high-performance' });
-    r.toneMapping = THREE.ACESFilmicToneMapping; r.toneMappingExposure = 1.0;
+    r.toneMapping = THREE.ACESFilmicToneMapping; r.toneMappingExposure = .84; // a little under, so the evening reads as evening
     r.outputColorSpace = THREE.SRGBColorSpace;
     if (!mobile) { r.shadowMap.enabled = true; r.shadowMap.type = THREE.PCFSoftShadowMap; }
     const s = this.scene = new THREE.Scene();
@@ -65,8 +66,8 @@ export class Station {
     this.hover = -1; this.focus = 0; this.flight = null; this.trainX = 70; this.arrival = null; this.sway = 0;
 
     this.sunDir = new THREE.Vector3(-.36, .15, -.92).normalize();
-    s.add(new THREE.HemisphereLight(0x9fb2ff, 0x5a3b2c, .9));
-    const sun = this.sunLight = new THREE.DirectionalLight(0xffc690, 2.1);
+    s.add(new THREE.HemisphereLight(0x9fb2ff, 0x5a3b2c, .72));
+    const sun = this.sunLight = new THREE.DirectionalLight(0xffc690, 1.85);
     sun.position.set(-32, 11, 16); s.add(sun); s.add(sun.target);
     if (!mobile) {
       sun.castShadow = true; sun.shadow.mapSize.set(2048, 2048);
@@ -88,7 +89,7 @@ export class Station {
 
     this.composer = new EffectComposer(r);
     this.composer.addPass(new RenderPass(s, this.camera));
-    if (!mobile) { this.bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), .55, .45, .82); this.composer.addPass(this.bloom); }
+    if (!mobile) { this.bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), .4, .45, .84); this.composer.addPass(this.bloom); }
     this.composer.addPass(new OutputPass());
     this.resize(); this.parkedPose(true);
   }
@@ -156,11 +157,13 @@ export class Station {
   }
   _tracks() {
     const s = this.scene;
-    const bed = new THREE.Mesh(new THREE.PlaneGeometry(400, 30), new THREE.MeshStandardMaterial({ color: 0x5d534b, roughness: 1 }));
-    bed.rotation.x = -Math.PI / 2; bed.position.set(0, -.02, -8); s.add(bed);
-    const ground = new THREE.Mesh(new THREE.PlaneGeometry(600, 200), new THREE.MeshStandardMaterial({ color: 0x3f4a33, roughness: 1 }));
-    ground.rotation.x = -Math.PI / 2; ground.position.set(0, -.06, -110); ground.userData.noShadow = true; s.add(ground);
-    const ties = new THREE.InstancedMesh(new THREE.BoxGeometry(.24, .1, 2.6), new THREE.MeshStandardMaterial({ color: 0x3b312a, roughness: .95 }), 1300);
+    // the ballast bed, the grass beyond, concrete sleepers (surfaces.js)
+    this.surf = this.surf || { conc: concrete(this.mobile ? 128 : 256) };
+    const bed = new THREE.Mesh(new THREE.PlaneGeometry(400, 10.4), new THREE.MeshStandardMaterial({ roughness: 1, ...tiled(ballast(this.mobile ? 256 : 512), 400, 10.4) })); // from the platform to the fence
+    bed.rotation.x = -Math.PI / 2; bed.position.set(0, -.02, -3.4); s.add(bed);
+    const ground = new THREE.Mesh(new THREE.PlaneGeometry(600, 204), new THREE.MeshStandardMaterial({ roughness: 1, ...tiled(grass(this.mobile ? 256 : 512), 600, 204) }));
+    ground.rotation.x = -Math.PI / 2; ground.position.set(0, -.06, -110.4); // grass from just behind the fence back ground.userData.noShadow = true; s.add(ground);
+    const ties = new THREE.InstancedMesh(new THREE.BoxGeometry(.24, .1, 2.6), new THREE.MeshStandardMaterial({ color: 0x8c8780, roughness: .95, map: this.surf.conc.map, normalMap: this.surf.conc.normalMap }), 1300);
     const railMat = new THREE.MeshStandardMaterial({ color: 0x9aa0a8, metalness: .9, roughness: .3 });
     const m = new THREE.Matrix4(); let k = 0;
     [0, -4.6].forEach(z => {
@@ -168,24 +171,26 @@ export class Station {
       [-.72, .72].forEach(dz => { const rail = new THREE.Mesh(new THREE.BoxGeometry(400, .12, .08), railMat); rail.position.set(0, .16, z + dz); s.add(rail); });
     });
     ties.count = k; s.add(ties);
-    const fence = new THREE.Mesh(new THREE.BoxGeometry(400, 1.4, .04), new THREE.MeshStandardMaterial({ color: 0x2e3138, metalness: .5, roughness: .6, transparent: true, opacity: .55 }));
+    // a chain-link fence on posts, with a top rail
+    const fence = new THREE.Mesh(new THREE.PlaneGeometry(400, 1.4), new THREE.MeshStandardMaterial({ ...tiled(chainlink(), 400, 1.4), alphaTest: .5, side: THREE.DoubleSide, metalness: .6, roughness: .45 }));
     fence.position.set(0, .7, -8.2); fence.userData.noShadow = true; s.add(fence);
+    const galv = new THREE.MeshStandardMaterial({ color: 0x8d939b, metalness: .7, roughness: .4 });
+    const posts = new THREE.InstancedMesh(new THREE.CylinderGeometry(.03, .03, 1.5, 6), galv, 134); let kp = 0;
+    for (let x = -199.5; x < 200; x += 3) { m.makeTranslation(x, .75, -8.2); posts.setMatrixAt(kp++, m); } posts.count = kp; posts.userData.noShadow = true; s.add(posts);
+    const top = new THREE.Mesh(new THREE.CylinderGeometry(.022, .022, 400, 6), galv); top.rotation.z = Math.PI / 2; top.position.set(0, 1.42, -8.2); top.userData.noShadow = true; s.add(top);
   }
   _platform() {
     const s = this.scene, front = W / 2 + .12; this.front = front;
-    const slab = new THREE.Mesh(new THREE.BoxGeometry(400, 1.6, 60), new THREE.MeshStandardMaterial({ color: COL.concrete, roughness: .92 }));
+    // concrete paving slabs on top (surfaces.js), cast concrete down the edge
+    this.surf = this.surf || { conc: concrete(this.mobile ? 128 : 256) };
+    const top = new THREE.MeshStandardMaterial({ ...tiled(pavers(this.mobile ? 512 : 1024), 400, 60), roughness: 1, normalScale: new THREE.Vector2(.8, .8) });
+    const edge = new THREE.MeshStandardMaterial({ ...tiled(this.surf.conc, 400, 1.6), color: 0x9a948c, roughness: .9 }), side = new THREE.MeshStandardMaterial({ color: COL.concrete, roughness: .92 });
+    const slab = new THREE.Mesh(new THREE.BoxGeometry(400, 1.6, 60), [side, side, top, side, side, edge]);
     slab.position.set(0, FLOOR - .8, front + 30); s.add(slab);
-    const tex = canvasTex(64, 64, (x) => {
-      x.fillStyle = '#e8b923'; x.fillRect(0, 0, 64, 64); x.fillStyle = '#c99a12';
-      for (let i = 0; i < 4; i++) for (let j = 0; j < 4; j++) { x.beginPath(); x.arc(8 + i * 16, 8 + j * 16, 4.5, 0, 7); x.fill(); }
-    });
-    tex.wrapS = tex.wrapT = THREE.RepeatWrapping; tex.repeat.set(400 / .6, 1);
-    const strip = new THREE.Mesh(new THREE.PlaneGeometry(400, .6), new THREE.MeshStandardMaterial({ map: tex, roughness: .7 }));
+    const strip = new THREE.Mesh(new THREE.PlaneGeometry(400, .6), new THREE.MeshStandardMaterial({ ...tiled(tactile(), 400, .6), roughness: .65 }));
     strip.rotation.x = -Math.PI / 2; strip.position.set(0, FLOOR + .005, front + .3); s.add(strip);
     const line = new THREE.Mesh(new THREE.PlaneGeometry(400, .1), new THREE.MeshStandardMaterial({ color: 0xf2efe8, roughness: .6 }));
     line.rotation.x = -Math.PI / 2; line.position.set(0, FLOOR + .006, front + 1.2); s.add(line);
-    const joints = new THREE.InstancedMesh(new THREE.BoxGeometry(.03, .01, 40), new THREE.MeshStandardMaterial({ color: 0x766e64, roughness: .95 }), 70), m = new THREE.Matrix4();
-    for (let i = 0; i < 70; i++) { m.makeTranslation(-140 + i * 4, FLOOR + .004, front + 21.6); joints.setMatrixAt(i, m); } s.add(joints);
   }
   _wires() {
     const scene = this.scene, s = new THREE.Group(), poleMat = new THREE.MeshStandardMaterial({ color: 0x6b717b, metalness: .7, roughness: .45 }); scene.add(s); this.wireGroup = s;

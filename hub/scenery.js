@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { asphalt, concrete, tiled } from './surfaces.js';
 import { Person, seatAt } from './people.js';
 
 // People waiting on the platform, the town on the hills, traffic behind the fence, clouds, birds,
@@ -86,6 +87,7 @@ export function updatePeople(st, t, dt) {
 }
 
 /* ---------- platform things ---------- */
+let PLANTER = null; const planterMat = () => PLANTER || (PLANTER = new THREE.MeshStandardMaterial({ ...tiled(concrete(256), 1.6, .6), color: 0xa39c92, roughness: .92 }));
 const BUSH = new THREE.MeshStandardMaterial({ color: 0x3c5a34, roughness: .9, flatShading: true });
 export function addPlatformProps(st) {
   const s = st.scene, F = st.FLOOR, front = st.front, P = st.P, g = new THREE.Group(); s.add(g);
@@ -106,8 +108,8 @@ export function addPlatformProps(st) {
   });
   // planters along the back of the platform
   [-3.5 * P, -2.5 * P, -1.25 * P, -.76 * P, .76 * P, 1.25 * P, 2.5 * P, 3.5 * P].forEach(x => { // kept clear of the doors
-    const box = new THREE.Mesh(new THREE.BoxGeometry(1.6, .5, .6), mat(0x6e675e, .95)); box.position.set(x, F + .25, front + 10.5); g.add(box);
-    for (let k = 0; k < 5; k++) { const b = new THREE.Mesh(new THREE.IcosahedronGeometry(.26 + rand() * .1, 0), BUSH); b.position.set(x - .6 + k * .3, F + .62 + rand() * .08, front + 10.5); g.add(b); }
+    const box = new THREE.Mesh(new THREE.BoxGeometry(1.6, .5, .6), planterMat()); box.position.set(x, F + .25, front + 10.5); g.add(box);
+    for (let k = 0; k < 5; k++) { const b = new THREE.Mesh(new THREE.IcosahedronGeometry(.26 + rand() * .1, 0), BUSH); b.position.set(x - .6 + k * .3, F + .62 + rand() * .08, front + 10.5); b.userData.bush = true; g.add(b); } // city.js swaps these for Nature Kit bushes
   });
   // a paved path across the station forecourt, for bikes and scooters passing by
   const pathTex = canvasTex(256, 64, (x, w, h) => {
@@ -169,7 +171,9 @@ export function addBackground(st) {
   mast.position.set(64, 20, -118); mast.userData.noShadow = true; s.add(mast);
   out.beacon = glowMat(0xff3a2a, 3); const bc = new THREE.Mesh(new THREE.SphereGeometry(.45, 10, 8), out.beacon); bc.position.set(64, 33.4, -118); bc.userData.noShadow = true; s.add(bc);
   // a frontage road behind the fence, with a few cars heading home
-  const road = new THREE.Mesh(new THREE.PlaneGeometry(400, 4.2), new THREE.MeshStandardMaterial({ color: 0x3a3a40, roughness: .95 }));
+  const asp = asphalt(st.mobile ? 512 : 1024, st.mobile ? 256 : 512), roadTex = {}; // worn asphalt (surfaces.js): one tile is the full width by 8.4 m
+  ['map', 'normalMap', 'roughnessMap'].forEach(k => { const t = asp[k]; t.repeat.set(400 / asp.size, 1); roadTex[k] = t; });
+  const road = new THREE.Mesh(new THREE.PlaneGeometry(400, 4.2), new THREE.MeshStandardMaterial({ ...roadTex, roughness: 1 }));
   road.rotation.x = -Math.PI / 2; road.position.set(0, .01, -10.6); road.userData.noShadow = true; s.add(road);
   const dash = new THREE.InstancedMesh(new THREE.PlaneGeometry(2, .12), new THREE.MeshStandardMaterial({ color: 0xe8dcc0, roughness: .8 }), 100), dm = new THREE.Matrix4();
   for (let i = 0; i < 100; i++) { dm.makeRotationX(-Math.PI / 2).setPosition(-200 + i * 4, .02, -10.6); dash.setMatrixAt(i, dm); }

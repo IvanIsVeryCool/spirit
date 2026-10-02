@@ -124,6 +124,9 @@ export function addCity(st) {
     }
     mergeStatic(hill);
   }
+  // the platform planters: Nature Kit bushes instead of the stand-in blobs (scenery.js marks them)
+  const blobs = []; s.traverse(o => { if (o.userData.bush) blobs.push(o); });
+  blobs.forEach((o, i) => { const name = i % 2 ? 'plant_bushDetailed' : 'plant_bushLarge', b = KIT.nature[name].clone(); b.position.copy(o.position); b.position.y -= .3; b.rotation.y = rnd() * 6.28; b.scale.setScalar(.55 / KIT.nature[name].userData.size.y); o.parent.add(b); o.parent.remove(o); });
   mergeStatic(g);
   // downtown on the horizon, between the far hills: towers and blocks in the evening haze (the fog does most of the work)
   const sky = new THREE.Group(); s.add(sky);
