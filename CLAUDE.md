@@ -6,10 +6,10 @@ The README covers the owner-facing basics: how to add a car and how to update sc
 
 ## What it is
 - **Owner:** Ivan Cui (GitHub `IvanIsVeryCool`), a student on Nueva School's spirit cabinet.
-- **Hosting:** moving from Netlify to **Cloudflare Pages** (free, no per-deploy credits). On 2026-10-02 the Netlify team ran out of credits and production deploys paused, so Netlify stays on an older version (`https://moonlit-crumble-d56590.netlify.app`).
-  Cloudflare Pages is connected to GitHub `IvanIsVeryCool/spirit`, branch `main`: framework preset None, no build command, build output directory `/`. There is no build step: push to `main` and the site updates in about a minute.
-  The new address is `https://<project-name>.pages.dev` (fill it in here once the owner has created the project).
-  `_redirects` (read by both hosts) keeps `CLAUDE.md` and `README.md` off the public site; `netlify.toml` is only for Netlify.
+- **Hosting:** **Cloudflare Workers** (static assets), at https://spirit.ivancui211.workers.dev (Worker `spirit`, connected to GitHub `IvanIsVeryCool/spirit`, branch `main`). Push to `main` and Cloudflare deploys it in about a minute; there is no build step.
+  `wrangler.jsonc` serves the repo root as static files; `.assetsignore` keeps the repo-only files (`CLAUDE.md`, `README.md`, config) off the site, and `_redirects` sends those paths to `/` as a backstop.
+  It moved from Netlify on 2026-10-02, when the Netlify team ran out of credits and production deploys paused; the old address (`https://moonlit-crumble-d56590.netlify.app`, `netlify.toml`) is frozen on an older version.
+  The sandbox's network policy blocks `*.workers.dev` and Netlify, so live checks are done by the owner.
 - **`/` (hub):** a 3D golden-hour train platform.
   - **First visit of the day:** a paper ticket loader ("Board with sound" or "Board without sound").
     Then a first-person cutscene: you sit on a bench holding the ticket and look around, and a red-and-silver double-deck commuter train pulls in.
