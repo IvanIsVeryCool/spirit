@@ -5,10 +5,11 @@ import { RenderPass } from '/vendor/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from '/vendor/jsm/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from '/vendor/jsm/postprocessing/OutputPass.js';
 import { mergeStatic, addPeople, updatePeople, addPlatformProps, addBackground, updateBackground } from './scenery.js';
-import { CAR_L, GAP, W, H, BASE, FLOOR, DOOR_W, DOOR_H, NOSE_L, bodyGeometry, capGeometry, noseGeometry, nosePoint, paintBody, paintNose, windowSlots } from './train.js';
-import { buildInterior } from './interior.js';
+import { CAR_L, GAP, W, H, BASE, FLOOR, DOOR_W, DOOR_H, NOSE_L, bodyGeometry, capGeometry, noseGeometry, noseLiningGeometry, nosePoint, paintBody, paintNose, windowSlots } from './train.js';
+import { buildInterior, CAB_DOOR } from './interior.js';
+import { CABINET } from './doors.js';
 import { Crowd } from './crowd.js';
-import { limbGeometry, aimBasis, library } from './people.js';
+import { limbGeometry, aimBasis, library, Person } from './people.js';
 import { addCity, updateCity, cityLoaded } from './city.js';
 
 // A golden-hour Peninsula platform and a red-and-silver double-decker commuter train.
@@ -17,6 +18,7 @@ const COL = {
   body: 0xc8ccd3, red: 0xc9272c, dark: 0x16181f, concrete: 0x8d857a, warm: 0xffc58a
 };
 const M_SOLE = new THREE.MeshStandardMaterial({ color: 0x2a2a2e, roughness: .9 });
+const T_FOV_MIN = 55; // the cab view's narrowest field of view
 const INTRO_D = 2.3; // the opening's cassette-player moment, before the ticket: everything after it is shifted by this
 const easeInOut = t => t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
 const glow = (hex, k) => { const m = new THREE.MeshBasicMaterial({ color: new THREE.Color(hex).multiplyScalar(k) }); m.toneMapped = false; return m; };
@@ -257,14 +259,14 @@ export class Station {
     for (let i = 0; i < this.count; i++) {
       const car = new THREE.Group(); car.position.x = (i - (this.count - 1) / 2) * (CAR_L + GAP);
       const body = new THREE.Mesh(shell, M.body); body.userData.cast = true; car.add(body);
-      [-1, 1].forEach(sd => { if (i === 0 && sd < 0) return; const c = new THREE.Mesh(cap, M.cap); c.rotation.y = sd * Math.PI / 2; c.position.x = sd * CAR_L / 2; car.add(c); });
+      [-1, 1].forEach(sd => { if ((i === 0 && sd < 0) || (i === this.count - 1 && sd > 0)) return; const c = new THREE.Mesh(cap, M.cap); c.rotation.y = sd * Math.PI / 2; c.position.x = sd * CAR_L / 2; car.add(c); });
       this._roof(car); this._under(car); this._side(car, i);
       train.add(car); this.cars.push(car);
     }
-    this._cab(); this._pantograph();
+    // a cab at each end, so the train can run either way: the leading one (headlights) and the trailing one (red lights),
+    // which you can walk into from the last car (Meet the Cabinet)
+    this._cab(this.cars[0], -1); this._cab(this.cars[this.count - 1], 1); this._cabRoom(this.cars[this.count - 1]); this._paintNose(); this._pantograph();
     for (let i = 0; i < this.count - 1; i++) this._gangway(this.cars[i].position.x + CAR_L / 2 + GAP / 2);
-    const last = this.cars[this.count - 1];
-    [-.85, .85].forEach(dz => { const t = new THREE.Mesh(new THREE.BoxGeometry(.04, .12, .22), glow(0xff2a2a, 3)); t.position.set(CAR_L / 2 + .02, 1.1, dz); last.add(t); });
   }
   _roof(car) {
     const M = this.mats;
@@ -333,7 +335,7 @@ export class Station {
     const plateMat = new THREE.MeshBasicMaterial({ map: this._plate(String(i + 1).padStart(2, '0')), transparent: true });
     side(new THREE.PlaneGeometry(.5, .25), plateMat, CAR_L / 2 - .55, 3.3, .005);
     // the vestibule, stairs and seats behind the door, lit by baked light
-    const inside = buildInterior(car, { ledMat, plateMat, idx: i });
+    const inside = buildInterior(car, { ledMat, plateMat, idx: i, cab: i === this.count - 1 });
     const spill = new THREE.Mesh(new THREE.PlaneGeometry(1.7, 2.6), new THREE.MeshBasicMaterial({ color: COL.warm, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, map: this._spillTex() }));
     spill.rotation.x = -Math.PI / 2; spill.position.set(0, FLOOR + .012, z + 1.35); spill.userData.noShadow = true; spill.userData.keep = true; car.add(spill);
     let pl = null; if (!this.mobile) { pl = new THREE.PointLight(COL.warm, 0, 6, 1.6); pl.position.set(0, 1.6, z + .7); car.add(pl); }
@@ -352,28 +354,66 @@ export class Station {
   _plate(text) {
     return canvasTex(128, 64, (x) => { x.fillStyle = '#1b1d24'; x.font = '800 44px "Archivo", Arial, sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(text, 64, 34); });
   }
-  _cab() {
-    const M = this.mats, first = this.cars[0], x0 = -CAR_L / 2;
+  // dir -1: the leading cab on the front of the first car; +1: the trailing cab on the back of the last (the same nose, mirrored)
+  _cab(car, dir) {
+    const M = this.mats, g = new THREE.Group(); g.position.x = dir * CAR_L / 2; g.scale.x = -dir; car.add(g); // nose-local: the nose runs toward -x
     const nose = new THREE.Mesh(noseGeometry(), new THREE.MeshPhysicalMaterial({ roughness: 1, metalness: 0, clearcoat: 1, clearcoatRoughness: .06, emissive: 0xffffff, emissiveIntensity: 2.2 }));
-    nose.position.x = x0; nose.userData.cast = true; nose.userData.keep = true; first.add(nose); this.noseMesh = nose;
-    this._paintNose();
+    nose.userData.cast = true; nose.userData.keep = true; g.add(nose);
+    if (dir < 0) this.noseMesh = nose; else this.tailMesh = nose;
     // wipers resting at the bottom of the windshield
     [.36, .64].forEach(v => {
       const th = v * Math.PI * 2 - Math.PI / 2, a = nosePoint(.85, th, .02), b = nosePoint(.7, th - .25, .03);
       const wp = new THREE.Mesh(new THREE.CylinderGeometry(.012, .012, a.distanceTo(b), 6), M.dark);
-      wp.position.copy(a).add(b).multiplyScalar(.5); wp.position.x += x0; wp.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), b.clone().sub(a).normalize()); first.add(wp);
+      wp.position.copy(a).add(b).multiplyScalar(.5); wp.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), b.clone().sub(a).normalize()); g.add(wp);
     });
     // plow and coupler under the nose
-    const plow = new THREE.Mesh(new THREE.BoxGeometry(.6, .3, W - .3), M.under); plow.position.set(x0 - NOSE_L + .55, .2, 0); plow.rotation.z = -.4; first.add(plow);
-    const coupler = new THREE.Mesh(new THREE.BoxGeometry(.5, .16, .28), M.steel); coupler.position.set(x0 - NOSE_L + .15, .45, 0); first.add(coupler);
-    const horn = new THREE.Mesh(new THREE.CylinderGeometry(.05, .09, .32, 10), M.steel); horn.rotation.z = Math.PI / 2; horn.position.set(x0 - .2, H + .02, .4); first.add(horn);
+    const plow = new THREE.Mesh(new THREE.BoxGeometry(.6, .3, W - .3), M.under); plow.position.set(-NOSE_L + .55, .2, 0); plow.rotation.z = -.4; g.add(plow);
+    const coupler = new THREE.Mesh(new THREE.BoxGeometry(.5, .16, .28), M.steel); coupler.position.set(-NOSE_L + .15, .45, 0); g.add(coupler);
+    if (dir > 0) return;
+    const horn = new THREE.Mesh(new THREE.CylinderGeometry(.05, .09, .32, 10), M.steel); horn.rotation.z = Math.PI / 2; horn.position.set(-.2, H + .02, .4); g.add(horn);
     const beam = new THREE.Mesh(new THREE.ConeGeometry(2.4, 14, 24, 1, true), new THREE.MeshBasicMaterial({ color: 0xfff1d6, transparent: true, opacity: .05, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide }));
-    beam.rotation.z = -Math.PI / 2; beam.position.set(x0 - NOSE_L - 7, 1.25, 0); beam.userData.noShadow = true; beam.userData.keep = true; first.add(beam); this.headBeam = beam;
+    beam.rotation.z = -Math.PI / 2; beam.position.set(-NOSE_L - 7, 1.25, 0); beam.userData.noShadow = true; beam.userData.keep = true; g.add(beam); this.headBeam = beam;
+  }
+  // The trailing cab, inside: the nose lined, its windshield and side windows open onto the evening, a floor, the driver's
+  // desk with its screens, a ceiling light, and the cabinet (the "crew", from CABINET in doors.js) waiting for you.
+  _cabRoom(car) {
+    const g = new THREE.Group(); g.position.x = CAR_L / 2; g.scale.x = -1; car.add(g); // nose-local, mirrored like the nose
+    const geo = noseLiningGeometry(.07), pos = geo.attributes.position, col = new Float32Array(pos.count * 3), base = new THREE.Color(0x5a5f6b);
+    for (let k = 0; k < pos.count; k++) { const y = pos.getY(k), x = -pos.getX(k), lit = .42 + .5 * Math.min(1, Math.max(0, (y - .3) / 3.2)) + .25 * Math.max(0, 1 - Math.abs(x - .7) / 1.2) * Math.min(1, Math.max(0, (y - 2.2) / 1.2)); col.set([base.r * lit, base.g * lit, base.b * lit * 1.04], k * 3); }
+    geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+    const a = document.createElement('canvas'); a.width = a.height = 512; const x = a.getContext('2d'), U = u => u * 512, R = v => (1 - v) * 512;
+    x.fillStyle = '#fff'; x.fillRect(0, 0, 512, 512); x.fillStyle = '#000';
+    const hole = (s0, s1, v0, v1, r) => { x.beginPath(); x.roundRect(U(s0), R(v1), U(s1) - U(s0), R(v0) - R(v1), r); x.fill(); };
+    hole(.5, .84, .32, .68, 10); hole(.21, .41, .17, .24, 5); hole(.21, .41, .76, .83, 5);
+    const am = new THREE.CanvasTexture(a);
+    const lining = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ vertexColors: true, alphaMap: am, alphaTest: .5 }));
+    lining.userData.keep = true; lining.userData.noShadow = true; g.add(lining);
+    const flat = (w, h, d, c, px, py, pz, parent = g) => { const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), new THREE.MeshBasicMaterial({ color: c })); m.position.set(px, py, pz); m.userData.noShadow = true; parent.add(m); return m; };
+    const END = CAR_L / 2 - .22;
+    flat(2.2 + .22, .07, 2.5, 0x3b3f48, -(2.2 - .22) / 2, .395, 0);                    // floor, from the saloon's end wall to the desk
+    flat(.45, .72, 1.9, 0x2a2d34, -2.02, .79, 0);                                         // the driver's desk
+    const desk = flat(.5, .05, 1.92, 0x1d1f25, -1.9, 1.2, 0); desk.rotation.z = -.35;
+    [[-.45, 0x7fd0ff], [0, 0xffc46b], [.45, 0x9cff9a]].forEach(([z, c]) => { const sc = new THREE.Mesh(new THREE.PlaneGeometry(.32, .2), new THREE.MeshBasicMaterial({ color: new THREE.Color(c).multiplyScalar(.75) })); sc.position.set(.03, .035, z); sc.rotation.set(-Math.PI / 2, 0, -Math.PI / 2); desk.add(sc); });
+    const lamp = new THREE.Mesh(new THREE.BoxGeometry(.9, .03, .22), new THREE.MeshBasicMaterial({ color: new THREE.Color(1.5, 1.32, 1.05) })); lamp.material.toneMapped = false; lamp.position.set(-.75, 3.62, 0); g.add(lamp);
+    // the crew: Mini Characters for now (CABINET in doors.js says who), lit a little from within so the dim cab doesn't lose them
+    const mat = library().material.clone(); mat.emissiveMap = mat.map; mat.emissive = new THREE.Color(.3, .27, .25);
+    const n = CABINET.length;
+    this.crew = CABINET.map((m, i) => {
+      const spread = Math.min(this.mobile ? 1.05 : 1.8, .58 * (n - 1)), z = n > 1 ? (i / (n - 1) - .5) * spread : 0, p = new Person(m.kind);
+      p.mesh.material = mat; p.pose('idle', { fade: 0, phase: i * .37 }); p.root.scale.multiplyScalar(.88); // the size of the passengers
+      p.root.position.set(CAR_L / 2 + 1.55 - Math.abs(z) * .25, FLOOR - .12, z); p.root.rotation.y = -Math.PI / 2; // facing the windshield until you come in
+      p.root.visible = false; car.add(p.root); p.info = m; p.turn = 0;
+      return p;
+    });
+    this.cabCar = car; // the cab door's leaf comes from buildInterior (this.doors[last].inside.cabDoor)
   }
   _paintNose() {
-    const p = paintNose(this.logo, ctx => drawLED(ctx, ['SPIRIT CABINET', 'EXPRESS']));
-    const m = this.noseMesh.material; ['map', 'emissiveMap', 'roughnessMap'].forEach(k => m[k] && m[k].dispose());
-    m.map = p.map; m.emissiveMap = p.glow; m.roughnessMap = p.mr; m.needsUpdate = true;
+    [[this.noseMesh, false], [this.tailMesh, true]].forEach(([mesh, tail]) => {
+      if (!mesh) return;
+      const p = paintNose(this.logo, ctx => drawLED(ctx, ['SPIRIT CABINET', 'EXPRESS']), { tail });
+      const m = mesh.material; ['map', 'emissiveMap', 'roughnessMap'].forEach(k => m[k] && m[k].dispose());
+      m.map = p.map; m.emissiveMap = p.glow; m.roughnessMap = p.mr; m.needsUpdate = true;
+    });
   }
   _pantograph() {
     const M = this.mats, car = this.cars[0];
@@ -407,7 +447,7 @@ export class Station {
   }
   drawSign(i) {
     const d = this.doors[i], info = this.data[i], L = d.led;
-    const second = L.page % 2 ? `CAR ${String(i + 1).padStart(2, '0')}` : (info.href ? 'NOW BOARDING' : 'COMING SOON');
+    const second = L.page % 2 ? `CAR ${String(i + 1).padStart(2, '0')}` : (info.href || info.scene ? 'NOW BOARDING' : 'COMING SOON');
     if (second === L.key) return; L.key = second;
     drawLED(L.ctx, [info.title.toUpperCase(), second]);
     L.tex.needsUpdate = true;
@@ -630,10 +670,87 @@ export class Station {
       const x = this.cars[this.focus].position.x, dist = (CAR_L / 2 + .7) / Math.tan(halfH);
       this.camPos.set(x - 1.3, 2.6, dist); this.camLook.set(x, .5, 0);
     } else {
-      const half = (this.count * CAR_L + (this.count - 1) * GAP) / 2 + NOSE_L / 2, cx = -NOSE_L / 2, dist = Math.min(60, (half + 3.2) / Math.tan(halfH));
+      const half = (this.count * CAR_L + (this.count - 1) * GAP) / 2 + NOSE_L, cx = 0, dist = Math.min(60, (half + 3.2) / Math.tan(halfH));
       this.camPos.set(cx - 1.6, 3.1, dist); this.camLook.set(cx, 2.35, 0);
     }
     if (snap) { this.camera.position.copy(this.camPos); this.look.copy(this.camLook); this.camera.lookAt(this.look); }
+  }
+  // Meet the Cabinet: in through the door, along the lower deck's aisle to the back of the car, the cab door slides open,
+  // the crew turn round, and you step in to meet them. cb: door() as the door opens, arrive() once you're in.
+  visit(i, cb = {}) {
+    const car = this.cars[i], L = (x, y, z) => car.localToWorld(new THREE.Vector3(x, y, z)), z = W / 2 + .05, D = CAB_DOOR, dz = (D.z0 + D.z1) / 2;
+    this.trip = {
+      t0: this.clock.elapsedTime, i, cb, p0: this.camera.position.clone(), l0: this.look.clone(),
+      p1: L(0, 1.75, z + 3.4), l1: L(0, 1.6, -1.4),
+      // the walk: from the vestibule round the partition, down the step and along the aisle to the cab door
+      walk: new THREE.CatmullRomCurve3([L(0, 1.62, .35), L(.55, 1.6, -.15), L(1.15, 1.56, -.45), L(1.9, 1.5, dz), L(3.3, 1.5, dz)]),
+      into: new THREE.CatmullRomCurve3([L(3.3, 1.5, dz), L(3.72, 1.5, dz), L(3.86, 1.42, -.14)]),
+      door: L(D.x, 1.35, dz), crew: L(CAR_L / 2 + 1.45, 1.05, 0), fired: {}, fov: this.camera.fov
+    };
+    // a wider view once you're in the cab, so the whole crew fits (about 80 degrees across, within reason on a tall phone)
+    const a = this.camera.aspect; this.trip.fovIn = Math.min(84, Math.max(T_FOV_MIN, THREE.MathUtils.radToDeg(2 * Math.atan(Math.tan(THREE.MathUtils.degToRad(40)) / a))));
+    this.trip.walkLen = this.trip.walk.getLength();
+    this.doors[i].target = 1.25;
+    this.crew.forEach(p => { p.root.visible = true; p.turn = 0; p.root.rotation.y = -Math.PI / 2; p.look.yaw = p.look.pitch = 0; });
+  }
+  endVisit() {
+    const T = this.trip; if (!T) return;
+    this.trip = null; this.doors[T.i].target = 1; this.camera.fov = T.fov; this.camera.updateProjectionMatrix();
+    const leaf = this.doors[this.count - 1].inside.cabDoor; if (leaf) leaf.position.z = (CAB_DOOR.z0 + CAB_DOOR.z1) / 2;
+    this.crew.forEach(p => { p.root.visible = false; });
+    this.parkedPose(true); this.blendUntil = this.clock.elapsedTime + 1;
+  }
+  // where each crew member's name goes on screen (CSS pixels), above their head
+  crewTags() {
+    const v = new THREE.Vector3();
+    return this.crew.map(p => {
+      p.bones.head.getWorldPosition(v); v.y += .5; v.project(this.camera);
+      return { x: (v.x + 1) / 2 * innerWidth, y: (1 - v.y) / 2 * innerHeight, on: v.z < 1 && Math.abs(v.x) < 1.2 && Math.abs(v.y) < 1.2 };
+    });
+  }
+  _trip(t, dt) {
+    const T = this.trip, e = t - T.t0, c = this.camera, fire = (k, at, fn) => { if (e >= at && !T.fired[k]) { T.fired[k] = 1; fn && fn(); } };
+    const leaf = this.doors[this.count - 1].inside.cabDoor, D = CAB_DOOR;
+    let bob = 0;
+    if (e < 1.9) { // up to the door and in, as when boarding
+      const p = e / 1.9, start = T.walk.getPointAt(0);
+      if (p < .5) { const u = easeInOut(p / .5); c.position.lerpVectors(T.p0, T.p1, u); this.look.lerpVectors(T.l0, T.l1, u); }
+      else { const u = easeInOut((p - .5) / .5); c.position.lerpVectors(T.p1, start, u); this.look.copy(T.l1); }
+    } else if (e < 4.6) { // along the aisle, looking where you're going, then at the door
+      const u = easeInOut((e - 1.9) / 2.7), p = T.walk.getPointAt(u), ahead = T.walk.getPointAt(Math.min(1, u + .22)).setY(1.45);
+      c.position.copy(p); bob = Math.sin(u * T.walkLen * Math.PI * 1.7) * .012 * Math.sin(Math.PI * u);
+      const toDoor = Math.max(0, Math.min(1, (u - .55) / .4)), turn = Math.min(1, (e - 1.9) / .7);
+      this.look.lerpVectors(T.l1, ahead, easeInOut(turn)).lerp(T.door, easeInOut(toDoor));
+    } else if (e < 5.45) { c.position.copy(T.walk.getPointAt(1)); this.look.copy(T.door); } // the door slides open
+    else if (e < 6.95) { // step through into the cab
+      const u = easeInOut((e - 5.45) / 1.5); c.position.copy(T.into.getPointAt(u)); bob = Math.sin(u * Math.PI * 3) * .01 * Math.sin(Math.PI * u);
+      this.look.lerpVectors(T.door, T.crew, easeInOut(Math.min(1, u * 1.4)));
+    } else { c.position.copy(T.into.getPointAt(1)); c.position.y += Math.sin(t * 1.3) * .004; this.look.copy(T.crew); }
+    c.position.y += bob;
+    const f = T.fov + (T.fovIn - T.fov) * easeInOut(Math.max(0, Math.min(1, (e - 4.9) / 2))); if (Math.abs(c.fov - f) > .01) { c.fov = f; c.updateProjectionMatrix(); }
+    // the door
+    fire('door', 4.55, T.cb.door);
+    const open = e < 4.6 ? 0 : easeInOut(Math.min(1, (e - 4.6) / .8));
+    if (leaf) leaf.position.z = (D.z0 + D.z1) / 2 - open * (D.z1 - D.z0 + .06);
+    // the crew turn round as the door opens, then watch you; a couple of them wave
+    const cam = c.position, v = new THREE.Vector3(), q = new THREE.Quaternion();
+    this.crew.forEach((p, k) => {
+      const tt = Math.max(0, Math.min(1, (e - 4.75 - k * .14) / .75)); p.root.rotation.y = -Math.PI / 2 + easeInOut(tt) * Math.PI;
+      if (tt > 0 && tt < 1 && p.poseName !== 'walk') p.pose('walk', { fade: .2, speed: .6 }); else if (tt >= 1 && p.poseName !== 'idle') p.pose('idle', { fade: .4 });
+      p.update(dt); p.root.updateMatrixWorld(true);
+      // head: toward you once they've turned
+      p.bones.head.getWorldPosition(v); const d = cam.clone().sub(v); p.root.getWorldQuaternion(q); d.applyQuaternion(q.invert());
+      const w = tt, yaw = Math.max(-.8, Math.min(.8, Math.atan2(-d.x, -d.z))) * w, pitch = -Math.max(-.5, Math.min(.5, Math.atan2(d.y, Math.hypot(d.x, d.z)))) * w;
+      p.look.yaw += (yaw - p.look.yaw) * Math.min(1, dt * 5); p.look.pitch += (pitch - p.look.pitch) * Math.min(1, dt * 5);
+      // a wave (the first and third), for a couple of seconds after you come in
+      const wv = (k === 0 || k === 2) ? Math.max(0, Math.min(1, (e - 6.3 - k * .25) / .3)) * Math.max(0, Math.min(1, (9.4 - e) / .4)) : 0;
+      if (wv > 0) {
+        const sh = p.bones['arm-left']; sh.getWorldPosition(v); const head = p.bones.head.getWorldPosition(new THREE.Vector3()), out = v.clone().sub(head).setY(0).normalize();
+        const side = new THREE.Vector3(0, 1, 0).cross(out).normalize(), tgt = v.clone().addScaledVector(out, .22 * wv).add(new THREE.Vector3(0, .55 * wv, 0)).addScaledVector(side, Math.sin(t * 9) * .1 * wv);
+        p.aim('arm-left', tgt);
+      }
+    });
+    fire('arrive', 6.95, T.cb.arrive);
   }
   board(i, done) {
     const x = this.doorX(i), z = W / 2 + .05;
@@ -683,6 +800,7 @@ export class Station {
     });
     const c = this.camera;
     if (this.intro) { this._introFrame(t, dt); }
+    else if (this.trip) this._trip(t, dt);
     else if (this.flight) {
       // line up in front of the door, then glide through it into the vestibule
       const f = this.flight, p = Math.min(1, (t - f.t0) / 1.9);
@@ -722,6 +840,7 @@ export class Station {
   // (the train included, wherever it is) so shaders compile and textures upload now, not mid-arrival.
   async warm(ticketCanvas) {
     if (!this.introGroup) this._rig(ticketCanvas);
+    const crew = this.crew || []; crew.forEach(p => { p.root.visible = true; }); // the cab's crew, hidden until you visit, are drawn once too
     try { if (this.renderer.compileAsync) { this.introGroup.visible = true; await this.renderer.compileAsync(this.scene, this.camera); } } catch (e) {}
     const culled = []; this.scene.traverse(o => { if (o.frustumCulled) { culled.push(o); o.frustumCulled = false; } });
     const x = this.train.position.x, cam = this.camera.position.clone(), q = this.camera.quaternion.clone();
@@ -731,6 +850,6 @@ export class Station {
     this.camera.position.copy(this.seat); this.camera.lookAt(0, 1.3, this.seat.z - .5); this.composer.render();
     culled.forEach(o => { o.frustumCulled = true; });
     this.train.position.x = x; this.camera.position.copy(cam); this.camera.quaternion.copy(q);
-    this.introGroup.visible = false; this.warmed = true;
+    this.introGroup.visible = false; crew.forEach(p => { p.root.visible = false; }); this.warmed = true;
   }
 }

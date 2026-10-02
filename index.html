@@ -116,6 +116,17 @@ body.entered .replay{display:flex}
 .n-close{margin-top:20px;background:var(--ink);color:#fff;border-radius:999px;padding:12px 20px;font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;transition:background-color .25s}
 .n-close:hover{background:var(--red)}
 
+/* Meet the Cabinet: name tags over the crew in the cab, and the way back */
+#crew{position:fixed;inset:0;z-index:30;pointer-events:none}
+#crew .tag{position:absolute;left:0;top:0;display:flex;flex-direction:column;align-items:center;gap:1px;padding:7px 14px 8px;border-radius:7px;background:rgba(255,255,255,.96);color:var(--ink);box-shadow:0 10px 26px -10px rgba(10,8,30,.6),inset 4px 0 0 var(--red);white-space:nowrap;opacity:0;transition:opacity .45s ease;will-change:transform}
+#crew .tag.on{opacity:1}
+#crew .tag::after{content:"";position:absolute;left:50%;bottom:-6px;margin-left:-6px;border:6px solid transparent;border-bottom:0;border-top-color:rgba(255,255,255,.96)}
+#crew .tag b{font-family:var(--display);font-size:14px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;line-height:1.1}
+#crew .tag span{font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+#crew .tag span:empty{display:none}
+.crew-back{position:absolute;left:50%;bottom:calc(28px + env(safe-area-inset-bottom));transform:translate(-50%,12px);opacity:0;pointer-events:none;padding:12px 22px;border-radius:999px;background:#fff;color:var(--ink);font-size:13px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;box-shadow:0 10px 26px -10px rgba(10,8,30,.6);transition:opacity .5s ease,transform .6s var(--ease)}
+body.visiting .crew-back{opacity:1;transform:translate(-50%,0);pointer-events:auto}
+@media (max-width:560px){#crew .tag{padding:5px 10px 6px}#crew .tag b{font-size:12px}#crew .tag span{font-size:9px}}
 #flash{position:fixed;inset:0;z-index:45;pointer-events:none;background:radial-gradient(circle at 50% 50%,#fffaf0 0%,#ffe2b8 45%,#ffb07a 100%);opacity:0;transition:opacity .5s ease}
 #flash.on{opacity:1}
 
@@ -159,8 +170,15 @@ body.entered .replay{display:flex}
 .mini-train{position:absolute;top:2px;left:0;width:58px;height:22px;transform:scaleX(-1);transition:left .2s linear}
 .fields{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:16px 0 0;padding:11px 0;border-block:1.5px dashed rgba(22,24,31,.22)}
 .fields dd{margin:2px 0 0;font-weight:700;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.tk-status{display:flex;justify-content:flex-end;margin-top:8px;height:16px;font-size:12px;font-weight:600;color:var(--muted);transition:opacity .4s}
-.tk-status.done{opacity:0}
+.tk-status{display:flex;justify-content:space-between;align-items:center;margin-top:10px;height:18px;font-size:11px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:var(--ink)}
+.tk-load{display:flex;align-items:center;gap:8px}
+.tk-spin{width:11px;height:11px;border-radius:50%;border:2px solid rgba(201,39,44,.25);border-top-color:var(--red);animation:tkSpin .8s linear infinite}
+@keyframes tkSpin{to{transform:rotate(360deg)}}
+#load-pct{font-variant-numeric:tabular-nums;color:var(--red)}
+.tk-status.done .tk-spin{animation:none;border:0;background:#2fa35a;width:8px;height:8px;margin:0 2px;box-shadow:0 0 0 3px rgba(47,163,90,.2)}
+.tk-status.done #load-pct{opacity:0;transition:opacity .4s}
+.ql-label{font-size:11px;font-weight:700;letter-spacing:.2em;text-transform:uppercase;color:rgba(255,255,255,.8);margin-top:-8px}
+#loader.tap .ql-label{display:none}
 .gate{display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-top:12px;opacity:.35;pointer-events:none;transition:opacity .5s}
 .gate.ready{opacity:1;pointer-events:auto}
 .enter-btn{background:var(--red);color:#fff;border-radius:999px;padding:13px 22px;font-size:14px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;transition:background-color .25s,transform .3s var(--ease);box-shadow:0 8px 18px -8px rgba(201,39,44,.8)}
@@ -228,7 +246,7 @@ body.static .board{position:relative;left:auto;bottom:auto;opacity:1;transform:n
     <g stroke="#2b2a46" stroke-width="1.5" fill="none" opacity=".75"><path d="M0 262 Q180 276 360 262 T720 262 T1080 262 T1440 262"/><path d="M0 274 H1440"/></g>
     <g fill="#2b2a46"><rect x="352" y="238" width="5" height="120"/><rect x="1072" y="238" width="5" height="120"/></g>
   </svg>
-  <div class="quick-load"><span class="logo-img" aria-hidden="true"></span><div class="ql-bar" aria-hidden="true"><i id="ql-bar"></i></div><button class="ql-tap" id="ql-tap" type="button" tabindex="-1">Tap to board</button></div>
+  <div class="quick-load"><span class="logo-img" aria-hidden="true"></span><div class="ql-bar" aria-hidden="true"><i id="ql-bar"></i></div><span class="ql-label" role="status">Loading</span><button class="ql-tap" id="ql-tap" type="button" tabindex="-1">Tap to board</button></div>
   <div class="tk-wrap" id="tk-wrap">
     <div class="ticket" id="ticket">
       <div class="paper" aria-hidden="true"></div>
@@ -248,7 +266,7 @@ body.static .board{position:relative;left:auto;bottom:auto;opacity:1;transform:n
             <div><dt>Departs</dt><dd id="tk-time"></dd></div>
             <div><dt>Platform</dt><dd>1</dd></div>
           </dl>
-          <div class="tk-status" id="tk-status"><span id="load-pct">0%</span></div>
+          <div class="tk-status" id="tk-status" role="status"><span class="tk-load"><i class="tk-spin" aria-hidden="true"></i><span id="load-label">Loading the station</span></span><span id="load-pct">0%</span></div>
           <div class="gate" id="gate">
             <button class="enter-btn" id="enter-sound" type="button">Board with sound</button>
             <button class="quiet-btn" id="enter-quiet" type="button">Board without sound</button>
@@ -300,6 +318,7 @@ body.static .board{position:relative;left:auto;bottom:auto;opacity:1;transform:n
   </div>
 </div>
 
+<div id="crew" hidden><div id="crew-tags" aria-live="polite"></div><button class="crew-back" id="crew-back" type="button">Back to the platform</button></div>
 <div id="flash" aria-hidden="true"></div>
 <noscript><p style="padding:24px;color:#fff"><a href="/points/">Go to Spirit Points</a></p></noscript>
 <script>setTimeout(function(){if(!window.__hubBooted){var l=document.getElementById("loader");if(l)l.remove();document.body.classList.add("static");document.body.classList.remove("pre");}},9000);</script>

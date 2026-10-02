@@ -23,8 +23,15 @@ In the opening, a song plays in your headphones. To use your own recording, name
 exactly `headphones.mp3` and upload it into the `assets/audio/` folder: on GitHub, open
 the repo, click into `assets`, then `audio`, then Add file → Upload files, drag the file
 in, and commit. It loops quietly under the station sounds and fades out as the camera
-pulls away. Delete the file to go back to the built-in song. Only upload music you wrote
+pulls away. To have the song play once and then loop a section, also upload a
+`headphones_loop.mp3` to the same folder; it starts the moment the song ends and repeats.
+Delete the files to go back to the built-in song. Only upload music you wrote
 or are licensed to put on a public website; keep the file under 25 MB.
+
+## Meet the Cabinet
+The cabinet stand in the cab at the back of the train. To change who's there, edit
+`CABINET` in `hub/doors.js`: one line per person, with their `name` (shown above them),
+their `role` (under the name), and `kind`, which picks the 3D model.
 
 ## Updating spirit points
 Add one row per event to the "Spirit Points Scores" Google Sheet:

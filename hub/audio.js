@@ -162,13 +162,20 @@ export class StationAudio {
   // station's reverb, since it's in your ears), under the station sounds, and goes through the opening's own gains,
   // so skipping cuts it too. Returns { stop(fade) }.
   // Your own song for the headphones: if assets/audio/headphones.mp3 is on the site, it's decoded while the page
-  // loads and music() plays it instead of the built-in loop. No file, no change.
-  async loadTrack(url) {
-    try {
-      const r = await fetch(url); if (!r.ok) return;
-      const AC = window.OfflineAudioContext || window.webkitOfflineAudioContext; if (!AC) return;
-      this.track = await new AC(2, 1, 44100).decodeAudioData(await r.arrayBuffer());
-    } catch (e) { this.track = null; }
+  // loads and music() plays it instead of the built-in loop. If headphones_loop.mp3 is there too, the song plays
+  // through once and then that loop repeats, seamlessly. No files, no change.
+  async loadTrack(url, loopUrl) {
+    const AC = window.OfflineAudioContext || window.webkitOfflineAudioContext; if (!AC) return;
+    const get = async u => { try { const r = await fetch(u); if (!r.ok) return null; return await new AC(2, 1, 44100).decodeAudioData(await r.arrayBuffer()); } catch (e) { return null; } };
+    const [track, loop] = await Promise.all([get(url), loopUrl ? get(loopUrl) : null]);
+    this.track = track; this.trackLoop = loop;
+  }
+  // where the sound in a decoded mp3 really starts and ends (encoders pad both ends with silence), so loops don't gap
+  _span(buf) {
+    const d = buf.getChannelData(0), n = d.length, lim = Math.min(n, buf.sampleRate * .2), th = 1e-4;
+    let a = 0, b = n - 1; while (a < lim && Math.abs(d[a]) < th) a++; while (b > n - lim && Math.abs(d[b]) < th) b--;
+    if (a >= lim) a = 0; if (b <= n - lim) b = n - 1;
+    return [a / buf.sampleRate, (b + 1) / buf.sampleRate];
   }
   // The song's way out: in your headphones up close, or, once the view pulls out of your head, ducked to the faint,
   // tinny leak you'd hear from someone's headphones on the bench (quieter, no bass), playing on in the background.
@@ -182,10 +189,15 @@ export class StationAudio {
     return { bus, ramp, duck: (fade = 1.4) => { ramp(bus.gain, level * LEAK, fade); ramp(hp.frequency, 420, fade); ramp(lp.frequency, 5200, fade); } };
   }
   _playTrack(background) {
-    const ctx = this.ctx, src = ctx.createBufferSource(), out = this._songOut(.24, background); // a finished recording is loud: keep it under the station
-    src.buffer = this.track; src.loop = true; src.connect(out.bus); src.start(ctx.currentTime);
+    const ctx = this.ctx, out = this._songOut(.24, background), t = ctx.currentTime + .05, srcs = []; // a finished recording is loud: keep it under the station
+    const loopBuf = this.trackLoop || this.track, [l0, l1] = this._span(loopBuf);
+    const loop = ctx.createBufferSource(); loop.buffer = loopBuf; loop.loop = true; loop.loopStart = l0; loop.loopEnd = l1; loop.connect(out.bus); srcs.push(loop);
+    if (this.trackLoop && !background) { // the song once, from the top, then straight into the loop
+      const [a, b] = this._span(this.track), first = ctx.createBufferSource(); first.buffer = this.track; first.connect(out.bus); srcs.push(first);
+      first.start(t, a, b - a); loop.start(t + (b - a), l0);
+    } else loop.start(t, background && this.trackLoop ? l0 : 0);
     let dead = false;
-    return { duck: out.duck, stop: (fade = 1.2) => { if (dead) return; dead = true; out.ramp(out.bus.gain, 0, fade); src.stop(ctx.currentTime + fade + .05); setTimeout(() => out.bus.disconnect(), fade * 1000 + 300); } };
+    return { duck: out.duck, stop: (fade = 1.2) => { if (dead) return; dead = true; out.ramp(out.bus.gain, 0, fade); const n = ctx.currentTime + fade + .05; srcs.forEach(x => { try { x.stop(n); } catch (e) {} }); setTimeout(() => out.bus.disconnect(), fade * 1000 + 300); } };
   }
   // background: start already ducked (later visits, a skipped opening)
   music({ background = false } = {}) {
@@ -237,6 +249,14 @@ export class StationAudio {
     if (!this.live) return;
     const t0 = this.ctx.currentTime;
     [[72, 0], [76, .32], [79, .64]].forEach(([n, d]) => this._bell(NOTE(n), t0 + d, .06, 2.2, 0));
+  }
+  // the cab's sliding door: a pneumatic sigh, the leaf running in its track, a soft stop
+  cabDoor() {
+    if (!this.live) return;
+    const t = this.ctx.currentTime;
+    this._noise(t, .55, 'bandpass', 2400, 900, 1.2, .07, .05, .05);
+    this._noise(t + .08, .75, 'lowpass', 500, 180, .8, .1, .1, .05);
+    this._noise(t + .82, .1, 'lowpass', 700, 200, 1, .12, .004, .05); this._click(t + .83, .1);
   }
   doors(count = 1) {
     if (!this.live) return;

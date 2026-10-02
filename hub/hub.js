@@ -1,4 +1,4 @@
-import { DOORS, SITE } from './doors.js';
+import { DOORS, SITE, CABINET } from './doors.js';
 import { StationAudio } from './audio.js';
 import { flap, pad, blank } from './flap.js';
 
@@ -78,19 +78,19 @@ let song = null, introPlaying = false; // the headphone song; the opening playin
 const DEST_W = Math.max(...DOORS.map(d => d.title.length));
 // the timetable's departure times, set once when you arrive
 const TIMES = DOORS.map((d, i) => { const t = new Date(Date.now() + (4 + i * 7) * 60000); return pad(t.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true }).replace(/\s?[AP]M/, '').padStart(5, ' '), 5); });
-function statusOf(d) { return d.href ? (doorsOpen ? 'BOARDING' : 'ARRIVING') : 'SOON'; }
+function statusOf(d) { return d.href || d.scene ? (doorsOpen ? 'BOARDING' : 'ARRIVING') : 'SOON'; }
 function renderBoard(fresh) {
   const rows = $('rows');
   if (!rows.children.length) rows.innerHTML = DOORS.map((d, i) => `<button class="row" type="button" data-i="${i}"><span class="tm flap" aria-hidden="true"></span><span class="d flap" aria-hidden="true"></span><span class="c flap" aria-hidden="true"></span><span class="s flap" aria-hidden="true"></span></button>`).join('');
   let changed = 0;
   DOORS.forEach((d, i) => {
     const r = rows.children[i], st = statusOf(d);
-    r.setAttribute('aria-label', `Car ${no(i)}: ${d.title}, ${d.href ? 'open' : 'coming soon'}`);
+    r.setAttribute('aria-label', `Car ${no(i)}: ${d.title}, ${d.href || d.scene ? 'open' : 'coming soon'}`);
     r.classList.toggle('on', i === focus && mobile && doorsOpen);
     if (fresh) r.querySelectorAll('.flap').forEach(blank);
     const delay = i * 90;
     changed += flap(r.querySelector('.tm'), TIMES[i], delay) + flap(r.querySelector('.d'), pad(d.title.toUpperCase(), DEST_W), delay) + flap(r.querySelector('.c'), no(i), delay) + flap(r.querySelector('.s'), pad(st, 8), delay);
-    r.querySelector('.s').className = 's flap ' + (d.href ? (doorsOpen ? 'live' : 'due') : 'soon');
+    r.querySelector('.s').className = 's flap ' + (d.href || d.scene ? (doorsOpen ? 'live' : 'due') : 'soon');
   });
   if (changed && $('board').classList.contains('show')) audio.clatter();
 }
@@ -117,6 +117,7 @@ function choose(i) {
   if (boarding || !entered) return;
   const d = DOORS[i];
   if (mobile && station && i !== focus) { setFocus(i); audio.tick(); setTimeout(() => choose(i), 800); return; }
+  if (d.scene === 'cabinet' && station && doorsOpen) { visitCabinet(i); return; }
   if (d.href) {
     audio.beep();
     if (!station || !doorsOpen) { location.href = d.href; return; }
@@ -133,13 +134,46 @@ function choose(i) {
   n.querySelector('.n-close').focus({ preventScroll: true });
   audio.chime();
 }
+// Meet the Cabinet: walk through the last car to the cab, where the cabinet are; their names float above them
+let visiting = false;
+function visitCabinet(i) {
+  boarding = true; visiting = true; audio.beep(); audio.board(); document.body.classList.add('boarding');
+  const tags = $('crew-tags'); tags.innerHTML = '';
+  CABINET.forEach(m => { const t = document.createElement('div'); t.className = 'tag'; t.innerHTML = `<b></b><span></span>`; t.querySelector('b').textContent = m.name; t.querySelector('span').textContent = m.role || ''; tags.appendChild(t); });
+  $('crew').hidden = false;
+  station.visit(i, {
+    door: () => audio.cabDoor(),
+    arrive: () => { document.body.classList.add('visiting'); [...tags.children].forEach((t, k) => setTimeout(() => t.classList.add('on'), 250 + k * 120)); $('crew-back').focus({ preventScroll: true }); }
+  });
+}
+function placeTags() {
+  if (!visiting || !station) return;
+  const pos = station.crewTags(), tags = $('crew-tags').children;
+  // kept on screen; where neighbours would overlap (a narrow phone), every other one sits a row higher
+  const w = [...tags].map(t => t.offsetWidth), crowded = pos.some((p, k) => k && Math.abs(p.x - pos[k - 1].x) < (w[k] + w[k - 1]) / 2 + 6);
+  pos.forEach((p, k) => {
+    const t = tags[k]; if (!t) return;
+    const x = Math.min(innerWidth - w[k] / 2 - 8, Math.max(w[k] / 2 + 8, p.x)), y = p.y - (crowded && k % 2 ? t.offsetHeight + 10 : 0);
+    t.style.transform = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px) translate(-50%, -100%)`; t.style.visibility = p.on ? '' : 'hidden';
+  });
+}
+function leaveCabinet() {
+  if (!visiting) return; visiting = false; audio.tick();
+  $('flash').classList.add('on'); document.body.classList.remove('visiting');
+  [...$('crew-tags').children].forEach(t => t.classList.remove('on'));
+  setTimeout(() => {
+    station.endVisit(); $('crew').hidden = true;
+    $('flash').classList.remove('on'); document.body.classList.remove('boarding'); boarding = false;
+  }, 550);
+}
+$('crew-back').addEventListener('click', leaveCabinet);
 function closeNotice() { const n = $('notice'); if (n.hidden) return; n.classList.remove('open'); setTimeout(() => { n.hidden = true; }, 450); audio.tick(); }
 $('notice').addEventListener('click', e => { if (e.target.closest('[data-close]')) closeNotice(); });
 $('rows').addEventListener('click', e => { const b = e.target.closest('.row'); if (b) choose(Number(b.dataset.i)); });
 $('rows').addEventListener('pointerover', e => { const b = e.target.closest('.row'); if (b && !mobile) setHover(Number(b.dataset.i)); });
 $('rows').addEventListener('pointerleave', () => { if (!mobile) setHover(-1); });
 addEventListener('keydown', e => {
-  if (e.key === 'Escape') closeNotice();
+  if (e.key === 'Escape') { closeNotice(); leaveCabinet(); }
   if (!doorsOpen || !$('notice').hidden || !station) return;
   if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') { setFocus(focus + (e.key === 'ArrowRight' ? 1 : -1)); if (!mobile) setHover(focus); }
 });
@@ -199,7 +233,7 @@ function skipArrival() { if (doorsOpen || !station) return; station.park(); arri
 function loop() {
   if (station) {
     if (doorsOpen && !mobile && !boarding && $('notice').hidden && !overUI) setHover(station.pick(...ndc(mx, my)));
-    station.render();
+    station.render(); placeTags();
   }
   requestAnimationFrame(loop);
 }
@@ -219,7 +253,7 @@ async function boot() {
     if (reduce) return;
     try {
       const [{ Station }, { loadPeople }, { loadCity }] = await Promise.all([import('./station.js'), import('./people.js'), import('./city.js')]);
-      await Promise.all([loadPeople(), loadCity(), audio.loadTrack('/assets/audio/headphones.mp3')]); // the Mini Characters before the scene that uses them; your headphone song if there is one
+      await Promise.all([loadPeople(), loadCity(), audio.loadTrack('/assets/audio/headphones.mp3', '/assets/audio/headphones_loop.mp3')]); // the Mini Characters before the scene that uses them; your headphone song if there is one
       const logo = new Image(); logo.src = '/assets/logo.png'; await logo.decode().catch(() => {});
       station = new Station($('station'), { mobile, doors: DOORS, logo: logo.naturalWidth ? logo : null }); if (location.hash === '#debug') { window.__st = station; window.__audio = audio; } station.render();
     }
@@ -232,7 +266,7 @@ async function boot() {
     try { await station.warm(ticketCanvas()); } catch (e) { console.warn(e); }
   }
   done++;
-  $('tk-status').classList.add('done');
+  $('tk-status').classList.add('done'); $('load-label').textContent = 'Ready to board';
   if (!station) { document.body.classList.add('static'); enter(false); return; }
   if (!firstToday && !reduce) { setTimeout(() => (soundPref && held() ? tapToBoard() : quickEnter()), 350); return; }
   setTimeout(() => { $('gate').classList.add('ready'); $('enter-sound').focus({ preventScroll: true }); }, 350);
@@ -303,7 +337,7 @@ $('replay-btn').addEventListener('click', () => {
 // skipping cuts the opening's sounds too (bells, horn and the arrival are scheduled ahead), with a short fade
 function skipIntro() { if (!station || !introPlaying) return; if (song) song.duck(.6); audio.endScene(.4); station.skipIntro(); ambientSong(); }
 // the song in the background on the platform: faint, from the listener's headphones (on later visits, after a skip, or once sound comes on)
-function ambientSong() { if (!song && audio.ctx && entered && !introPlaying && station) song = audio.music({ background: true }); }
+function ambientSong() { if (!song && audio.ctx && document.body.classList.contains('entered') && !introPlaying && station) song = audio.music({ background: true }); } // not before the opening (you start it there)
 $('skip').addEventListener('click', skipIntro);
 addEventListener('keydown', e => { if (introPlaying && (e.key === 'Escape' || e.key === ' ')) { e.preventDefault(); skipIntro(); } });
 $('enter-sound').addEventListener('click', () => enter(true));

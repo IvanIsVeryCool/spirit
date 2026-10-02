@@ -144,7 +144,9 @@ const liningPaint = p => p.y > 3.6 || (p.x > -XV && p.x < XV && p.y > CEIL - .1)
 
 // Build one car's interior into `car` (car-local coordinates; the door faces +z).
 // Returns the per-car materials so the station can brighten them as the doors open and on hover.
-export function buildInterior(car, { ledMat, plateMat, idx = 0 }) {
+// The door at the lower deck's +x end into the cab, on a car with a cab behind it (the last car): in line with the aisle.
+export const CAB_DOOR = { z0: -.6, z1: -.06, y0: LOWER, y1: LCEIL - .06, x: END };
+export function buildInterior(car, { ledMat, plateMat, idx = 0, cab = false }) {
   const steel = steelMat();
   const T = textures();
   const mats = {
@@ -205,11 +207,21 @@ export function buildInterior(car, { ledMat, plateMat, idx = 0 }) {
   // end walls
   [-1, 1].forEach(sd => {
     const sh = new THREE.Shape(); keep.slice(0, -1).forEach((j, k) => k ? sh.lineTo(ring[j].z, ring[j].y) : sh.moveTo(ring[j].z, ring[j].y));
+    if (cab && sd > 0) { const D = CAB_DOOR, h = new THREE.Path(); h.moveTo(D.z0, D.y0); h.lineTo(D.z1, D.y0); h.lineTo(D.z1, D.y1); h.lineTo(D.z0, D.y1); h.closePath(); sh.holes.push(h); }
     const g = new THREE.ShapeGeometry(sh, 2);
     A.add(g, new THREE.Matrix4().makeRotationY(sd > 0 ? -Math.PI / 2 : Math.PI / 2).premultiply(M4.makeTranslation(sd * END, 0, 0)).multiply(sd > 0 ? I4 : new THREE.Matrix4().makeScale(-1, 1, 1)), P.wall.clone().multiplyScalar(.5), { lit: false });
   });
   // gangway doors in the end walls, one on each deck you can see
+  if (cab) { // the cab door: a frame round the opening, and a leaf of its own that slides open (station.js)
+    const D = CAB_DOOR;
+    box(A, [END - .04, END + .02], [D.y1, D.y1 + .05], [D.z0 - .05, D.z1 + .05], P.gasket, { lit: false });
+    [D.z0 - .05, D.z1].forEach(z => box(A, [END - .04, END + .02], [D.y0, D.y1], [z, z + .05], P.gasket, { lit: false }));
+    const leaf = put(new THREE.BoxGeometry(.03, D.y1 - D.y0, D.z1 - D.z0), new THREE.MeshBasicMaterial({ color: P.leaf.clone().multiplyScalar(.82) }), END + .035, (D.y0 + D.y1) / 2, (D.z0 + D.z1) / 2);
+    const win = new THREE.Mesh(new THREE.PlaneGeometry(.26, .5), new THREE.MeshBasicMaterial({ color: 0x2a2f3a })); win.position.set(-.017, .32, 0); win.rotation.y = -Math.PI / 2; leaf.add(win);
+    leaf.userData.keep = true; mats.cabDoor = leaf;
+  }
   [[END, LOWER, LCEIL - .06], [-END, UPPER, ROOF - .25]].forEach(([x, y0, y1]) => {
+    if (cab && x > 0) return;
     const sd = Math.sign(x);
     box(A, sd > 0 ? [x - .03, x] : [x, x + .03], [y0, y1], [-.42, .42], P.leaf, { uvs: 0 });
     box(A, sd > 0 ? [x - .04, x - .03] : [x + .03, x + .04], [y0 + .9, y1 - .2], [-.2, .2], P.gasket, { lit: false });

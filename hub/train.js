@@ -107,6 +107,13 @@ export function nosePoint(s, theta, out = 0) {
   const f = noseFrame(s), [z, y] = sectionPoint(theta, f.hw + out, f.yc, f.hh + out);
   return new THREE.Vector3(f.x, y, z);
 }
+// The inside of the cab: the nose's own shape, inset, plus a short length of body section behind it (back to where
+// the passenger saloon's end wall stands), facing inward. Same uvs as the nose, so its windows line up.
+export function noseLiningGeometry(inset = .07, back = .24) {
+  const rings = [{ x: back, pts: ringPts(HW - inset, YC, HH - inset), u: 0 }], N = 40;
+  for (let i = 0; i <= N; i++) { const s = (1 - Math.pow(1 - i / N, 1.25)) * .97, f = noseFrame(s); rings.push({ x: f.x, pts: ringPts(Math.max(.01, f.hw - inset), f.yc, Math.max(.01, f.hh - inset)), u: s }); }
+  return ringGeometry(rings); // rings run toward -x: unflipped, the faces point in
+}
 export function noseGeometry() {
   const rings = [], N = 46;
   for (let i = 0; i <= N; i++) { const s = 1 - Math.pow(1 - i / N, 1.25), f = noseFrame(s); rings.push({ x: f.x, pts: ringPts(f.hw, f.yc, f.hh), u: s }); }
@@ -202,7 +209,7 @@ export function windowTexture() {
 }
 // the nose: glossy red paint, a wraparound windshield with a destination display, side cab windows,
 // headlight housings, a white pinstripe and the logo; plus a glow map for the lights
-export function paintNose(logo, ledDraw) {
+export function paintNose(logo, ledDraw, { tail = false } = {}) { // tail: the trailing cab, red lights instead of headlights
   const TW = 1024, TH = 1024, U = s => s * TW, R = v => (1 - v) * TH;
   const c = canvas(TW, TH), x = c.getContext('2d'), e = canvas(TW, TH), ex = e.getContext('2d');
   const gr = x.createLinearGradient(0, 0, TW, 0); gr.addColorStop(0, '#c3262c'); gr.addColorStop(1, '#b51f25');
@@ -229,9 +236,9 @@ export function paintNose(logo, ledDraw) {
   // headlight housings and lights
   [[.135, .21], [.79, .865]].forEach(([v0, v1]) => {
     x.fillStyle = '#16171c'; ws(.86, .955, v0, v1, 16); x.fill();
-    [.885, .925].forEach(s => { [x, ex].forEach((k, i) => { k.fillStyle = i ? '#fff6e2' : '#f2eee4'; k.beginPath(); k.ellipse(U(s), R((v0 + v1) / 2), 13, (R(v0) - R(v1)) * .32, 0, 0, 7); k.fill(); }); });
+    [.885, .925].forEach(s => { [x, ex].forEach((k, i) => { k.fillStyle = tail ? (i ? '#ff3424' : '#d8261c') : i ? '#fff6e2' : '#f2eee4'; k.beginPath(); k.ellipse(U(s), R((v0 + v1) / 2), 13, (R(v0) - R(v1)) * .32, 0, 0, 7); k.fill(); }); });
   });
-  [[.24, .27], [.73, .76]].forEach(([v0, v1]) => { [x, ex].forEach(k => { k.fillStyle = '#ffd99a'; k.fillRect(U(.885), R(v1), 26, R(v0) - R(v1)); }); });
+  [[.24, .27], [.73, .76]].forEach(([v0, v1]) => { [x, ex].forEach(k => { k.fillStyle = tail ? '#ff5a3a' : '#ffd99a'; k.fillRect(U(.885), R(v1), 26, R(v0) - R(v1)); }); });
   if (logo) { x.save(); x.translate(U(.915), R(.5)); x.rotate(Math.PI / 2); x.drawImage(logo, -46, -46, 92, 92); x.restore(); }
   noise(x, TW, TH, .025);
   // windshield and display are glossy glass; paint gets a clear coat
