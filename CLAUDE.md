@@ -6,9 +6,10 @@ The README covers the owner-facing basics: how to add a car and how to update sc
 
 ## What it is
 - **Owner:** Ivan Cui (GitHub `IvanIsVeryCool`), a student on Nueva School's spirit cabinet.
-- **Live site:** https://moonlit-crumble-d56590.netlify.app (Netlify site `moonlit-crumble-d56590`).
-  Netlify auto-deploys from GitHub `IvanIsVeryCool/spirit`, branch `main`. `netlify.toml` has `publish = "."`.
-  There is no build step: push to `main` and the site updates in about a minute.
+- **Hosting:** moving from Netlify to **Cloudflare Pages** (free, no per-deploy credits). On 2026-10-02 the Netlify team ran out of credits and production deploys paused, so Netlify stays on an older version (`https://moonlit-crumble-d56590.netlify.app`).
+  Cloudflare Pages is connected to GitHub `IvanIsVeryCool/spirit`, branch `main`: framework preset None, no build command, build output directory `/`. There is no build step: push to `main` and the site updates in about a minute.
+  The new address is `https://<project-name>.pages.dev` (fill it in here once the owner has created the project).
+  `_redirects` (read by both hosts) keeps `CLAUDE.md` and `README.md` off the public site; `netlify.toml` is only for Netlify.
 - **`/` (hub):** a 3D golden-hour train platform.
   - **First visit of the day:** a paper ticket loader ("Board with sound" or "Board without sound").
     Then a first-person cutscene: you sit on a bench holding the ticket and look around, and a red-and-silver double-deck commuter train pulls in.

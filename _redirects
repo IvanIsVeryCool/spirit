@@ -1,0 +1,4 @@
+# Developer notes stay in the repo, not on the website (read by Cloudflare Pages and Netlify)
+/CLAUDE.md  /  301
+/README.md  /  301
+/_redirects  /  301
