@@ -76,7 +76,7 @@ export class Station {
     const fill = new THREE.DirectionalLight(0x8d9cff, .5); fill.position.set(14, 8, 18); s.add(fill);
 
     Object.assign(this, { FLOOR, CAR_L, NOSE_L, P: CAR_L + GAP });
-    this._sky(); this._hills(); this._trees(); this._tracks(); this._platform(); this._wires(); this._props(); this._train(); this._motes();
+    this._sky(); this._hills(); this._trees(); this._tracks(); this._platform(); this._wires(); this._props(); this._train(); this._motes(); this._billboard();
     const propGroup = addPlatformProps(this); addPeople(this); addBackground(this); this.city = addCity(this); this.crowd = new Crowd(this);
     s.traverse(o => { if (o.isMesh && !o.userData.noShadow) { o.castShadow = !!o.userData.cast; o.receiveShadow = true; } });
     // hundreds of small static parts become one draw call per material
@@ -455,6 +455,53 @@ export class Station {
   redrawSigns() {
     this.doors.forEach((d, i) => { d.led.key = ''; this.drawSign(i); });
     if (this.noseMesh) this._paintNose();
+    if (this.boardFace) this._paintBillboard();
+  }
+  // A big roadside billboard behind the far road, standing over the train in the platform view: "NUEVA SPIRIT",
+  // on two steel legs with a catwalk, lit by four lamps on arms over the top.
+  _billboard() {
+    const g = new THREE.Group(), BW = 22, BH = 6.6, Y = 11, Z = -17.2; g.position.set(0, 0, Z); this.scene.add(g);
+    const steel = new THREE.MeshStandardMaterial({ color: 0x2c2f37, roughness: .6, metalness: .55 }), dark = new THREE.MeshStandardMaterial({ color: 0x1b1d22, roughness: .7, metalness: .3 });
+    const box = (w, h, d, m, x, y, z) => { const o = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m); o.position.set(x, y, z); o.userData.cast = true; g.add(o); return o; };
+    this.boardFace = new THREE.Mesh(new THREE.PlaneGeometry(BW, BH), new THREE.MeshStandardMaterial({ roughness: .9, color: 0xd9d2c6, emissive: 0xffffff, emissiveIntensity: .16, envMapIntensity: .4 }));
+    this.boardFace.position.set(0, Y, .17); g.add(this.boardFace);
+    box(BW + .5, BH + .5, .3, dark, 0, Y, 0);                                                    // the frame and backing
+    [-1, 1].forEach(sd => {
+      box(.9, Y - BH / 2, .9, steel, sd * 6.2, (Y - BH / 2) / 2, -.6);                            // legs
+      box(.25, 3.4, .25, steel, sd * 6.2, Y - BH / 2 - 1.2, .2).rotation.z = sd * .5;            // braces
+    });
+    box(BW + .8, .12, 1.1, steel, 0, Y - BH / 2 - .35, .75);                                     // catwalk
+    for (let k = 0; k <= 10; k++) box(.05, .9, .05, steel, -BW / 2 - .3 + k * (BW + .6) / 10, Y - BH / 2 + .1, 1.27);
+    box(BW + .7, .05, .05, steel, 0, Y - BH / 2 + .55, 1.27);
+    // lamps on arms over the top, shining down on the face
+    const lampMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(2.2, 1.9, 1.4) }); lampMat.toneMapped = false;
+    [-.375, -.125, .125, .375].forEach(f => {
+      box(.08, .08, 1.5, steel, f * BW, Y + BH / 2 + .35, .7);
+      box(.6, .16, .34, dark, f * BW, Y + BH / 2 + .32, 1.45);
+      const l = new THREE.Mesh(new THREE.PlaneGeometry(.5, .26), lampMat); l.rotation.x = Math.PI / 2; l.position.set(f * BW, Y + BH / 2 + .235, 1.45); g.add(l);
+    });
+    g.traverse(o => { if (o.isMesh && o !== this.boardFace) o.userData.noShadow = !o.userData.cast; });
+    this.boardFace.userData.keep = true; this.boardGroup = g;
+    this._paintBillboard(); mergeStatic(g);
+  }
+  _paintBillboard() {
+    const W = 2048, H = Math.round(2048 * 6.6 / 22), c = document.createElement('canvas'); c.width = W; c.height = H; const x = c.getContext('2d');
+    // the poster: warm paper, lit from the lamps above (brighter at the top), a red band along the bottom
+    const bg = x.createLinearGradient(0, 0, 0, H); bg.addColorStop(0, '#f3ead9'); bg.addColorStop(1, '#ded0b8'); x.fillStyle = bg; x.fillRect(0, 0, W, H);
+    [.125, .375, .625, .875].forEach(f => { const r = x.createRadialGradient(f * W, -40, 10, f * W, -40, 520); r.addColorStop(0, 'rgba(255,232,190,.4)'); r.addColorStop(1, 'rgba(255,236,200,0)'); x.fillStyle = r; x.fillRect(0, 0, W, H); });
+    x.fillStyle = '#c9272c'; x.fillRect(0, H - 70, W, 70); x.fillStyle = '#16181f'; x.fillRect(0, H - 80, W, 10);
+    // the logo, white on a red square, and the name
+    const S = H - 210, L = 90, T = 70; x.fillStyle = '#c9272c'; x.beginPath(); x.roundRect(L, T, S, S, 26); x.fill();
+    if (this.logo) x.drawImage(this.logo, L + S * .12, T + S * .12, S * .76, S * .76);
+    const tx = L + S + 90, fs = Math.round(S * .62); x.textBaseline = 'alphabetic';
+    x.font = `900 ${fs}px Archivo, "Arial Black", sans-serif`; try { x.fontStretch = 'expanded'; } catch (e) {}
+    const avail = W - tx - 90, w1 = x.measureText('NUEVA ').width, w2 = x.measureText('SPIRIT').width, k = Math.min(1, avail / (w1 + w2));
+    x.save(); x.translate(tx, T + S * .5 + fs * .36); x.scale(k, 1);
+    x.fillStyle = '#c9272c'; x.fillText('NUEVA ', 0, 0); x.fillStyle = '#16181f'; x.fillText('SPIRIT', w1, 0); x.restore();
+    // a little weathering
+    const d = x.getImageData(0, 0, W, H), a = d.data; for (let i = 0; i < a.length; i += 4) { const n = (Math.random() - .5) * 10; a[i] += n; a[i + 1] += n; a[i + 2] += n; } x.putImageData(d, 0, 0);
+    const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8;
+    const m = this.boardFace.material; if (m.map) m.map.dispose(); m.map = t; m.emissiveMap = t; m.needsUpdate = true;
   }
 
   /* ---------- first-person opening: you sit on the bench and wait ---------- */

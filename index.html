@@ -64,6 +64,7 @@ body.entered .replay{display:flex}
 @keyframes eq{0%,100%{height:3px}50%{height:12px}}
 
 /* Headline in the sky */
+.sr-only{position:absolute;width:1px;height:1px;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 .head{position:fixed;z-index:5;left:clamp(16px,3vw,36px);top:calc(92px + env(safe-area-inset-top,0px));pointer-events:none;color:#fff;max-width:min(640px,calc(100% - 32px));text-shadow:0 2px 24px rgba(40,20,70,.35)}
 .head .k{display:inline-block;background:var(--red);color:#fff;border-radius:4px;padding:4px 9px;font-size:11px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;text-shadow:none}
 .head h1{font-family:var(--display);font-stretch:125%;font-weight:900;text-transform:uppercase;font-size:clamp(26px,4.2vw,58px);line-height:.95;letter-spacing:-.015em;margin-top:6px}
@@ -212,6 +213,22 @@ body.visiting .crew-back{opacity:1;transform:translate(-50%,0);pointer-events:au
   .stamp{right:24px;top:auto;bottom:70px}
   .hole{right:auto;left:50%;top:auto;bottom:-11px;margin-left:-11px}
 }
+/* music volume: a vertical slider, bottom right */
+.vol{--v:.75;position:fixed;z-index:22;right:clamp(16px,3vw,36px);bottom:calc(20px + env(safe-area-inset-bottom,0px));width:40px;padding:16px 0 6px;border-radius:999px;background:rgba(255,255,255,.92);box-shadow:0 10px 26px -12px rgba(10,8,30,.55);display:flex;flex-direction:column;align-items:center;gap:8px;touch-action:none;opacity:0;pointer-events:none;transform:translateY(10px);transition:opacity .6s ease,transform .8s var(--ease),bottom .6s var(--ease)}
+body.entered .vol,body.intro .vol{opacity:1;transform:none;pointer-events:auto}
+body.intro .vol{bottom:calc(68px + env(safe-area-inset-bottom,0px))}
+body.boarding .vol{opacity:0;pointer-events:none}
+body.entered .vol.off{opacity:.55}
+.vol:focus-visible{outline:2px solid #fff;outline-offset:3px}
+.vol-track{position:relative;width:4px;height:104px;border-radius:4px;background:rgba(22,24,31,.14);cursor:pointer}
+.vol-track::before{content:"";position:absolute;inset:-8px -16px}
+.vol-fill{position:absolute;left:0;right:0;bottom:0;height:calc(var(--v) * 100%);border-radius:4px;background:var(--red)}
+.vol-knob{position:absolute;left:50%;bottom:calc(var(--v) * 100%);width:14px;height:14px;margin:0 0 -7px -7px;border-radius:50%;background:#fff;box-shadow:0 0 0 2px var(--red),0 2px 6px rgba(0,0,0,.25);transition:transform .2s var(--ease)}
+.vol:active .vol-knob,.vol:focus-visible .vol-knob{transform:scale(1.18)}
+.vol-icon{width:28px;height:28px;display:grid;place-items:center;color:var(--ink);border-radius:50%}
+.vol-icon svg{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+.vol-icon .x{display:none}.vol.muted .vol-icon{color:var(--muted)}.vol.muted .vol-icon .x{display:inline}
+body.static .vol{display:none}
 .skip{position:fixed;z-index:30;right:clamp(16px,3vw,36px);bottom:calc(20px + env(safe-area-inset-bottom,0px));background:rgba(255,255,255,.9);color:var(--ink);border-radius:999px;padding:9px 16px;font-size:12px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;opacity:0;pointer-events:none;transition:opacity .6s}
 body.intro .skip{opacity:1;pointer-events:auto}
 body.intro .hud,body.intro .head,body.intro .board{opacity:0!important;pointer-events:none}
@@ -225,6 +242,7 @@ body.boarding .hud,body.boarding .head,body.boarding .board{opacity:0;transform:
 body.static{overflow:auto}
 body.static #station,body.static .vignette{display:none}
 body.static .head{position:relative;left:auto;top:auto;padding:110px 20px 0;max-width:640px;margin:0 auto}
+body.static #title{position:relative;width:auto;height:auto;margin:0 auto;clip:auto;overflow:visible;white-space:normal;padding:110px 20px 0;max-width:640px;color:#fff;font-family:var(--display);font-stretch:125%;font-weight:900;text-transform:uppercase;font-size:clamp(26px,6vw,48px);line-height:.95}
 body.static .board{position:relative;left:auto;bottom:auto;opacity:1;transform:none;margin:24px auto 40px;width:min(560px,calc(100% - 32px))}
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
 </style>
@@ -285,6 +303,10 @@ body.static .board{position:relative;left:auto;bottom:auto;opacity:1;transform:n
   </div>
 </div>
 
+<div class="vol" id="vol" role="slider" tabindex="0" aria-label="Music volume" aria-orientation="vertical" aria-valuemin="0" aria-valuemax="100" aria-valuenow="75">
+  <div class="vol-track" id="vol-track"><i class="vol-fill"></i><i class="vol-knob"></i></div>
+  <button class="vol-icon" id="vol-icon" type="button" tabindex="-1" aria-label="Mute music"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 17.5V5.5l10-2v12"/><circle cx="6.5" cy="17.5" r="2.5"/><circle cx="16.5" cy="15.5" r="2.5"/><path class="x" d="M4 4l16 16"/></svg></button>
+</div>
 <button class="skip" id="skip" type="button">Skip intro</button>
 
 <header class="hud">
@@ -295,9 +317,7 @@ body.static .board{position:relative;left:auto;bottom:auto;opacity:1;transform:n
   </div>
 </header>
 
-<div class="head">
-  <h1 id="title">All aboard the Spirit Cabinet</h1>
-</div>
+<h1 class="sr-only" id="title">Nueva Spirit Cabinet</h1>
 
 <nav class="board" id="board" aria-label="Sections">
   <div class="b-head"><span class="t"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="3" width="14" height="14" rx="3" fill="none" stroke="currentColor" stroke-width="2"/><path d="M5 10h14M9 19l-2 3M15 19l2 3M9 14h.01M15 14h.01" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>Departures</span><span class="flap" id="clock" aria-hidden="true"></span></div>
