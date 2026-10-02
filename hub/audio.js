@@ -181,12 +181,12 @@ export class StationAudio {
   // tinny leak you'd hear from someone's headphones on the bench (quieter, no bass), playing on in the background.
   // It goes straight to the station mix, not the opening's scene bus, so it outlives the opening.
   _songOut(level, background) {
-    const ctx = this.ctx, bus = ctx.createGain(), hp = ctx.createBiquadFilter(), lp = ctx.createBiquadFilter(), t = ctx.currentTime, LEAK = .2;
-    hp.type = 'highpass'; lp.type = 'lowpass'; hp.frequency.value = background ? 420 : 20; lp.frequency.value = background ? 5200 : 3800;
+    const ctx = this.ctx, bus = ctx.createGain(), hp = ctx.createBiquadFilter(), lp = ctx.createBiquadFilter(), t = ctx.currentTime, LEAK = .42; // after the view pulls out: still clearly there, just from someone else's headphones
+    hp.type = 'highpass'; lp.type = 'lowpass'; hp.frequency.value = background ? 280 : 20; lp.frequency.value = background ? 5200 : 3800;
     bus.connect(hp).connect(lp).connect(this.dry);
     bus.gain.setValueAtTime(0, t); bus.gain.linearRampToValueAtTime(level * (background ? LEAK : 1), t + (background ? 2.5 : 1.6));
     const ramp = (p, v, f) => { const n = ctx.currentTime; p.cancelScheduledValues(n); p.setValueAtTime(p.value, n); p.linearRampToValueAtTime(v, n + f); };
-    return { bus, ramp, duck: (fade = 1.4) => { ramp(bus.gain, level * LEAK, fade); ramp(hp.frequency, 420, fade); ramp(lp.frequency, 5200, fade); } };
+    return { bus, ramp, duck: (fade = 1.4) => { ramp(bus.gain, level * LEAK, fade); ramp(hp.frequency, 280, fade); ramp(lp.frequency, 5200, fade); } };
   }
   _playTrack(background) {
     const ctx = this.ctx, out = this._songOut(.24, background), t = ctx.currentTime + .05, srcs = []; // a finished recording is loud: keep it under the station
@@ -264,6 +264,14 @@ export class StationAudio {
     am.connect(f).connect(g);
     let out = g; if (ctx.createStereoPanner) { const pn = ctx.createStereoPanner(); pn.pan.setValueAtTime(-.8, t); pn.pan.linearRampToValueAtTime(.8, t + dur); g.connect(pn); out = pn; }
     out.connect(this.dry); out.connect(this.verbIn); lfo.start(t); lfo.stop(t + dur + .1);
+  }
+  // the officer's voice under his typed-out lines: a soft, slightly random pip
+  blip() {
+    if (!this.live) return;
+    const ctx = this.ctx, t = ctx.currentTime, o = ctx.createOscillator(), g = ctx.createGain(), f = ctx.createBiquadFilter();
+    o.type = 'triangle'; o.frequency.setValueAtTime(150 + Math.random() * 40, t); f.type = 'lowpass'; f.frequency.value = 900;
+    g.gain.setValueAtTime(.0001, t); g.gain.exponentialRampToValueAtTime(.05, t + .008); g.gain.exponentialRampToValueAtTime(.0001, t + .07);
+    o.connect(f).connect(g).connect(this.dry); o.start(t); o.stop(t + .08);
   }
   // the cab's sliding door: a pneumatic sigh, the leaf running in its track, a soft stop
   cabDoor() {

@@ -45,12 +45,15 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
 /* Station sign (brand) and sound pill */
 .hud{position:fixed;top:0;left:0;right:0;z-index:20;display:flex;justify-content:space-between;align-items:flex-start;gap:12px;padding:calc(16px + env(safe-area-inset-top,0px)) clamp(16px,3vw,36px) 0;pointer-events:none}
 .hud>*{pointer-events:auto}
-.sign{display:flex;align-items:stretch;background:#fff;border-radius:8px;overflow:hidden;box-shadow:0 10px 30px -12px rgba(20,10,40,.55);text-decoration:none}
-.sign .bar{width:8px;background:var(--red)}
-.sign .in{display:flex;align-items:center;gap:12px;padding:9px 16px 9px 12px}
-.sign .logo-img{width:34px;height:34px;color:var(--ink)}
-.sign b{display:block;font-family:var(--display);font-stretch:118%;font-weight:850;font-size:20px;line-height:1;letter-spacing:-.01em;text-transform:uppercase}
-.sign span.sub{display:block;font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-top:3px}
+.sign{display:flex;align-items:center;color:#fff;text-decoration:none;padding:4px 2px;filter:drop-shadow(0 1px 1px rgba(20,10,40,.4)) drop-shadow(0 4px 14px rgba(20,10,40,.35));transition:opacity .3s}
+.sign:hover{opacity:.85}
+.sign .bar{display:none}
+.sign .in{display:flex;align-items:center;gap:14px}
+.sign .logo-img{width:30px;height:30px;color:#fff}
+.sign .in>span:last-child{display:flex;flex-direction:column;gap:6px;padding-left:14px;border-left:1px solid rgba(255,255,255,.5)}
+.sign b{display:block;white-space:nowrap;font-family:var(--display);font-weight:800;font-size:15px;line-height:1;letter-spacing:.34em;text-transform:uppercase;color:#fff}
+.sign span.sub{display:block;white-space:nowrap;font-size:9.5px;font-weight:600;letter-spacing:.26em;text-transform:uppercase;color:rgba(255,255,255,.8);line-height:1}
+@media (max-width:640px){.sign b{font-size:13px;letter-spacing:.28em}.sign .logo-img{width:26px;height:26px}.sign .in{gap:11px}.sign .in>span:last-child{padding-left:11px}}
 .sound{display:flex;align-items:center;gap:9px;background:#fff;border-radius:999px;padding:9px 14px;font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;box-shadow:0 10px 30px -12px rgba(20,10,40,.55);transition:background-color .3s,color .3s}
 .hud-r{display:flex;gap:8px;align-items:center}
 .replay{display:none}.replay svg{width:13px;height:13px}
@@ -128,6 +131,27 @@ body.entered .replay{display:flex}
 .crew-back{position:absolute;left:50%;bottom:calc(28px + env(safe-area-inset-bottom));transform:translate(-50%,12px);opacity:0;pointer-events:none;padding:12px 22px;border-radius:999px;background:#fff;color:var(--ink);font-size:13px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;box-shadow:0 10px 26px -10px rgba(10,8,30,.6);transition:opacity .5s ease,transform .6s var(--ease)}
 body.visiting .crew-back{opacity:1;transform:translate(-50%,0);pointer-events:auto}
 @media (max-width:560px){#crew .tag{padding:5px 10px 6px}#crew .tag b{font-size:12px}#crew .tag span{font-size:9px}}
+/* the officer: his label on the platform, and what he says */
+.cop-tag{position:fixed;left:0;top:0;z-index:15;display:flex;flex-direction:column;align-items:center;gap:3px;color:#fff;background:none;text-shadow:0 1px 2px rgba(10,8,30,.65),0 2px 16px rgba(10,8,30,.55);opacity:0;pointer-events:none;transition:opacity .5s ease;will-change:transform}
+.cop-tag.on{opacity:1;pointer-events:auto}
+.cop-tag b{font-family:var(--display);font-weight:800;font-size:15px;line-height:1;letter-spacing:.16em;text-transform:uppercase}
+.cop-tag span{font-size:11px;font-weight:600;letter-spacing:.06em;opacity:.88}
+.cop-arrow{width:11px;height:11px;margin-top:4px;border-right:2.5px solid #fff;border-bottom:2.5px solid #fff;transform:rotate(45deg);filter:drop-shadow(0 1px 2px rgba(10,8,30,.6));animation:copBob 1.4s ease-in-out infinite}
+@keyframes copBob{50%{transform:translateY(5px) rotate(45deg)}}
+.cop-tag:hover b{color:#ffe1a8}
+.talk{position:fixed;left:50%;bottom:calc(26px + env(safe-area-inset-bottom,0px));z-index:32;width:min(620px,calc(100% - 28px));transform:translate(-50%,18px);opacity:0;transition:opacity .45s ease,transform .6s var(--ease)}
+.talk.open{opacity:1;transform:translate(-50%,0)}
+.talk-box{position:relative;padding:24px 26px 20px;border-radius:12px;background:linear-gradient(180deg,rgba(26,28,38,.94),rgba(16,17,24,.94));color:#f4f1ea;border:1px solid rgba(255,255,255,.09);box-shadow:0 26px 60px -22px rgba(5,4,15,.85),inset 0 1px 0 rgba(255,255,255,.07);cursor:pointer;-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px)}
+.talk-name{position:absolute;top:-12px;left:20px;padding:5px 12px;border-radius:6px;background:var(--red);color:#fff;font-family:var(--display);font-weight:800;font-size:11px;letter-spacing:.18em;text-transform:uppercase;box-shadow:0 6px 16px -6px rgba(201,39,44,.8)}
+.talk-text{margin:0;min-height:3.1em;font-size:17px;line-height:1.55;font-weight:500}
+.talk-text b{color:#ffd486;font-weight:800}
+.talk-next{position:absolute;right:20px;bottom:14px;width:8px;height:8px;border-right:2px solid #fff;border-bottom:2px solid #fff;transform:rotate(45deg);opacity:0;transition:opacity .2s}
+.talk.wait .talk-next{opacity:.75;animation:copBob 1.2s ease-in-out infinite}
+.talk-acts{display:none;gap:10px;flex-wrap:wrap;margin-top:16px}
+.talk.done .talk-acts{display:flex}.talk.done .talk-box{cursor:default}
+.talk-btn{padding:11px 18px;border-radius:999px;background:rgba(255,255,255,.1);color:#fff;font-size:12px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;text-decoration:none;transition:background-color .25s}
+.talk-btn:hover{background:rgba(255,255,255,.18)}.talk-btn.primary{background:var(--red)}.talk-btn.primary:hover{background:var(--red-dark)}
+@media (max-width:560px){.talk-box{padding:22px 18px 16px}.talk-text{font-size:15px}}
 #flash{position:fixed;inset:0;z-index:45;pointer-events:none;background:radial-gradient(circle at 50% 50%,#fffaf0 0%,#ffe2b8 45%,#ffb07a 100%);opacity:0;transition:opacity .5s ease}
 #flash.on{opacity:1}
 
@@ -319,6 +343,12 @@ body.static .board{position:relative;left:auto;bottom:auto;opacity:1;transform:n
 </div>
 
 <div id="crew" hidden><div id="crew-tags" aria-live="polite"></div><button class="crew-back" id="crew-back" type="button">Back to the platform</button></div>
+<button class="cop-tag" id="cop-tag" type="button" aria-label="Leaderboard: ask the officer for the standings (skips the ride)"><b>Leaderboard</b><span>(skip cutscene)</span><i class="cop-arrow" aria-hidden="true"></i></button>
+<div class="talk" id="talk" hidden role="dialog" aria-label="The officer">
+  <div class="talk-box" id="talk-box"><div class="talk-name">Officer</div><p class="talk-text" id="talk-text" aria-live="polite"></p><i class="talk-next" aria-hidden="true"></i>
+    <div class="talk-acts"><a class="talk-btn primary" id="talk-full" href="/points/">Full leaderboard</a><button class="talk-btn" id="talk-back" type="button">Back to the platform</button></div>
+  </div>
+</div>
 <div id="flash" aria-hidden="true"></div>
 <noscript><p style="padding:24px;color:#fff"><a href="/points/">Go to Spirit Points</a></p></noscript>
 <script>setTimeout(function(){if(!window.__hubBooted){var l=document.getElementById("loader");if(l)l.remove();document.body.classList.add("static");document.body.classList.remove("pre");}},9000);</script>

@@ -77,7 +77,7 @@ export class Station {
     const fill = new THREE.DirectionalLight(0x8d9cff, .5); fill.position.set(14, 8, 18); s.add(fill);
 
     Object.assign(this, { FLOOR, CAR_L, NOSE_L, P: CAR_L + GAP });
-    this._sky(); this._hills(); this._trees(); this._tracks(); this._platform(); this._wires(); this._props(); this._train(); this._motes(); this._flyer();
+    this._sky(); this._hills(); this._trees(); this._tracks(); this._platform(); this._wires(); this._props(); this._train(); this._motes(); this._flyer(); this._officer();
     const propGroup = addPlatformProps(this); addPeople(this); addBackground(this); this.city = addCity(this); this.crowd = new Crowd(this);
     s.traverse(o => { if (o.isMesh && !o.userData.noShadow) { o.castShadow = !!o.userData.cast; o.receiveShadow = true; } });
     // hundreds of small static parts become one draw call per material
@@ -735,6 +735,53 @@ export class Station {
   setFocus(i) { this.focus = i; }
   setHover(i) { this.hover = i; }
   setPointer(nx, ny) { this.mouse.set(nx, ny); }
+  // The officer on the platform: stands his post, watches the comings and goings; click him (or his label) for the standings.
+  // A Mini Character in a dark suit with a police cap (peaked, a gold badge), looking toward you.
+  _officer() {
+    const p = new Person(6), H = p.bones.head, F = FLOOR;
+    const navy = new THREE.MeshStandardMaterial({ color: 0x1f2b4d, roughness: .55 }), black = new THREE.MeshStandardMaterial({ color: 0x111317, roughness: .3, metalness: .2 });
+    const gold = new THREE.MeshStandardMaterial({ color: 0xe0ac3c, roughness: .3, metalness: .85 }), band = new THREE.MeshStandardMaterial({ color: 0xe9e6de, roughness: .6 });
+    const cg = new THREE.Group(); cg.position.set(0, .3, .005); cg.scale.setScalar(.78); H.add(cg); // sits down on his hair (the head is about .37 wide, its top .33 above the neck)
+    const cap = (geo, m, x, y, z) => { const o = new THREE.Mesh(geo, m); o.position.set(x, y, z); o.userData.keep = true; o.userData.cast = true; cg.add(o); return o; };
+    cap(new THREE.BoxGeometry(.5, .1, .5), navy, 0, .05, 0);              // crown
+    cap(new THREE.BoxGeometry(.56, .06, .56), navy, 0, .12, .01);         // the flared top
+    cap(new THREE.BoxGeometry(.505, .035, .505), band, 0, -.015, 0);      // band
+    cap(new THREE.BoxGeometry(.48, .025, .2), black, 0, -.035, .3).rotation.x = .18; // peak
+    cap(new THREE.BoxGeometry(.1, .11, .02), gold, 0, .06, .262);         // badge
+    const x = this.mobile ? this.cars[0].position.x + 1.15 : 1.5 * this.P + 1.7, z = this.front + (this.mobile ? 6.6 : 8); // clear ground in front of him, for the camera
+    p.root.position.set(x, F, z); p.root.rotation.y = Math.PI - (this.mobile ? -.05 : .32); p.pose('idle', { fade: 0 }); this.scene.add(p.root);
+    const hit = new THREE.Mesh(new THREE.BoxGeometry(1, 2.2, 1), new THREE.MeshBasicMaterial({ visible: false })); hit.position.set(x, F + 1.1, z); hit.userData.keep = true; hit.userData.noShadow = true; this.scene.add(hit);
+    this.cop = { p, hit, talking: 0, salute: 0 };
+  }
+  pickCop(nx, ny) { const rc = new THREE.Raycaster(); rc.setFromCamera(new THREE.Vector2(nx, ny), this.camera); return rc.intersectObject(this.cop.hit).length > 0; }
+  // where his label goes on screen (CSS px): just over his cap
+  copTag() {
+    const v = new THREE.Vector3(); this.cop.p.bones.head.getWorldPosition(v); v.y += .95; v.project(this.camera);
+    return { x: (v.x + 1) / 2 * innerWidth, y: (1 - v.y) / 2 * innerHeight, on: v.z < 1 && Math.abs(v.x) < 1.1 && v.y > -1.1 && v.y < 1.1 };
+  }
+  // zoom in to him (and back out, with endCop): his face sits in the upper part of the view, above the dialogue
+  talkToCop() {
+    const C = this.cop, head = C.p.bones.head.getWorldPosition(new THREE.Vector3()), yaw = C.p.root.rotation.y, f = new THREE.Vector3(-Math.sin(yaw), 0, -Math.cos(yaw));
+    const side = new THREE.Vector3(f.z, 0, -f.x), dist = this.mobile ? 3.1 : 3.0;
+    C.trip = { t0: this.clock.elapsedTime, p0: this.camera.position.clone(), l0: this.look.clone(), p1: head.clone().addScaledVector(f, dist).addScaledVector(side, .25).add(new THREE.Vector3(0, .12, 0)), l1: head.clone().add(new THREE.Vector3(0, this.mobile ? -.22 : -.16, 0)) };
+    C.salute = 0;
+  }
+  endCop() { if (!this.cop.trip) return; this.cop.trip = null; this.cop.talking = 0; this.blendUntil = this.clock.elapsedTime + 2.2; }
+  _copFrame(t, dt) {
+    const C = this.cop, p = C.p, c = this.camera, T = C.trip;
+    p.update(dt); p.root.updateMatrixWorld(true);
+    // he keeps an eye on you (within a comfortable turn), and nods along while he talks
+    const v = p.bones.head.getWorldPosition(new THREE.Vector3()), d = c.position.clone().sub(v).applyQuaternion(p.root.getWorldQuaternion(new THREE.Quaternion()).invert());
+    const yaw = Math.max(-.7, Math.min(.7, Math.atan2(-d.x, -d.z))), pitch = -Math.max(-.4, Math.min(.4, Math.atan2(d.y, Math.hypot(d.x, d.z)))) + (C.talking ? Math.sin(t * 9) * .035 : 0);
+    p.look.yaw += (yaw - p.look.yaw) * Math.min(1, dt * 3); p.look.pitch += (pitch - p.look.pitch) * Math.min(1, dt * 4);
+    if (!T) return false;
+    const e = t - T.t0, u = easeInOut(Math.min(1, e / 1.6));
+    c.position.lerpVectors(T.p0, T.p1, u); c.position.y += Math.sin(Math.PI * u) * .25; this.look.lerpVectors(T.l0, T.l1, u);
+    // a salute as you arrive
+    const s = Math.max(0, Math.min(1, (e - 1.3) / .3)) * Math.max(0, Math.min(1, (2.9 - e) / .35));
+    if (s > 0) { const head = v, f = new THREE.Vector3(-Math.sin(p.root.rotation.y), 0, -Math.cos(p.root.rotation.y)), side = new THREE.Vector3(f.z, 0, -f.x); p.aim('arm-right', head.clone().addScaledVector(side, -.2 * s).addScaledVector(f, .25 * s).add(new THREE.Vector3(0, .25 * s - .4 * (1 - s), 0))); }
+    return true;
+  }
   pick(nx, ny) {
     const rc = new THREE.Raycaster(); rc.setFromCamera(new THREE.Vector2(nx, ny), this.camera);
     const hit = rc.intersectObjects(this.doors.map(d => d.hit))[0];
@@ -877,6 +924,7 @@ export class Station {
     const c = this.camera;
     if (this.intro) { this._introFrame(t, dt); }
     else if (this.trip) this._trip(t, dt);
+    else if (this.cop && this.cop.trip) this._copFrame(t, dt);
     else if (this.flight) {
       // line up in front of the door, then glide through it into the vestibule
       const f = this.flight, p = Math.min(1, (t - f.t0) / 1.9);
@@ -898,7 +946,7 @@ export class Station {
     const pos = this.motes.geometry.attributes.position.array, gust = speed * near;
     for (let i = 0; i < pos.length; i += 3) { pos[i] -= gust * .003 * (pos[i + 2] < 4 ? 1 : .25) + .004; pos[i + 1] += Math.sin(t * .7 + i) * .0015; if (pos[i] < -35) pos[i] += 70; }
     this.motes.geometry.attributes.position.needsUpdate = true;
-    updatePeople(this, t, dt); updateBackground(this, t, dt); this._flyby(t, dt); this.crowd.update(t, dt); updateCity(this.city, t, dt);
+    updatePeople(this, t, dt); updateBackground(this, t, dt); this._flyby(t, dt); if (this.cop && !this.cop.trip) this._copFrame(t, dt); this.crowd.update(t, dt); updateCity(this.city, t, dt);
     this.sky.position.copy(c.position);
     this._adapt();
     this.composer.render();

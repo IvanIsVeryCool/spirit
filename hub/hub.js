@@ -1,6 +1,7 @@
 import { DOORS, SITE, CABINET } from './doors.js';
 import { StationAudio } from './audio.js';
 import { flap, pad, blank } from './flap.js';
+import { CONFIG, ranked, newestFirst, fetchScores, fmt } from '/points/js/data.js';
 
 window.__hubBooted = true;
 const $ = id => document.getElementById(id);
@@ -167,13 +168,74 @@ function leaveCabinet() {
   }, 550);
 }
 $('crew-back').addEventListener('click', leaveCabinet);
+/* the officer: a label over his head; click it (or him) and the camera goes over to him and he gives you the standings */
+const SCORES_KEY = 'spirit-cache-' + CONFIG.sheetId;
+let scores = []; try { const c = JSON.parse(localStorage.getItem(SCORES_KEY) || 'null'); if (c && c.entries) scores = c.entries; } catch (e) {}
+const refreshScores = () => fetchScores().then(es => { scores = es; try { localStorage.setItem(SCORES_KEY, JSON.stringify({ entries: es, at: Date.now() })); } catch (e) {} }).catch(() => {});
+refreshScores();
+// what he says, from the current standings: **bold** marks the names and numbers
+function copLines() {
+  if (!scores.length) return ['Evening! I haven’t had the latest numbers come through yet.', 'The **Spirit Points** car has the full standings. Want to take a look?'];
+  const r = ranked(scores), top = r.filter(x => x.rank === 1), rest = r.filter(x => x.rank > 1), L = ['Evening! Here’s where the classes stand.'];
+  if (top.length === 1) L.push(`The **${top[0].name}** are out in front with **${fmt(top[0].pts)}** points.`);
+  else L.push(`It’s a tie at the top: ${top.map(x => `**${x.name}**`).join(' and ')}, all on **${fmt(top[0].pts)}**.`);
+  if (rest.length) {
+    const second = rest[0], gap = top[0].pts - second.pts;
+    L.push(`**${second.name}** ${second.rank === 2 ? 'are second' : 'come next'} on **${fmt(second.pts)}**, ${gap <= 50 ? 'only ' : ''}**${fmt(gap)}** behind.` + (rest.length > 1 ? ` Then ${rest.slice(1).map(x => `the **${x.name}** with **${fmt(x.pts)}**`).join(', and ')}.` : ''));
+  }
+  const last = newestFirst(scores)[0], win = last && ranked([last]).filter(x => x.rank === 1 && x.pts > 0);
+  if (last && win && win.length === 1) L.push(`Last event was **${last.challenge}**, and the **${win[0].name}** took it.`);
+  L.push(top.length === 1 && rest.length ? `So it’s the **${top[0].name}** by **${fmt(top[0].pts - rest[0].pts)}**. Want the full results?` : 'Want the full results?');
+  return L;
+}
+let talking = false, lines = [], li = 0, typer = null;
+function talkToCop() {
+  if (!station || !station.cop || boarding || !entered || introPlaying || !$('notice').hidden) return;
+  boarding = true; talking = true; document.body.classList.add('boarding'); audio.beep();
+  lines = copLines(); li = 0;
+  station.talkToCop();
+  const t = $('talk'); t.hidden = false; t.className = 'talk';
+  setTimeout(() => { if (!talking) return; requestAnimationFrame(() => t.classList.add('open')); say(0); $('talk-box').focus({ preventScroll: true }); }, 1650);
+}
+function say(i) {
+  li = i; const t = $('talk'), el = $('talk-text'), tokens = [];
+  lines[i].split('**').forEach((part, k) => [...part].forEach(ch => tokens.push([ch, k % 2 === 1])));
+  t.classList.remove('wait', 'done'); clearInterval(typer); el.textContent = ''; let n = 0;
+  const draw = () => { el.innerHTML = ''; let run = null; tokens.slice(0, n).forEach(([ch, b]) => { if (!run || run.b !== b) { run = { b, node: b ? document.createElement('b') : document.createTextNode('') }; el.appendChild(run.node); } run.node.textContent += ch; }); };
+  const finish = () => { clearInterval(typer); typer = null; n = tokens.length; draw(); station.cop.talking = 0; t.classList.add(i === lines.length - 1 ? 'done' : 'wait'); if (i === lines.length - 1) $('talk-full').focus({ preventScroll: true }); };
+  station.cop.talking = 1;
+  typer = setInterval(() => { n++; if (n % 3 === 1 && tokens[n - 1] && tokens[n - 1][0] !== ' ') audio.blip(); if (n >= tokens.length) finish(); else draw(); }, 24);
+  t.finish = finish;
+}
+function advance() { if (!talking) return; if (typer) { $('talk').finish(); return; } if (li < lines.length - 1) say(li + 1); }
+function leaveCop() {
+  if (!talking) return; talking = false; clearInterval(typer); typer = null; audio.tick();
+  const t = $('talk'); t.classList.remove('open'); setTimeout(() => { t.hidden = true; }, 500);
+  station.endCop();
+  setTimeout(() => { boarding = false; document.body.classList.remove('boarding'); }, 700);
+}
+$('cop-tag').addEventListener('click', talkToCop);
+$('talk-box').addEventListener('click', e => { if (!e.target.closest('.talk-acts')) advance(); });
+$('talk-back').addEventListener('click', leaveCop);
+$('talk-full').addEventListener('click', e => { // straight to the standings, no ride
+  e.preventDefault(); try { sessionStorage.setItem('spirit-rode', '1'); } catch (x) {}
+  $('flash').classList.add('on'); setTimeout(() => { location.href = '/points/'; }, 450);
+});
+$('talk-box').tabIndex = -1;
+function placeCopTag() {
+  const tag = $('cop-tag'); if (!station || !station.cop) return;
+  const p = station.copTag(), show = p.on && entered && !boarding && !introPlaying && document.body.classList.contains('entered');
+  tag.classList.toggle('on', show);
+  if (show) { const w = tag.offsetWidth, x = Math.min(innerWidth - w / 2 - 10, Math.max(w / 2 + 10, p.x)); tag.style.transform = `translate(${x.toFixed(1)}px, ${p.y.toFixed(1)}px) translate(-50%, -100%)`; } // kept on screen
+}
 function closeNotice() { const n = $('notice'); if (n.hidden) return; n.classList.remove('open'); setTimeout(() => { n.hidden = true; }, 450); audio.tick(); }
 $('notice').addEventListener('click', e => { if (e.target.closest('[data-close]')) closeNotice(); });
 $('rows').addEventListener('click', e => { const b = e.target.closest('.row'); if (b) choose(Number(b.dataset.i)); });
 $('rows').addEventListener('pointerover', e => { const b = e.target.closest('.row'); if (b && !mobile) setHover(Number(b.dataset.i)); });
 $('rows').addEventListener('pointerleave', () => { if (!mobile) setHover(-1); });
 addEventListener('keydown', e => {
-  if (e.key === 'Escape') { closeNotice(); leaveCabinet(); }
+  if (talking && (e.key === 'Enter' || e.key === ' ') && !e.target.closest('.talk-acts')) { e.preventDefault(); advance(); return; }
+  if (e.key === 'Escape') { closeNotice(); leaveCabinet(); leaveCop(); }
   if (!doorsOpen || !$('notice').hidden || !station) return;
   if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') { setFocus(focus + (e.key === 'ArrowRight' ? 1 : -1)); if (!mobile) setHover(focus); }
 });
@@ -188,6 +250,7 @@ $('station').addEventListener('pointerup', e => {
   if (!doorsOpen) { skipArrival(); return; }
   if (mobile && downX !== null && Math.abs(e.clientX - downX) > 40) { setFocus(focus + (e.clientX < downX ? 1 : -1)); audio.tick(); downX = null; return; }
   downX = null;
+  if (station && station.pickCop(...ndc(e.clientX, e.clientY))) { talkToCop(); return; }
   const i = station ? station.pick(...ndc(e.clientX, e.clientY)) : -1;
   if (i >= 0) choose(i);
 });
@@ -233,7 +296,7 @@ function skipArrival() { if (doorsOpen || !station) return; station.park(); arri
 function loop() {
   if (station) {
     if (doorsOpen && !mobile && !boarding && $('notice').hidden && !overUI) setHover(station.pick(...ndc(mx, my)));
-    station.render(); placeTags();
+    station.render(); placeTags(); placeCopTag();
   }
   requestAnimationFrame(loop);
 }
