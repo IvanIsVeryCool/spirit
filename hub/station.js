@@ -811,8 +811,8 @@ export class Station {
   // zoom in to him (and back out, with endCop): he holds up the sign with the standings, his face just above it
   talkToCop() {
     const C = this.cop, head = C.p.bones.head.getWorldPosition(new THREE.Vector3()), yaw = C.p.root.rotation.y, f = new THREE.Vector3(-Math.sin(yaw), 0, -Math.cos(yaw));
-    const side = new THREE.Vector3(f.z, 0, -f.x), dist = this.mobile ? 2.1 : 2.15;
-    C.trip = { t0: this.clock.elapsedTime, p0: this.camera.position.clone(), l0: this.look.clone(), p1: head.clone().addScaledVector(f, dist).addScaledVector(side, .08).add(new THREE.Vector3(0, .02, 0)), l1: head.clone().add(new THREE.Vector3(0, this.mobile ? .08 : .12, 0)) };
+    const side = new THREE.Vector3(f.z, 0, -f.x), dist = this.mobile ? 2.2 : 2.65;
+    C.trip = { t0: this.clock.elapsedTime, p0: this.camera.position.clone(), l0: this.look.clone(), p1: head.clone().addScaledVector(f, dist).addScaledVector(side, .08).add(new THREE.Vector3(0, .02, 0)), l1: head.clone().add(new THREE.Vector3(0, this.mobile ? .08 : .04, 0)) };
   }
   endCop() { if (!this.cop.trip) return; this.cop.trip = null; this.blendUntil = this.clock.elapsedTime + 2.2; }
   _copFrame(t, dt) {
