@@ -4,7 +4,7 @@
    give it an `href` (a page in this site or any link).
    ===================================================================== */
 export const DOORS = [
-  { id: 'gallery', title: 'Photo Gallery', sub: 'Photos from spirit events', status: 'Live', href: '/gallery/' },
+  { id: 'gallery', title: 'Photo Gallery', sub: 'Photos from spirit events', status: 'Live', scene: 'gallery' },  // scene: the gallery opens inside the car
   { id: 'newsletter', title: 'Weekly Newsletter', sub: 'This week in spirit', status: 'Live', scene: 'newsletter' }, // scene: you take a seat and read it
   { id: 'events', title: 'Events', sub: 'Spirit weeks, rallies and homecoming', status: 'Live', scene: 'events' },     // scene: the car's next-stops screen
   { id: 'cabinet', title: 'Meet the Cabinet', sub: 'The people behind Nueva spirit', status: 'Live', scene: 'cabinet' } // scene: you walk through the car to the cab

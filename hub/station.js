@@ -12,7 +12,7 @@ import { Crowd } from './crowd.js';
 import { limbGeometry, aimBasis, library, Person } from './people.js';
 import { addCity, updateCity, cityLoaded } from './city.js';
 import { pavers, concrete, ballast, grass, chainlink, tactile, tiled } from './surfaces.js';
-import { Reader, NextStops, newsVisit, eventsVisit } from './scenes.js';
+import { Reader, NextStops, newsVisit, eventsVisit, galleryVisit } from './scenes.js';
 
 // A golden-hour Peninsula platform and a red-and-silver double-decker commuter train.
 const COL = {
@@ -465,6 +465,7 @@ export class Station {
     if (this.noseMesh) this._paintNose();
     if (this.flyer) this._paintBanner();
     if (this.stops) this.stops.draw(1);
+    if (this.copSign) this.drawCopSign(this.copRows || []);
   }
   // A small plane towing a "NUEVA SPIRIT" banner across the sky behind the train, every half minute or so
   // (not during the opening). Our own plane: white, a red stripe, a spinning propeller. The banner ripples as it's towed.
@@ -755,7 +756,45 @@ export class Station {
     const x = this.mobile ? this.cars[0].position.x + 1.15 : 1.5 * this.P + 1.7, z = this.front + (this.mobile ? 6.6 : 8); // clear ground in front of him, for the camera
     p.root.position.set(x, F, z); p.root.rotation.y = Math.PI - (this.mobile ? -.05 : .32); p.pose('idle', { fade: 0 }); this.scene.add(p.root);
     const hit = new THREE.Mesh(new THREE.BoxGeometry(1, 2.2, 1), new THREE.MeshBasicMaterial({ visible: false })); hit.position.set(x, F + 1.1, z); hit.userData.keep = true; hit.userData.noShadow = true; this.scene.add(hit);
-    this.cop = { p, hit, talking: 0, salute: 0 };
+    this.cop = { p, hit, sign: 0 };
+    // the sign he holds up with the standings: a foam board, its face painted on a canvas (drawCopSign)
+    const cv = document.createElement('canvas'); cv.width = 1024; cv.height = 668;
+    const tex = new THREE.CanvasTexture(cv); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 8;
+    const face = new THREE.MeshBasicMaterial({ map: tex, color: new THREE.Color(.9, .9, .9) }); face.toneMapped = false; // readable in any light, under the bloom threshold
+    const board = new THREE.MeshStandardMaterial({ color: 0xd9c7a4, roughness: .9 });
+    const SW = .64, SH = .42, sg = new THREE.Group(); // he's a small man: held at his chest it covers him from the chin down sg.visible = false;
+    sg.add(new THREE.Mesh(new THREE.BoxGeometry(SW, SH, .018), [board, board, board, board, face, board]));
+    sg.traverse(o => { if (o.isMesh) { o.userData.keep = true; o.castShadow = true; } });
+    this.scene.add(sg);
+    this.copSign = { g: sg, cv, tex, w: SW, h: SH };
+    this.drawCopSign([]);
+  }
+  // the sign's face: SPIRIT POINTS, then each class in order with its points (rows from ranked() in points/js/data.js)
+  drawCopSign(rows) {
+    this.copRows = rows; const S = this.copSign, x = S.cv.getContext('2d'), W = S.cv.width, H = S.cv.height;
+    const COL = { sr: '#d2433b', jr: '#e0a12e', so: '#2f9c7e', fr: '#4f7fd2' }, D = '"Archivo", "Arial Narrow", Arial, sans-serif';
+    x.fillStyle = '#fbf8f1'; x.fillRect(0, 0, W, H);
+    x.fillStyle = '#c9272c'; x.fillRect(0, 0, W, 132);
+    if (this.logo) { const t = document.createElement('canvas'); t.width = t.height = 128; const tx = t.getContext('2d'); tx.drawImage(this.logo, 0, 0, 128, 128); tx.globalCompositeOperation = 'source-in'; tx.fillStyle = '#fff'; tx.fillRect(0, 0, 128, 128); x.drawImage(t, 42, 28, 76, 76); }
+    x.fillStyle = '#fff'; x.textBaseline = 'middle'; x.font = `900 64px ${D}`; try { x.fontStretch = 'expanded'; } catch (e) {}
+    x.fillText('SPIRIT POINTS', 140, 70); try { x.fontStretch = 'normal'; } catch (e) {}
+    if (!rows.length) {
+      x.fillStyle = '#16181f'; x.font = `800 56px ${D}`; x.textAlign = 'center'; x.fillText('No scores yet', W / 2, 330);
+      x.fillStyle = '#6b6e78'; x.font = `600 34px ${D}`; x.fillText('Check back after the first event', W / 2, 400); x.textAlign = 'left';
+    } else {
+      const max = Math.max(1, ...rows.map(r => r.pts)), rh = (H - 132 - 40) / rows.length;
+      rows.forEach((r, i) => {
+        const y = 132 + 20 + rh * (i + .5), lead = r.rank === 1;
+        if (lead) { x.fillStyle = 'rgba(255,196,64,.18)'; x.fillRect(0, y - rh / 2 + 4, W, rh - 8); }
+        x.fillStyle = lead ? '#c9272c' : '#16181f'; x.font = `900 ${lead ? 70 : 60}px ${D}`; x.textAlign = 'center'; x.fillText(String(r.rank), 82, y - 6);
+        x.textAlign = 'left'; x.fillStyle = '#16181f'; x.font = `800 ${lead ? 58 : 52}px ${D}`; x.fillText(r.name.toUpperCase(), 150, y - 14);
+        x.textAlign = 'right'; x.font = `900 ${lead ? 62 : 54}px ${D}`; x.fillText(r.pts.toLocaleString('en-US'), W - 48, y - 12); x.textAlign = 'left';
+        x.fillStyle = 'rgba(22,24,31,.1)'; x.fillRect(150, y + 26, W - 198, 12);
+        x.fillStyle = COL[r.id] || '#16181f'; x.fillRect(150, y + 26, (W - 198) * r.pts / max, 12);
+      });
+    }
+    x.strokeStyle = '#16181f'; x.lineWidth = 10; x.strokeRect(5, 5, W - 10, H - 10);
+    S.tex.needsUpdate = true;
   }
   pickCop(nx, ny) { const rc = new THREE.Raycaster(); rc.setFromCamera(new THREE.Vector2(nx, ny), this.camera); return rc.intersectObject(this.cop.hit).length > 0; }
   // where his label goes on screen (CSS px): just over his cap
@@ -769,27 +808,39 @@ export class Station {
     const v = new THREE.Vector3(); this.cop.p.bones.head.getWorldPosition(v); v.y += .95; v.project(this.camera);
     return { x: (v.x + 1) / 2 * innerWidth, y: (1 - v.y) / 2 * innerHeight, on: v.z < 1 && Math.abs(v.x) < 1.1 && v.y > -1.1 && v.y < 1.1 };
   }
-  // zoom in to him (and back out, with endCop): his face sits in the upper part of the view, above the dialogue
+  // zoom in to him (and back out, with endCop): he holds up the sign with the standings, his face just above it
   talkToCop() {
     const C = this.cop, head = C.p.bones.head.getWorldPosition(new THREE.Vector3()), yaw = C.p.root.rotation.y, f = new THREE.Vector3(-Math.sin(yaw), 0, -Math.cos(yaw));
-    const side = new THREE.Vector3(f.z, 0, -f.x), dist = this.mobile ? 3.1 : 3.0;
-    C.trip = { t0: this.clock.elapsedTime, p0: this.camera.position.clone(), l0: this.look.clone(), p1: head.clone().addScaledVector(f, dist).addScaledVector(side, .25).add(new THREE.Vector3(0, .12, 0)), l1: head.clone().add(new THREE.Vector3(0, this.mobile ? -.22 : -.16, 0)) };
-    C.salute = 0;
+    const side = new THREE.Vector3(f.z, 0, -f.x), dist = this.mobile ? 2.1 : 2.15;
+    C.trip = { t0: this.clock.elapsedTime, p0: this.camera.position.clone(), l0: this.look.clone(), p1: head.clone().addScaledVector(f, dist).addScaledVector(side, .08).add(new THREE.Vector3(0, .02, 0)), l1: head.clone().add(new THREE.Vector3(0, this.mobile ? .08 : .12, 0)) };
   }
-  endCop() { if (!this.cop.trip) return; this.cop.trip = null; this.cop.talking = 0; this.blendUntil = this.clock.elapsedTime + 2.2; }
+  endCop() { if (!this.cop.trip) return; this.cop.trip = null; this.blendUntil = this.clock.elapsedTime + 2.2; }
   _copFrame(t, dt) {
     const C = this.cop, p = C.p, c = this.camera, T = C.trip;
     p.update(dt); p.root.updateMatrixWorld(true);
     // he keeps an eye on you (within a comfortable turn), and nods along while he talks
     const v = p.bones.head.getWorldPosition(new THREE.Vector3()), d = c.position.clone().sub(v).applyQuaternion(p.root.getWorldQuaternion(new THREE.Quaternion()).invert());
-    const yaw = Math.max(-.7, Math.min(.7, Math.atan2(-d.x, -d.z))), pitch = -Math.max(-.4, Math.min(.4, Math.atan2(d.y, Math.hypot(d.x, d.z)))) + (C.talking ? Math.sin(t * 9) * .035 : 0);
+    const yaw = Math.max(-.7, Math.min(.7, Math.atan2(-d.x, -d.z))), pitch = -Math.max(-.4, Math.min(.4, Math.atan2(d.y, Math.hypot(d.x, d.z))));
     p.look.yaw += (yaw - p.look.yaw) * Math.min(1, dt * 3); p.look.pitch += (pitch - p.look.pitch) * Math.min(1, dt * 4);
+    // the sign: up from low in front of him as you arrive, held at his chest with both hands, down again as you leave
+    const e = T ? t - T.t0 : 0, want = T && e > 1.05 ? 1 : 0;
+    C.sign += (want - C.sign) * Math.min(1, dt * (want ? 5.5 : 7));
+    const S = this.copSign, k = easeInOut(Math.min(1, C.sign)); S.g.visible = C.sign > .02;
+    if (S.g.visible) {
+      const f = new THREE.Vector3(-Math.sin(p.root.rotation.y), 0, -Math.cos(p.root.rotation.y)), side = new THREE.Vector3(f.z, 0, -f.x), up = new THREE.Vector3(0, 1, 0);
+      const low = v.clone().addScaledVector(up, -.5).addScaledVector(f, .2), high = v.clone().addScaledVector(up, -.19).addScaledVector(f, .46);
+      S.g.position.lerpVectors(low, high, k); S.g.position.y += Math.sin(Math.PI * k) * .06;
+      S.g.lookAt(S.g.position.clone().add(f)); S.g.rotateX(1.25 * (1 - k)); S.g.rotateZ(Math.sin(t * 1.2) * .012 * k + (1 - k) * .1);
+      S.g.updateMatrixWorld(true);
+      // both arms out to it, the hands behind the board
+      const grip = sd => new THREE.Vector3(sd * (S.w / 2 - .1), -.04, -.05).applyMatrix4(S.g.matrixWorld); // his hands behind it (his toy fists would cover the names)
+      const gl = grip(-1), gr = grip(1), sh = p.bones['arm-left'].getWorldPosition(new THREE.Vector3());
+      const leftNearer = sh.distanceTo(gl) < sh.distanceTo(gr);
+      p.aim('arm-left', leftNearer ? gl : gr); p.aim('arm-right', leftNearer ? gr : gl);
+    }
     if (!T) return false;
-    const e = t - T.t0, u = easeInOut(Math.min(1, e / 1.6));
+    const u = easeInOut(Math.min(1, e / 1.6));
     c.position.lerpVectors(T.p0, T.p1, u); c.position.y += Math.sin(Math.PI * u) * .25; this.look.lerpVectors(T.l0, T.l1, u);
-    // a salute as you arrive
-    const s = Math.max(0, Math.min(1, (e - 1.3) / .3)) * Math.max(0, Math.min(1, (2.9 - e) / .35));
-    if (s > 0) { const head = v, f = new THREE.Vector3(-Math.sin(p.root.rotation.y), 0, -Math.cos(p.root.rotation.y)), side = new THREE.Vector3(f.z, 0, -f.x); p.aim('arm-right', head.clone().addScaledVector(side, -.2 * s).addScaledVector(f, .25 * s).add(new THREE.Vector3(0, .25 * s - .4 * (1 - s), 0))); }
     return true;
   }
   pick(nx, ny) {
@@ -812,8 +863,8 @@ export class Station {
   // the crew turn round, and you step in to meet them. cb: door() as the door opens, arrive() once you're in.
   visit(i, cb = {}, opt = {}) {
     const kind = this.data[i].scene;
-    if (kind === 'newsletter' || kind === 'events') { // the other in-train visits (scenes.js)
-      this.trip = kind === 'newsletter' ? newsVisit(this, i, cb, opt.standings) : eventsVisit(this, i, cb);
+    if (kind === 'newsletter' || kind === 'events' || kind === 'gallery') { // the other in-train visits (scenes.js)
+      this.trip = kind === 'newsletter' ? newsVisit(this, i, cb, opt.standings) : kind === 'events' ? eventsVisit(this, i, cb) : galleryVisit(this, i, cb);
       this.doors[i].target = 1.25; return;
     }
     const car = this.cars[i], L = (x, y, z) => car.localToWorld(new THREE.Vector3(x, y, z)), z = W / 2 + .05, D = CAB_DOOR, dz = (D.z0 + D.z1) / 2;
@@ -984,6 +1035,7 @@ export class Station {
   async warm(ticketCanvas) {
     if (!this.introGroup) this._rig(ticketCanvas);
     const crew = this.crew || []; crew.forEach(p => { p.root.visible = true; }); // the cab's crew, hidden until you visit, are drawn once too
+    this.copSign.g.visible = true;
     this.reader.g.visible = true; this.reader.frame(this.camera); this.reader.state.up = 1; this.reader.state.open = 1; this.reader.update(this.camera, 0); // and the newspaper
     try { if (this.renderer.compileAsync) { this.introGroup.visible = true; await this.renderer.compileAsync(this.scene, this.camera); } } catch (e) {}
     const culled = []; this.scene.traverse(o => { if (o.frustumCulled) { culled.push(o); o.frustumCulled = false; } });
@@ -994,6 +1046,6 @@ export class Station {
     this.camera.position.copy(this.seat); this.camera.lookAt(0, 1.3, this.seat.z - .5); this.composer.render();
     culled.forEach(o => { o.frustumCulled = true; });
     this.train.position.x = x; this.camera.position.copy(cam); this.camera.quaternion.copy(q);
-    this.introGroup.visible = false; crew.forEach(p => { p.root.visible = false; }); this.reader.g.visible = false; this.warmed = true;
+    this.introGroup.visible = false; crew.forEach(p => { p.root.visible = false; }); this.reader.g.visible = false; this.copSign.g.visible = false; this.warmed = true;
   }
 }

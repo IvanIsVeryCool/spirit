@@ -118,7 +118,8 @@ function choose(i) {
   if (boarding || !entered) return;
   const d = DOORS[i];
   if (mobile && station && i !== focus) { setFocus(i); audio.tick(); setTimeout(() => choose(i), 800); return; }
-  if (d.scene && station && doorsOpen) { if (d.scene === 'cabinet') visitCabinet(i); else visitScene(i); return; }
+  if (d.scene && station) { if (!doorsOpen) return; if (d.scene === 'cabinet') visitCabinet(i); else visitScene(i); return; }
+  if (d.scene === 'gallery') { location.href = '/gallery/'; return; } // the static version (no 3D): the gallery's own page
   if (d.href) {
     audio.beep();
     if (!station || !doorsOpen) { location.href = d.href; return; }
@@ -159,7 +160,7 @@ function placeTags() {
   });
 }
 function leaveCabinet() {
-  if (!visiting) return; visiting = false; sceneKind = ''; audio.tick();
+  if (!visiting) return; visiting = false; sceneKind = ''; audio.tick(); closeGallery();
   $('flash').classList.add('on'); document.body.classList.remove('visiting');
   [...$('crew-tags').children].forEach(t => t.classList.remove('on'));
   setTimeout(() => {
@@ -172,11 +173,13 @@ let sceneKind = '', sceneKey = '';
 function visitScene(i) {
   const kind = DOORS[i].scene;
   boarding = true; visiting = true; sceneKind = kind; sceneKey = ''; audio.beep(); audio.board(); document.body.classList.add('boarding');
-  const ui = $('scene-ui'); ui.hidden = false; $('sc-text').textContent = '';
+  const ui = $('scene-ui'); ui.hidden = kind === 'gallery'; $('sc-text').textContent = '';
+  if (kind === 'gallery') loadGallery(); // the photos start loading as you board
   const standings = scores.length ? ranked(scores).slice().sort((a, b) => a.rank - b.rank || a.order - b.order) : [];
   station.visit(i, {
     sit: () => audio.sit(), paper: () => audio.paper(),
     arrive: () => {
+      if (kind === 'gallery') { openGallery(); return; }
       document.body.classList.add('visiting'); syncScene(true);
       if (kind === 'events') audio.chime();
       else $('sc-text').textContent = NEWSLETTER.stories.map(st => `${st.head}. ${st.body.join(' ')}`).join(' ');
@@ -197,68 +200,61 @@ function syncScene() {
   if (sceneKind === 'events') { const e = EVENTS[L.at]; if (e) $('sc-text').textContent = `${L.at === 0 ? 'Next stop' : 'Stop ' + (L.at + 1)}: ${e.name}. ${[e.date, e.time].filter(Boolean).join(', ') || 'Date to be announced'}. ${[e.place, e.note].filter(Boolean).join('. ')}`; }
 }
 function sceneStep(d) {
-  if (!visiting || !document.body.classList.contains('visiting') || !sceneKind || sceneKind === 'cabinet') return false;
+  if (!visiting || !document.body.classList.contains('visiting') || !sceneKind || sceneKind === 'cabinet' || sceneKind === 'gallery') return false;
   if (station.sceneStep(d)) { if (sceneKind === 'newsletter') audio.paper(); else audio.tick(); syncScene(); }
   return true;
 }
 $('sc-prev').addEventListener('click', () => sceneStep(-1));
 $('sc-next').addEventListener('click', () => sceneStep(1));
 $('sc-back').addEventListener('click', leaveCabinet);
+// Photo Gallery: it opens over the inside of car 1, no new page (the gallery itself is /gallery/js/gallery.js, shared with /gallery/)
+let gallery = null, lightboxUp = false, galleryStill = false, stillT = 0; // galleryStill: the 3D pauses behind the open gallery (it's blurred out anyway, and that blur over a live canvas is costly)
+addEventListener('keydown', e => { lightboxUp = !!(e.key === 'Escape' && $('lb') && $('lb').classList.contains('open')); }, { capture: true }); // read before the lightbox closes itself
+const loadGallery = () => gallery || (gallery = import('/gallery/js/gallery.js').catch(e => { console.warn(e); return null; }));
+function openGallery() {
+  const g = $('gallery'); g.hidden = false; $('gal-scroll').scrollTop = 0; document.body.classList.add('visiting');
+  loadGallery().then(m => { if (m) m.reveal(); });
+  requestAnimationFrame(() => requestAnimationFrame(() => g.classList.add('open')));
+  setTimeout(() => $('gal-back').focus({ preventScroll: true }), 100);
+  clearTimeout(stillT); stillT = setTimeout(() => { if (g.classList.contains('open')) galleryStill = true; }, 750);
+}
+function closeGallery() {
+  const g = $('gallery'); if (g.hidden) return;
+  clearTimeout(stillT); galleryStill = false;
+  if (gallery) gallery.then(m => m && m.lightboxOpen() && m.closeLightbox());
+  g.classList.remove('open'); setTimeout(() => { if (!g.classList.contains('open')) g.hidden = true; }, 600);
+}
+$('gal-back').addEventListener('click', leaveCabinet);
 $('crew-back').addEventListener('click', leaveCabinet);
 /* the officer: a label over his head; click it (or him) and the camera goes over to him and he gives you the standings */
 const SCORES_KEY = 'spirit-cache-' + CONFIG.sheetId;
 let scores = []; try { const c = JSON.parse(localStorage.getItem(SCORES_KEY) || 'null'); if (c && c.entries) scores = c.entries; } catch (e) {}
 const refreshScores = () => fetchScores().then(es => { scores = es; try { localStorage.setItem(SCORES_KEY, JSON.stringify({ entries: es, at: Date.now() })); } catch (e) {} }).catch(() => {});
 refreshScores();
-// what he says, from the current standings: **bold** marks the names and numbers
-function copLines() {
-  if (!scores.length) return ['Evening! I haven’t had the latest numbers come through yet.', 'The **Spirit Points** car has the full standings. Want to take a look?'];
-  const r = ranked(scores), top = r.filter(x => x.rank === 1), rest = r.filter(x => x.rank > 1), L = ['Evening! Here’s where the classes stand.'];
-  if (top.length === 1) L.push(`The **${top[0].name}** are out in front with **${fmt(top[0].pts)}** points.`);
-  else L.push(`It’s a tie at the top: ${top.map(x => `**${x.name}**`).join(' and ')}, all on **${fmt(top[0].pts)}**.`);
-  if (rest.length) {
-    const second = rest[0], gap = top[0].pts - second.pts;
-    L.push(`**${second.name}** ${second.rank === 2 ? 'are second' : 'come next'} on **${fmt(second.pts)}**, ${gap <= 50 ? 'only ' : ''}**${fmt(gap)}** behind.` + (rest.length > 1 ? ` Then ${rest.slice(1).map(x => `the **${x.name}** with **${fmt(x.pts)}**`).join(', and ')}.` : ''));
-  }
-  const last = newestFirst(scores)[0], win = last && ranked([last]).filter(x => x.rank === 1 && x.pts > 0);
-  if (last && win && win.length === 1) L.push(`Last event was **${last.challenge}**, and the **${win[0].name}** took it.`);
-  L.push(top.length === 1 && rest.length ? `So it’s the **${top[0].name}** by **${fmt(top[0].pts - rest[0].pts)}**. Want the full results?` : 'Want the full results?');
-  return L;
-}
-let talking = false, lines = [], li = 0, typer = null;
+// he holds up a sign with the standings (drawn from the scores as you walk over); then the full leaderboard, or back
+let talking = false;
 function talkToCop() {
   if (!station || !station.cop || boarding || !entered || introPlaying || !$('notice').hidden) return;
   boarding = true; talking = true; document.body.classList.add('boarding'); audio.beep();
-  lines = copLines(); li = 0;
-  station.talkToCop();
-  const t = $('talk'); t.hidden = false; t.className = 'talk';
-  setTimeout(() => { if (!talking) return; requestAnimationFrame(() => t.classList.add('open')); say(0); $('talk-box').focus({ preventScroll: true }); }, 1650);
+  const rows = scores.length ? ranked(scores).slice().sort((a, b) => a.rank - b.rank || a.order - b.order) : [];
+  station.drawCopSign(rows); station.talkToCop();
+  $('talk-text').textContent = rows.length ? 'Spirit Points standings: ' + rows.map(r => `${r.rank}. ${r.name}, ${fmt(r.pts)} points`).join('; ') + '.' : 'No scores yet.';
+  const t = $('talk'); t.hidden = false; t.classList.remove('open');
+  setTimeout(() => { if (!talking) return; audio.paper(); }, 1100); // the board comes up
+  setTimeout(() => { if (!talking) return; requestAnimationFrame(() => t.classList.add('open')); $('talk-full').focus({ preventScroll: true }); }, 1900);
 }
-function say(i) {
-  li = i; const t = $('talk'), el = $('talk-text'), tokens = [];
-  lines[i].split('**').forEach((part, k) => [...part].forEach(ch => tokens.push([ch, k % 2 === 1])));
-  t.classList.remove('wait', 'done'); clearInterval(typer); el.textContent = ''; let n = 0;
-  const draw = () => { el.innerHTML = ''; let run = null; tokens.slice(0, n).forEach(([ch, b]) => { if (!run || run.b !== b) { run = { b, node: b ? document.createElement('b') : document.createTextNode('') }; el.appendChild(run.node); } run.node.textContent += ch; }); };
-  const finish = () => { clearInterval(typer); typer = null; n = tokens.length; draw(); station.cop.talking = 0; t.classList.add(i === lines.length - 1 ? 'done' : 'wait'); if (i === lines.length - 1) $('talk-full').focus({ preventScroll: true }); };
-  station.cop.talking = 1;
-  typer = setInterval(() => { n++; if (n % 3 === 1 && tokens[n - 1] && tokens[n - 1][0] !== ' ') audio.blip(); if (n >= tokens.length) finish(); else draw(); }, 24);
-  t.finish = finish;
-}
-function advance() { if (!talking) return; if (typer) { $('talk').finish(); return; } if (li < lines.length - 1) say(li + 1); }
 function leaveCop() {
-  if (!talking) return; talking = false; clearInterval(typer); typer = null; audio.tick();
+  if (!talking) return; talking = false; audio.tick();
   const t = $('talk'); t.classList.remove('open'); setTimeout(() => { t.hidden = true; }, 500);
   station.endCop();
   setTimeout(() => { boarding = false; document.body.classList.remove('boarding'); }, 700);
 }
 $('cop-tag').addEventListener('click', talkToCop);
-$('talk-box').addEventListener('click', e => { if (!e.target.closest('.talk-acts')) advance(); });
 $('talk-back').addEventListener('click', leaveCop);
 $('talk-full').addEventListener('click', e => { // straight to the standings, no ride
   e.preventDefault(); try { sessionStorage.setItem('spirit-rode', '1'); } catch (x) {}
   $('flash').classList.add('on'); setTimeout(() => { location.href = '/points/'; }, 450);
 });
-$('talk-box').tabIndex = -1;
 function placeCopTag() {
   const tag = $('cop-tag'); if (!station || !station.cop) return;
   const p = station.copTag(), show = p.on && entered && !boarding && !introPlaying && document.body.classList.contains('entered');
@@ -279,8 +275,10 @@ $('rows').addEventListener('click', e => { const b = e.target.closest('.row'); i
 $('rows').addEventListener('pointerover', e => { const b = e.target.closest('.row'); if (b && !mobile) setHover(Number(b.dataset.i)); });
 $('rows').addEventListener('pointerleave', () => { if (!mobile) setHover(-1); });
 addEventListener('keydown', e => {
-  if (talking && (e.key === 'Enter' || e.key === ' ') && !e.target.closest('.talk-acts')) { e.preventDefault(); advance(); return; }
-  if (e.key === 'Escape') { closeNotice(); leaveCabinet(); leaveCop(); }
+  if (e.key === 'Escape') {
+    if (lightboxUp) return; // a photo is open: Escape closes that first (gallery.js)
+    closeNotice(); leaveCabinet(); leaveCop();
+  }
   if ((e.key === 'ArrowRight' || e.key === 'ArrowLeft') && sceneStep(e.key === 'ArrowRight' ? 1 : -1)) { e.preventDefault(); return; }
   if (!doorsOpen || !$('notice').hidden || !station) return;
   if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') { setFocus(focus + (e.key === 'ArrowRight' ? 1 : -1)); if (!mobile) setHover(focus); }
@@ -343,7 +341,7 @@ function arrived() {
 function skipArrival() { if (doorsOpen || !station) return; station.park(); arrived(); }
 
 function loop() {
-  if (station) {
+  if (station && !galleryStill) {
     if (doorsOpen && !mobile && !boarding && $('notice').hidden && !overUI) setHover(station.pick(...ndc(mx, my)));
     station.render(); placeTags(); placeCopTag(); placeSound(); syncScene();
   }

@@ -487,3 +487,17 @@ export function eventsVisit(st, i, cb) {
   T.end = () => { scr.live = false; scr.go(0); scr.k = 0; scr.draw(1); };
   return T;
 }
+
+// Photo Gallery: in through the door, and the gallery opens over the car (hub.js); the view drifts a little behind it
+export function galleryVisit(st, i, cb) {
+  const T = base(st, i, cb), L = T.L;
+  T.rest = L(-.25, 1.6, .5); T.target = L(-2.6, 1.45, -.2); // looking down into the lower saloon on the left
+  T.frame = (t, dt) => {
+    const e = t - T.t0, c = st.camera;
+    if (e < 1.9) flyIn(st, T, e);
+    else { const u = ease(seg(e, 1.9, 3.4)); c.position.lerpVectors(T.v0, T.rest, u); c.position.y += Math.sin(t * 1.1) * .004; st.look.lerpVectors(T.l1, T.target, u); }
+    fire(T, e, 'arrive', 1.75, () => cb.arrive && cb.arrive());
+  };
+  T.end = () => {};
+  return T;
+}

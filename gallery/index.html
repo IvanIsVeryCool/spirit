@@ -14,6 +14,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..900&family=Public+Sans:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="/gallery/gallery.css">
 <style>
 /* The gallery car: the evening sky behind, the photos as prints on it, a lightbox to look through them.
    Same palette and signage as the platform; you arrive through the warm light of the train door. */
@@ -55,51 +56,10 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
 /* heading and album filters */
 header.top{padding:clamp(28px,6vw,64px) var(--gut) 0;max-width:1480px;margin:0 auto}
 h1{font-family:var(--display);font-weight:850;font-stretch:112%;font-size:clamp(38px,7vw,76px);line-height:.95;letter-spacing:-.01em;text-shadow:0 2px 30px rgba(20,10,40,.35)}
-.albums{display:flex;flex-wrap:wrap;gap:8px;margin-top:22px}
-.albums[hidden]{display:none}
-.chip{padding:8px 15px;border-radius:999px;font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#fff;background:rgba(255,255,255,.14);box-shadow:inset 0 0 0 1px rgba(255,255,255,.28);transition:background-color .25s,color .25s}
-.chip:hover{background:rgba(255,255,255,.24)}
-.chip[aria-pressed="true"]{background:#fff;color:var(--ink);box-shadow:0 8px 22px -12px rgba(20,10,40,.6)}
-.chip i{font-style:normal;opacity:.55;margin-left:6px}
-
-/* the photos: a masonry of prints */
-main{max-width:1480px;margin:0 auto;padding:26px var(--gut) calc(56px + env(safe-area-inset-bottom,0px))}
-.grid{columns:3 300px;column-gap:14px}
-.ph{display:block;width:100%;margin:0 0 14px;break-inside:avoid;position:relative;border-radius:10px;overflow:hidden;background:rgba(255,255,255,.12);box-shadow:0 18px 40px -22px rgba(15,8,35,.75);opacity:0;transform:translateY(14px);transition:opacity .7s ease,transform .9s var(--ease)}
-.ph.in{opacity:1;transform:none}
-.ph[hidden]{display:none}
-.ph img{display:block;width:100%;height:auto;transition:transform .8s var(--ease)}
-.ph:hover img{transform:scale(1.03)}
-.ph .cap{position:absolute;left:0;right:0;bottom:0;padding:34px 14px 12px;text-align:left;font-size:13px;font-weight:600;line-height:1.35;background:linear-gradient(180deg,transparent,rgba(12,10,26,.72));opacity:0;transform:translateY(6px);transition:opacity .35s ease,transform .5s var(--ease)}
-.ph:hover .cap,.ph:focus-visible .cap{opacity:1;transform:none}
-.empty{padding:60px 0;text-align:center;color:rgba(255,255,255,.8);font-weight:600}
+main{max-width:1480px;margin:0 auto;padding:26px var(--gut,clamp(16px,3vw,36px)) calc(56px + env(safe-area-inset-bottom,0px))}
 @media (max-width:640px){
   .sign b{font-size:13px;letter-spacing:.28em}.sign .logo-img{width:26px;height:26px}.sign .in{gap:11px}.sign .in>span:last-child{padding-left:11px}
-  .grid{columns:2;column-gap:8px}.ph{margin-bottom:8px;border-radius:8px}.ph .cap{display:none}
 }
-
-/* the lightbox */
-.lb{position:fixed;inset:0;z-index:40;display:grid;grid-template-rows:1fr auto;background:rgba(9,8,22,.94);opacity:0;visibility:hidden;transition:opacity .35s ease,visibility 0s linear .35s;touch-action:none}
-.lb.open{opacity:1;visibility:visible;transition:opacity .35s ease}
-.lb-stage{position:relative;min-height:0;display:grid;place-items:center;overflow:hidden;padding:calc(58px + env(safe-area-inset-top,0px)) 76px 8px}
-.lb-img{max-width:100%;max-height:calc(100vh - 150px - env(safe-area-inset-top,0px) - env(safe-area-inset-bottom,0px));max-height:calc(100dvh - 150px - env(safe-area-inset-top,0px) - env(safe-area-inset-bottom,0px));width:auto;height:auto;border-radius:6px;box-shadow:0 30px 80px -30px #000;transform-origin:0 0;user-select:none;-webkit-user-drag:none}
-.lb-foot{display:flex;align-items:baseline;justify-content:center;gap:16px;padding:12px var(--gut) calc(18px + env(safe-area-inset-bottom,0px));text-align:center}
-.lb-cap{font-size:15px;font-weight:600}
-.lb-meta{font-size:11px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:rgba(255,255,255,.6);white-space:nowrap}
-.lb-btn{position:absolute;display:grid;place-items:center;width:46px;height:46px;border-radius:50%;background:rgba(255,255,255,.12);color:#fff;transition:background-color .25s}
-.lb-btn:hover{background:rgba(255,255,255,.24)}
-.lb-btn svg{width:20px;height:20px}
-.lb-close{top:calc(12px + env(safe-area-inset-top,0px));right:var(--gut)}
-.lb-prev{left:16px;top:50%;margin-top:-23px}
-.lb-next{right:16px;top:50%;margin-top:-23px}
-.lb-btn[disabled]{opacity:0;pointer-events:none}
-@media (max-width:640px){
-  .lb-stage{padding:calc(64px + env(safe-area-inset-top,0px)) 10px 6px}
-  .lb-img{max-height:calc(100vh - 200px);max-height:calc(100dvh - 200px - env(safe-area-inset-top,0px) - env(safe-area-inset-bottom,0px))}
-  .lb-prev,.lb-next{display:none}
-  .lb-foot{flex-direction:column;align-items:center;gap:4px}
-}
-@media (prefers-reduced-motion:reduce){.ph,.ph img,.lb,.lb-img{transition:none!important}}
 </style>
 </head>
 <body>

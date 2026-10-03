@@ -4,11 +4,11 @@
   sitting on the platform bench, ticket in hand, as a red-and-silver commuter train
   pulls in. Each car's door is a section of the Spirit Cabinet, and the LED departure
   board lists the same cars. The ticket and that opening play on your first visit each day; later visits go straight to the platform, with a Replay intro button.
-- The cars, front to back: **Photo Gallery** (`/gallery/`), **Weekly Newsletter** (you sit down in the car and
+- The cars, front to back: **Photo Gallery** (it opens inside the car), **Weekly Newsletter** (you sit down in the car and
   read it as a newspaper), **Events** (the car's next-stops screen, with events as the stops) and **Meet the Cabinet**
   (you walk to the cab at the back).
-- `/points/` is the live Spirit Points standings. Ask the officer on the platform (the "Leaderboard" label): he tells
-  you the standings and takes you there. Visiting `/points/` directly rides the train up a map of the Peninsula to a big billboard (scores from the Google Sheet).
+- `/points/` is the live Spirit Points standings. Click the officer on the platform (the "Leaderboard" label): he holds
+  up a sign with the standings, and "Full leaderboard" takes you there. Visiting `/points/` directly rides the train up a map of the Peninsula to a big billboard (scores from the Google Sheet).
 
 ## Adding or opening a train car
 Edit `hub/doors.js`. Each entry is one car, front to back:
@@ -77,7 +77,7 @@ Settings for the points page (sheet ID, school name, refresh rate) are at the to
 ## Files
 - `index.html`, `hub/`: the train station (`station.js` 3D scene, `audio.js` sounds, `hub.js` page logic and departure board, `doors.js` the cars).
 - `points/`: the Spirit Points page and its scripts.
-- `gallery/`: the photo gallery (`photos.js` lists the photos, which live in `assets/gallery/`).
+- `gallery/`: the photo gallery (`photos.js` lists the photos, which live in `assets/gallery/`); the platform opens it inside car 1.
 - `vendor/`: three.js r160 and its bloom/environment add-ons (MIT license, see `vendor/THREE-LICENSE.txt`).
 - `assets/logo.png`, icons and `share.png`: shared by both pages.
 
