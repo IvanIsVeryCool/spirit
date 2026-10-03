@@ -45,8 +45,8 @@ function drawLED(ctx, lines) {
 
 export class Ride {
   static async load() { try { TOWN = await loadTown(); } catch (e) { console.warn(e); TOWN = null; } }
-  constructor(cv, { mobile, logo, dest = 0 }) {
-    this.mobile = mobile; this.logo = logo; this.dest = dest; // dest: which car's branch to ride (index in DOORS)
+  constructor(cv, { mobile, logo, dest = 0, title }) {
+    this.mobile = mobile; this.logo = logo; this.dest = dest; this.title = title || DOORS[dest].title; // dest: which car's branch to ride (index in DOORS)
     const r = this.renderer = new THREE.WebGLRenderer({ canvas: cv, antialias: !mobile, powerPreference: 'high-performance' });
     r.toneMapping = THREE.ACESFilmicToneMapping; r.outputColorSpace = THREE.SRGBColorSpace;
     if (!mobile) { r.shadowMap.enabled = true; r.shadowMap.type = THREE.PCFSoftShadowMap; }
@@ -153,7 +153,7 @@ export class Ride {
     // the stops on this ride: Nueva and Hillsdale on the trunk, then this car's terminal near the end of its branch
     const uNear = v => { let best = 0, bd = 1e18; for (let k = 0; k <= 800; k++) { const d = c.getPointAt(k / 800).distanceToSquared(v); if (d < bd) { bd = d; best = k / 800; } } return best; };
     this.stopU = [uNear(TRUNK[NUEVA]), uNear(TRUNK[HILLSDALE]), (this.L - 100) / this.L];
-    this.names = ['Nueva', 'Hillsdale', DOORS[this.dest].title];
+    this.names = ['Nueva', 'Hillsdale', this.title];
   }
   _clear(x, z, d) { for (const p of this.linePts) if ((p.x - x) ** 2 + (p.z - z) ** 2 < d * d) return false; return x < shore(z) - 30; }
   // the towns along the line: blocks near the stations, houses between, trees everywhere, lit windows coming on

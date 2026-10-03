@@ -15,7 +15,7 @@
 <link rel="modulepreload" href="/vendor/three.module.min.js">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..900&family=Public+Sans:wght@400;500;600;700&family=DotGothic16&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..900&family=Public+Sans:wght@400;500;600;700&family=DotGothic16&family=Newsreader:ital,wght@0,400;0,600;0,700;0,800;1,400&display=swap">
 <style>
 /* Layout: a golden-hour 3D platform fills the screen; a white station sign sits top-left, the LED departure board (the menu) bottom-left, and the train's doors are the sections. */
 :root{
@@ -54,8 +54,12 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
 .sign b{display:block;white-space:nowrap;font-family:var(--display);font-weight:800;font-size:15px;line-height:1;letter-spacing:.34em;text-transform:uppercase;color:#fff}
 .sign span.sub{display:block;white-space:nowrap;font-size:9.5px;font-weight:600;letter-spacing:.26em;text-transform:uppercase;color:rgba(255,255,255,.8);line-height:1}
 @media (max-width:640px){.sign b{font-size:13px;letter-spacing:.28em}.sign .logo-img{width:26px;height:26px}.sign .in{gap:11px}.sign .in>span:last-child{padding-left:11px}}
-.sound{display:flex;align-items:center;gap:9px;background:#fff;border-radius:999px;padding:9px 14px;font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;box-shadow:0 10px 30px -12px rgba(20,10,40,.55);transition:background-color .3s,color .3s}
+.sound{display:flex;align-items:center;gap:9px;white-space:nowrap;background:#fff;border-radius:999px;padding:9px 14px;font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;box-shadow:0 10px 30px -12px rgba(20,10,40,.55);transition:background-color .3s,color .3s}
 .hud-r{display:flex;gap:8px;align-items:center}
+/* over the headphone listener's head (placed every frame), with a little pointer down to him */
+.sound.float{position:fixed;left:0;top:0;z-index:16;will-change:transform}
+.sound.float::after{content:"";position:absolute;left:50%;bottom:-5px;margin-left:-5px;border:5px solid transparent;border-bottom:0;border-top-color:#fff;transition:border-color .3s}
+.sound.float.on::after{border-top-color:var(--red)}
 .replay{display:none}.replay svg{width:13px;height:13px}
 body.entered .replay{display:flex}
 @media (max-width:640px){.replay .lbl{display:none}.replay{padding:9px 11px}}
@@ -128,14 +132,24 @@ body.entered .replay{display:flex}
 #crew .tag b{font-family:var(--display);font-size:14px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;line-height:1.1}
 #crew .tag span{font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
 #crew .tag span:empty{display:none}
-.crew-back{position:absolute;left:50%;bottom:calc(28px + env(safe-area-inset-bottom));transform:translate(-50%,12px);opacity:0;pointer-events:none;padding:12px 22px;border-radius:999px;background:#fff;color:var(--ink);font-size:13px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;box-shadow:0 10px 26px -10px rgba(10,8,30,.6);transition:opacity .5s ease,transform .6s var(--ease)}
+.crew-back{position:absolute;left:50%;white-space:nowrap;bottom:calc(28px + env(safe-area-inset-bottom));transform:translate(-50%,12px);opacity:0;pointer-events:none;padding:12px 22px;border-radius:999px;background:#fff;color:var(--ink);font-size:13px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;box-shadow:0 10px 26px -10px rgba(10,8,30,.6);transition:opacity .5s ease,transform .6s var(--ease)}
 body.visiting .crew-back{opacity:1;transform:translate(-50%,0);pointer-events:auto}
+/* the newsletter and the events screen: page arrows and the way back */
+#scene-ui{position:fixed;inset:0;z-index:30;pointer-events:none}
+.sc-nav{position:absolute;left:50%;bottom:calc(84px + env(safe-area-inset-bottom));display:flex;align-items:center;gap:4px;padding:4px;border-radius:999px;background:rgba(18,16,36,.62);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);color:#fff;box-shadow:0 10px 26px -12px rgba(10,8,30,.7);transform:translate(-50%,12px);opacity:0;pointer-events:none;transition:opacity .5s ease,transform .6s var(--ease)}
+body.visiting .sc-nav{opacity:1;}
+.sc-nav[hidden]{display:none}
+body.visiting .sc-nav{transform:translate(-50%,0);pointer-events:auto}
+.sc-arrow{display:grid;place-items:center;width:38px;height:38px;border-radius:50%;transition:background-color .2s,opacity .2s}
+.sc-arrow:hover{background:rgba(255,255,255,.16)}
+.sc-arrow svg{width:16px;height:16px}
+.sc-arrow[disabled]{opacity:.3;pointer-events:none}
+.sc-count{min-width:52px;text-align:center;font-size:12px;font-weight:800;letter-spacing:.12em;font-variant-numeric:tabular-nums}
 @media (max-width:560px){#crew .tag{padding:5px 10px 6px}#crew .tag b{font-size:12px}#crew .tag span{font-size:9px}}
 /* the officer: his label on the platform, and what he says */
 .cop-tag{position:fixed;left:0;top:0;z-index:15;display:flex;flex-direction:column;align-items:center;gap:3px;color:#fff;background:none;text-shadow:0 1px 2px rgba(10,8,30,.65),0 2px 16px rgba(10,8,30,.55);opacity:0;pointer-events:none;transition:opacity .5s ease;will-change:transform}
 .cop-tag.on{opacity:1;pointer-events:auto}
 .cop-tag b{font-family:var(--display);font-weight:800;font-size:15px;line-height:1;letter-spacing:.16em;text-transform:uppercase}
-.cop-tag span{font-size:11px;font-weight:600;letter-spacing:.06em;opacity:.88}
 .cop-arrow{width:11px;height:11px;margin-top:4px;border-right:2.5px solid #fff;border-bottom:2.5px solid #fff;transform:rotate(45deg);filter:drop-shadow(0 1px 2px rgba(10,8,30,.6));animation:copBob 1.4s ease-in-out infinite}
 @keyframes copBob{50%{transform:translateY(5px) rotate(45deg)}}
 .cop-tag:hover b{color:#ffe1a8}
@@ -342,8 +356,9 @@ body.static .board{position:relative;left:auto;bottom:auto;opacity:1;transform:n
   </div>
 </div>
 
+<div id="scene-ui" hidden><div class="sc-nav" id="sc-nav"><button class="sc-arrow" id="sc-prev" type="button" aria-label="Previous"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg></button><span class="sc-count" id="sc-count"></span><button class="sc-arrow" id="sc-next" type="button" aria-label="Next"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></button></div><button class="crew-back sc-back" id="sc-back" type="button">Back to the platform</button><div class="sr-only" id="sc-text" aria-live="polite"></div></div>
 <div id="crew" hidden><div id="crew-tags" aria-live="polite"></div><button class="crew-back" id="crew-back" type="button">Back to the platform</button></div>
-<button class="cop-tag" id="cop-tag" type="button" aria-label="Leaderboard: ask the officer for the standings (skips the ride)"><b>Leaderboard</b><span>(skip cutscene)</span><i class="cop-arrow" aria-hidden="true"></i></button>
+<button class="cop-tag" id="cop-tag" type="button" aria-label="Leaderboard: ask the officer for the standings"><b>Leaderboard</b><i class="cop-arrow" aria-hidden="true"></i></button>
 <div class="talk" id="talk" hidden role="dialog" aria-label="The officer">
   <div class="talk-box" id="talk-box"><div class="talk-name">Officer</div><p class="talk-text" id="talk-text" aria-live="polite"></p><i class="talk-next" aria-hidden="true"></i>
     <div class="talk-acts"><a class="talk-btn primary" id="talk-full" href="/points/">Full leaderboard</a><button class="talk-btn" id="talk-back" type="button">Back to the platform</button></div>

@@ -146,7 +146,11 @@ const liningPaint = p => p.y > 3.6 || (p.x > -XV && p.x < XV && p.y > CEIL - .1)
 // Returns the per-car materials so the station can brighten them as the doors open and on hover.
 // The door at the lower deck's +x end into the cab, on a car with a cab behind it (the last car): in line with the aisle.
 export const CAB_DOOR = { z0: -.6, z1: -.06, y0: LOWER, y1: LCEIL - .06, x: END };
-export function buildInterior(car, { ledMat, plateMat, idx = 0, cab = false }) {
+// The Newsletter car: the aisle seat on the lower deck you sit in to read (kept free of passengers), facing +x.
+export const READ_SEAT = { x: 2.05, y: LOWER + .47, z: .275, aisle: -.32 };
+// The Events car: the next-stops screen on the vestibule's partition beside the step down, facing the vestibule (-x).
+export const SCREEN = { x: XV - .035, y: 1.76, z: .5, w: .96, h: .54 };
+export function buildInterior(car, { ledMat, plateMat, idx = 0, cab = false, free = false, screen = null }) {
   const steel = steelMat();
   const T = textures();
   const mats = {
@@ -263,6 +267,11 @@ export function buildInterior(car, { ledMat, plateMat, idx = 0, cab = false }) {
     box(A, [x0 - sd * .004, x1 - sd * .004], [1.96, 2.02], [ZW - .05, ZIN - .02], P.red); // red accent line
     pole(sd * (XV - .03), ZW - .03, VEST, CEIL); // pole at the corner of each opening
     // car number on the partition
+    if (screen && sd > 0) { // the next-stops screen: a dark bezel, the panel, a mounting bar up to the ceiling's edge
+      const S = SCREEN;
+      box(A, [S.x - .04, XV], [S.y - S.h / 2 - .035, S.y + S.h / 2 + .035], [S.z - S.w / 2 - .035, S.z + S.w / 2 + .035], P.dark, { lit: false });
+      put(new THREE.PlaneGeometry(S.w, S.h), screen, S.x - .041, S.y, S.z, m => { m.rotation.y = -Math.PI / 2; m.userData.keep = true; });
+    }
     if (plateMat) put(new THREE.PlaneGeometry(.44, .22), plateMat, sd * (XV - .004), 2.3, .72, m => { m.rotation.y = -sd * Math.PI / 2; m.userData.noShadow = false; });
   });
   // handrails up the stairs
@@ -340,6 +349,7 @@ export function buildInterior(car, { ledMat, plateMat, idx = 0, cab = false }) {
   let seed = 7 + idx * 131; const r = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
   const slim = sitters(), k = SCALE * .88; // a little smaller, to suit the train seats
   seats.forEach(st => {
+    if (free && st.fy === LOWER && st.z > 0 && (st.cx === READ_SEAT.x ? Math.abs(st.z - READ_SEAT.z) < .1 : st.cx === 3.45)) return; // your seat, and the two facing it
     if (r() > (st.z > .5 ? .72 : st.z > 0 ? .4 : .22)) return; // window seats fill first; a few aisle and far-side seats too
     const kind = slim[Math.floor(r() * slim.length)], pose = r() < .45 ? 'sit-phone' : 'sit';
     A.add(posed(kind, pose), new THREE.Matrix4().compose(V(st.cx - st.face * .06, st.fy + .47 - HIP_SIT * k + .01, st.z), new THREE.Quaternion().setFromAxisAngle(V(0, 1, 0), st.face * Math.PI / 2), V(k, k, k)), 'vertex', { uvs: 0 });

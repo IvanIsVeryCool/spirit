@@ -1,4 +1,4 @@
-import { DOORS, SITE, CABINET } from './doors.js';
+import { DOORS, SITE, CABINET, EVENTS, NEWSLETTER } from './doors.js';
 import { StationAudio } from './audio.js';
 import { flap, pad, blank } from './flap.js';
 import { CONFIG, ranked, newestFirst, fetchScores, fmt } from '/points/js/data.js';
@@ -118,7 +118,7 @@ function choose(i) {
   if (boarding || !entered) return;
   const d = DOORS[i];
   if (mobile && station && i !== focus) { setFocus(i); audio.tick(); setTimeout(() => choose(i), 800); return; }
-  if (d.scene === 'cabinet' && station && doorsOpen) { visitCabinet(i); return; }
+  if (d.scene && station && doorsOpen) { if (d.scene === 'cabinet') visitCabinet(i); else visitScene(i); return; }
   if (d.href) {
     audio.beep();
     if (!station || !doorsOpen) { location.href = d.href; return; }
@@ -159,14 +159,51 @@ function placeTags() {
   });
 }
 function leaveCabinet() {
-  if (!visiting) return; visiting = false; audio.tick();
+  if (!visiting) return; visiting = false; sceneKind = ''; audio.tick();
   $('flash').classList.add('on'); document.body.classList.remove('visiting');
   [...$('crew-tags').children].forEach(t => t.classList.remove('on'));
   setTimeout(() => {
-    station.endVisit(); $('crew').hidden = true;
+    station.endVisit(); $('crew').hidden = true; $('scene-ui').hidden = true;
     $('flash').classList.remove('on'); document.body.classList.remove('boarding'); boarding = false;
   }, 550);
 }
+// Weekly Newsletter (sit down and read it) and Events (the next-stops screen): visits inside the train, like the cab
+let sceneKind = '', sceneKey = '';
+function visitScene(i) {
+  const kind = DOORS[i].scene;
+  boarding = true; visiting = true; sceneKind = kind; sceneKey = ''; audio.beep(); audio.board(); document.body.classList.add('boarding');
+  const ui = $('scene-ui'); ui.hidden = false; $('sc-text').textContent = '';
+  const standings = scores.length ? ranked(scores).slice().sort((a, b) => a.rank - b.rank || a.order - b.order) : [];
+  station.visit(i, {
+    sit: () => audio.sit(), paper: () => audio.paper(),
+    arrive: () => {
+      document.body.classList.add('visiting'); syncScene(true);
+      if (kind === 'events') audio.chime();
+      else $('sc-text').textContent = NEWSLETTER.stories.map(st => `${st.head}. ${st.body.join(' ')}`).join(' ');
+      $('sc-back').focus({ preventScroll: true });
+    }
+  }, { standings });
+  if (station.stops) station.stops.onAuto = () => syncScene();
+}
+// the page count between the arrows, and (for the events) the stop read out to screen readers
+function syncScene() {
+  if (!visiting || !sceneKind || sceneKind === 'cabinet' || !station) return;
+  const L = station.sceneLabel(); if (!L) return;
+  const key = L.at + '/' + L.count; if (key === sceneKey) return; sceneKey = key;
+  $('sc-count').textContent = `${L.at + 1} / ${L.count}`;
+  $('sc-nav').hidden = L.count < 2;
+  const wraps = sceneKind === 'events';
+  $('sc-prev').disabled = !wraps && L.at <= 0; $('sc-next').disabled = !wraps && L.at >= L.count - 1;
+  if (sceneKind === 'events') { const e = EVENTS[L.at]; if (e) $('sc-text').textContent = `${L.at === 0 ? 'Next stop' : 'Stop ' + (L.at + 1)}: ${e.name}. ${[e.date, e.time].filter(Boolean).join(', ') || 'Date to be announced'}. ${[e.place, e.note].filter(Boolean).join('. ')}`; }
+}
+function sceneStep(d) {
+  if (!visiting || !document.body.classList.contains('visiting') || !sceneKind || sceneKind === 'cabinet') return false;
+  if (station.sceneStep(d)) { if (sceneKind === 'newsletter') audio.paper(); else audio.tick(); syncScene(); }
+  return true;
+}
+$('sc-prev').addEventListener('click', () => sceneStep(-1));
+$('sc-next').addEventListener('click', () => sceneStep(1));
+$('sc-back').addEventListener('click', leaveCabinet);
 $('crew-back').addEventListener('click', leaveCabinet);
 /* the officer: a label over his head; click it (or him) and the camera goes over to him and he gives you the standings */
 const SCORES_KEY = 'spirit-cache-' + CONFIG.sheetId;
@@ -228,6 +265,14 @@ function placeCopTag() {
   tag.classList.toggle('on', show);
   if (show) { const w = tag.offsetWidth, x = Math.min(innerWidth - w / 2 - 10, Math.max(w / 2 + 10, p.x)); tag.style.transform = `translate(${x.toFixed(1)}px, ${p.y.toFixed(1)}px) translate(-50%, -100%)`; } // kept on screen
 }
+// the sound button rides just above the headphone listener's head while he's in view; otherwise it's back in its corner
+let soundFloat = false;
+function placeSound() {
+  const b = $('sound-btn'), p = station && station.listenerTag ? station.listenerTag() : { on: false };
+  const float = p.on && entered && !boarding && !introPlaying && document.body.classList.contains('entered') && !document.body.classList.contains('intro');
+  if (float !== soundFloat) { soundFloat = float; b.classList.toggle('float', float); if (!float) b.style.transform = ''; if (b.animate) b.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 380, easing: 'ease-out' }); }
+  if (float) { const w = b.offsetWidth, x = Math.min(innerWidth - w / 2 - 10, Math.max(w / 2 + 10, p.x)); b.style.transform = `translate(${x.toFixed(1)}px, ${p.y.toFixed(1)}px) translate(-50%, -100%)`; }
+}
 function closeNotice() { const n = $('notice'); if (n.hidden) return; n.classList.remove('open'); setTimeout(() => { n.hidden = true; }, 450); audio.tick(); }
 $('notice').addEventListener('click', e => { if (e.target.closest('[data-close]')) closeNotice(); });
 $('rows').addEventListener('click', e => { const b = e.target.closest('.row'); if (b) choose(Number(b.dataset.i)); });
@@ -236,6 +281,7 @@ $('rows').addEventListener('pointerleave', () => { if (!mobile) setHover(-1); })
 addEventListener('keydown', e => {
   if (talking && (e.key === 'Enter' || e.key === ' ') && !e.target.closest('.talk-acts')) { e.preventDefault(); advance(); return; }
   if (e.key === 'Escape') { closeNotice(); leaveCabinet(); leaveCop(); }
+  if ((e.key === 'ArrowRight' || e.key === 'ArrowLeft') && sceneStep(e.key === 'ArrowRight' ? 1 : -1)) { e.preventDefault(); return; }
   if (!doorsOpen || !$('notice').hidden || !station) return;
   if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') { setFocus(focus + (e.key === 'ArrowRight' ? 1 : -1)); if (!mobile) setHover(focus); }
 });
@@ -246,6 +292,9 @@ const ndc = (x, y) => [(x / innerWidth) * 2 - 1, -(y / innerHeight) * 2 + 1];
 addEventListener('pointermove', e => { mx = e.clientX; my = e.clientY; overUI = e.target !== $('station'); if (station) station.setPointer(...ndc(mx, my)); }, { passive: true });
 $('station').addEventListener('pointerdown', e => { downX = e.clientX; });
 $('station').addEventListener('pointerup', e => {
+  if (visiting && sceneKind && sceneKind !== 'cabinet') { // in the newsletter or at the screen: a tap or a swipe left goes on, a swipe right goes back
+    const dx = downX === null ? 0 : e.clientX - downX; downX = null; sceneStep(dx > 40 ? -1 : 1); return;
+  }
   if (!entered || boarding || introPlaying) return;
   if (!doorsOpen) { skipArrival(); return; }
   if (mobile && downX !== null && Math.abs(e.clientX - downX) > 40) { setFocus(focus + (e.clientX < downX ? 1 : -1)); audio.tick(); downX = null; return; }
@@ -296,7 +345,7 @@ function skipArrival() { if (doorsOpen || !station) return; station.park(); arri
 function loop() {
   if (station) {
     if (doorsOpen && !mobile && !boarding && $('notice').hidden && !overUI) setHover(station.pick(...ndc(mx, my)));
-    station.render(); placeTags(); placeCopTag();
+    station.render(); placeTags(); placeCopTag(); placeSound(); syncScene();
   }
   requestAnimationFrame(loop);
 }
@@ -311,7 +360,8 @@ async function boot() {
     if (shown.v < 99.5) requestAnimationFrame(anim); else { pct.textContent = '100%'; bar.style.transform = 'scaleX(1)'; dot.style.left = 'calc(100% - 58px)'; }
   };
   requestAnimationFrame(anim);
-  const fonts = Promise.race([document.fonts ? document.fonts.ready : Promise.resolve(), new Promise(r => setTimeout(r, 2500))]).then(() => done++);
+  const want = document.fonts ? Promise.all(['400 30px Newsreader', '700 30px Newsreader', '800 30px Newsreader', 'italic 400 30px Newsreader', '900 30px Archivo', '600 30px "Public Sans"'].map(f => document.fonts.load(f).catch(() => {}))).then(() => document.fonts.ready) : Promise.resolve(); // the newspaper's type too (nothing on the page uses it)
+  const fonts = Promise.race([want, new Promise(r => setTimeout(r, 2500))]).then(() => done++);
   const stage = (async () => {
     if (reduce) return;
     try {

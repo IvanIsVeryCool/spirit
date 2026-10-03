@@ -221,7 +221,7 @@ async function boot() {
     try {
       ({ Ride } = await import('./ride.js')); await Ride.load(); // the town buildings
       const logo = new Image(); logo.src = '/assets/logo.png'; await logo.decode().catch(() => {});
-      ride = new Ride($('gl'), { mobile, logo: logo.naturalWidth ? logo : null });
+      ride = new Ride($('gl'), { mobile, logo: logo.naturalWidth ? logo : null, title: 'Spirit Points' }); // the first branch; the officer on the platform sends you here
       STOPS = ride.names; if (location.hash === '#debug') window.__ride = ride;
       layoutBoard(); await new Promise(r => setTimeout(r, 30)); await ride.warm();
     } catch (e) { console.warn(e); ride = null; }

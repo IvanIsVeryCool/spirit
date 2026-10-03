@@ -12,6 +12,7 @@ import { Crowd } from './crowd.js';
 import { limbGeometry, aimBasis, library, Person } from './people.js';
 import { addCity, updateCity, cityLoaded } from './city.js';
 import { pavers, concrete, ballast, grass, chainlink, tactile, tiled } from './surfaces.js';
+import { Reader, NextStops, newsVisit, eventsVisit } from './scenes.js';
 
 // A golden-hour Peninsula platform and a red-and-silver double-decker commuter train.
 const COL = {
@@ -84,6 +85,7 @@ export class Station {
     this.cars.forEach(c => { c.userData.keep = true; }); mergeStatic(this.train);
     this.cars.forEach(c => { c.userData.keep = false; mergeStatic(c); });
     mergeStatic(propGroup); mergeStatic(this.wireGroup);
+    this.reader = new Reader(this); // the newsletter in your hands (Weekly Newsletter), hidden until you sit down to read it
     // frame-time watch: drop the resolution a notch on slower machines instead of stuttering
     this.prMax = Math.min(devicePixelRatio || 1, mobile ? 1.5 : 1.75); this.pr = this.prMax; this.ft = { last: 0, avg: 16, check: 0, calm: 0 };
 
@@ -260,6 +262,7 @@ export class Station {
     // tinted glass you can see through: the lit decks and the passengers inside show, with the evening sky on top
     M.window = new THREE.MeshPhysicalMaterial({ color: 0x262c3a, transparent: true, opacity: .5, depthWrite: false, roughness: .06, metalness: 0, clearcoat: .8, clearcoatRoughness: .05, envMapIntensity: .9 });
     const shell = bodyGeometry({ windows: true }), cap = capGeometry();
+    this.stops = new NextStops(this); // the Events car's next-stops screen
     this.cars = []; this.doors = [];
     for (let i = 0; i < this.count; i++) {
       const car = new THREE.Group(); car.position.x = (i - (this.count - 1) / 2) * (CAR_L + GAP);
@@ -340,7 +343,7 @@ export class Station {
     const plateMat = new THREE.MeshBasicMaterial({ map: this._plate(String(i + 1).padStart(2, '0')), transparent: true });
     side(new THREE.PlaneGeometry(.5, .25), plateMat, CAR_L / 2 - .55, 3.3, .005);
     // the vestibule, stairs and seats behind the door, lit by baked light
-    const inside = buildInterior(car, { ledMat, plateMat, idx: i, cab: i === this.count - 1 });
+    const scene = this.data[i].scene, inside = buildInterior(car, { ledMat, plateMat, idx: i, cab: i === this.count - 1, free: scene === 'newsletter', screen: scene === 'events' ? this.stops.mat : null });
     const spill = new THREE.Mesh(new THREE.PlaneGeometry(1.7, 2.6), new THREE.MeshBasicMaterial({ color: COL.warm, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, map: this._spillTex() }));
     spill.rotation.x = -Math.PI / 2; spill.position.set(0, FLOOR + .012, z + 1.35); spill.userData.noShadow = true; spill.userData.keep = true; car.add(spill);
     let pl = null; if (!this.mobile) { pl = new THREE.PointLight(COL.warm, 0, 6, 1.6); pl.position.set(0, 1.6, z + .7); car.add(pl); }
@@ -461,6 +464,7 @@ export class Station {
     this.doors.forEach((d, i) => { d.led.key = ''; this.drawSign(i); });
     if (this.noseMesh) this._paintNose();
     if (this.flyer) this._paintBanner();
+    if (this.stops) this.stops.draw(1);
   }
   // A small plane towing a "NUEVA SPIRIT" banner across the sky behind the train, every half minute or so
   // (not during the opening). Our own plane: white, a red stripe, a spinning propeller. The banner ripples as it's towed.
@@ -755,6 +759,12 @@ export class Station {
   }
   pickCop(nx, ny) { const rc = new THREE.Raycaster(); rc.setFromCamera(new THREE.Vector2(nx, ny), this.camera); return rc.intersectObject(this.cop.hit).length > 0; }
   // where his label goes on screen (CSS px): just over his cap
+  // where the sound button goes: just above the headphone listener's head (CSS pixels), while he's in view
+  listenerTag() {
+    const me = this.listener; if (!me || !me.root.visible) return { on: false };
+    const v = new THREE.Vector3(); me.bones.head.getWorldPosition(v); v.y += .62; v.project(this.camera);
+    return { x: (v.x + 1) / 2 * innerWidth, y: (1 - v.y) / 2 * innerHeight, on: v.z < 1 && Math.abs(v.x) < .92 && v.y > -.8 && v.y < .8 };
+  }
   copTag() {
     const v = new THREE.Vector3(); this.cop.p.bones.head.getWorldPosition(v); v.y += .95; v.project(this.camera);
     return { x: (v.x + 1) / 2 * innerWidth, y: (1 - v.y) / 2 * innerHeight, on: v.z < 1 && Math.abs(v.x) < 1.1 && v.y > -1.1 && v.y < 1.1 };
@@ -800,7 +810,12 @@ export class Station {
   }
   // Meet the Cabinet: in through the door, along the lower deck's aisle to the back of the car, the cab door slides open,
   // the crew turn round, and you step in to meet them. cb: door() as the door opens, arrive() once you're in.
-  visit(i, cb = {}) {
+  visit(i, cb = {}, opt = {}) {
+    const kind = this.data[i].scene;
+    if (kind === 'newsletter' || kind === 'events') { // the other in-train visits (scenes.js)
+      this.trip = kind === 'newsletter' ? newsVisit(this, i, cb, opt.standings) : eventsVisit(this, i, cb);
+      this.doors[i].target = 1.25; return;
+    }
     const car = this.cars[i], L = (x, y, z) => car.localToWorld(new THREE.Vector3(x, y, z)), z = W / 2 + .05, D = CAB_DOOR, dz = (D.z0 + D.z1) / 2;
     this.trip = {
       t0: this.clock.elapsedTime, i, cb, p0: this.camera.position.clone(), l0: this.look.clone(),
@@ -819,10 +834,13 @@ export class Station {
   endVisit() {
     const T = this.trip; if (!T) return;
     this.trip = null; this.doors[T.i].target = 1; this.camera.fov = T.fov; this.camera.updateProjectionMatrix();
-    const leaf = this.doors[this.count - 1].inside.cabDoor; if (leaf) leaf.position.z = (CAB_DOOR.z0 + CAB_DOOR.z1) / 2;
-    this.crew.forEach(p => { p.root.visible = false; });
+    if (T.end) T.end();
+    else { const leaf = this.doors[this.count - 1].inside.cabDoor; if (leaf) leaf.position.z = (CAB_DOOR.z0 + CAB_DOOR.z1) / 2; this.crew.forEach(p => { p.root.visible = false; }); }
     this.parkedPose(true); this.blendUntil = this.clock.elapsedTime + 1;
   }
+  // the newsletter's pages and the events screen: turn or step (d = 1 or -1), and where you are
+  sceneStep(d) { return !!(this.trip && this.trip.step && this.trip.step(d)); }
+  sceneLabel() { return this.trip && this.trip.label ? this.trip.label() : null; }
   // where each crew member's name goes on screen (CSS pixels), above their head
   crewTags() {
     const v = new THREE.Vector3();
@@ -923,7 +941,7 @@ export class Station {
     });
     const c = this.camera;
     if (this.intro) { this._introFrame(t, dt); }
-    else if (this.trip) this._trip(t, dt);
+    else if (this.trip) { if (this.trip.frame) this.trip.frame(t, dt); else this._trip(t, dt); }
     else if (this.cop && this.cop.trip) this._copFrame(t, dt);
     else if (this.flight) {
       // line up in front of the door, then glide through it into the vestibule
@@ -940,6 +958,7 @@ export class Station {
       this.look.lerp(this.camLook, 1 - Math.pow(this.blendUntil > t ? .3 : .04, dt));
     }
     if (!this.intro) c.lookAt(this.look);
+    if (this.trip && this.trip.after) this.trip.after(t); // the newspaper follows your eyes
     // the ground rumbles and the air stirs only once the train is close (alongside, or its nose within ~25 m)
     const gap = this.cars[0].position.x + this.trainX - CAR_L / 2 - NOSE_L - c.position.x, near = Math.max(0, Math.min(1, 1 - (gap - 6) / 20));
     const shake = Math.min(1, speed / 25) * near * (this.intro ? .5 : 1); if (shake > .02) c.position.y += (Math.random() - .5) * .03 * shake;
@@ -965,6 +984,7 @@ export class Station {
   async warm(ticketCanvas) {
     if (!this.introGroup) this._rig(ticketCanvas);
     const crew = this.crew || []; crew.forEach(p => { p.root.visible = true; }); // the cab's crew, hidden until you visit, are drawn once too
+    this.reader.g.visible = true; this.reader.frame(this.camera); this.reader.state.up = 1; this.reader.state.open = 1; this.reader.update(this.camera, 0); // and the newspaper
     try { if (this.renderer.compileAsync) { this.introGroup.visible = true; await this.renderer.compileAsync(this.scene, this.camera); } } catch (e) {}
     const culled = []; this.scene.traverse(o => { if (o.frustumCulled) { culled.push(o); o.frustumCulled = false; } });
     const x = this.train.position.x, cam = this.camera.position.clone(), q = this.camera.quaternion.clone();
@@ -974,6 +994,6 @@ export class Station {
     this.camera.position.copy(this.seat); this.camera.lookAt(0, 1.3, this.seat.z - .5); this.composer.render();
     culled.forEach(o => { o.frustumCulled = true; });
     this.train.position.x = x; this.camera.position.copy(cam); this.camera.quaternion.copy(q);
-    this.introGroup.visible = false; crew.forEach(p => { p.root.visible = false; }); this.warmed = true;
+    this.introGroup.visible = false; crew.forEach(p => { p.root.visible = false; }); this.reader.g.visible = false; this.warmed = true;
   }
 }
