@@ -78,7 +78,7 @@ export class Station {
     const fill = new THREE.DirectionalLight(0x8d9cff, .5); fill.position.set(14, 8, 18); s.add(fill);
 
     Object.assign(this, { FLOOR, CAR_L, NOSE_L, P: CAR_L + GAP });
-    this._sky(); this._hills(); this._trees(); this._tracks(); this._platform(); this._wires(); this._props(); this._train(); this._motes(); this._flyer(); this._officer();
+    this._sky(); this._hills(); this._trees(); this._tracks(); this._platform(); this._wires(); this._props(); this._train(); this._motes(); this._flyer(); this._officer(); this._billboard();
     const propGroup = addPlatformProps(this); addPeople(this); addBackground(this); this.city = addCity(this); this.crowd = new Crowd(this);
     s.traverse(o => { if (o.isMesh && !o.userData.noShadow) { o.castShadow = !!o.userData.cast; o.receiveShadow = true; } });
     // hundreds of small static parts become one draw call per material
@@ -745,7 +745,7 @@ export class Station {
   _officer() {
     const p = new Person(6), H = p.bones.head, F = FLOOR;
     const navy = new THREE.MeshStandardMaterial({ color: 0x1f2b4d, roughness: .55 }), black = new THREE.MeshStandardMaterial({ color: 0x111317, roughness: .3, metalness: .2 });
-    const gold = new THREE.MeshStandardMaterial({ color: 0xe0ac3c, roughness: .3, metalness: .85 }), band = new THREE.MeshStandardMaterial({ color: 0xe9e6de, roughness: .6 });
+    const gold = new THREE.MeshStandardMaterial({ color: 0xe0ac3c, roughness: .3, metalness: .85 }), band = new THREE.MeshStandardMaterial({ color: 0xc8c3b8, roughness: .85 }); // off-white: a bright white band bloomed into a glow
     const cg = new THREE.Group(); cg.position.set(0, .3, .005); cg.scale.setScalar(.78); H.add(cg); // sits down on his hair (the head is about .37 wide, its top .33 above the neck)
     const cap = (geo, m, x, y, z) => { const o = new THREE.Mesh(geo, m); o.position.set(x, y, z); o.userData.keep = true; o.userData.cast = true; cg.add(o); return o; };
     cap(new THREE.BoxGeometry(.5, .1, .5), navy, 0, .05, 0);              // crown
@@ -796,6 +796,53 @@ export class Station {
     x.strokeStyle = '#16181f'; x.lineWidth = 10; x.strokeRect(5, 5, W - 10, H - 10);
     S.tex.needsUpdate = true;
   }
+  // The leaderboard billboard, past the end of the train on the officer's right: two posts, a frame, a lit face.
+  // The full Spirit Points board (points/js/board.js) is laid over its face when the camera's in front of it.
+  _billboard() {
+    const g = this.bill = new THREE.Group(); g.position.set(34.5, FLOOR, this.front + 6.5); g.rotation.y = Math.atan2(-.5, 1); this.scene.add(g);
+    const steel = new THREE.MeshStandardMaterial({ color: 0x5f656e, metalness: .7, roughness: .45 }), dark = new THREE.MeshStandardMaterial({ color: 0x15161b, metalness: .4, roughness: .6 });
+    const posts = [-1, 1].map(sd => { const m = new THREE.Mesh(new THREE.BoxGeometry(.22, 1, .22), steel); m.userData.cast = true; g.add(m); return { m, sd }; });
+    const frame = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), dark); frame.userData.cast = true; g.add(frame);
+    const face = canvasTex(1024, 640, (x, w, h) => {
+      const gr = x.createLinearGradient(0, 0, 0, h); gr.addColorStop(0, '#1f2026'); gr.addColorStop(1, '#131418'); x.fillStyle = gr; x.fillRect(0, 0, w, h);
+      x.fillStyle = '#132047'; x.fillRect(0, 0, w, 92);
+      if (this.logo) x.drawImage(this.logo, 30, 18, 56, 56);
+      x.fillStyle = '#fff'; x.font = '900 48px Archivo, Arial, sans-serif'; x.textBaseline = 'middle'; x.fillText('SPIRIT POINTS', 104, 48);
+      for (let r = 0; r < 4; r++) for (let k = 0; k < 18; k++) { x.fillStyle = '#25262c'; x.fillRect(40 + k * 52, 150 + r * 100, 46, 70); x.fillStyle = 'rgba(0,0,0,.7)'; x.fillRect(40 + k * 52, 184 + r * 100, 46, 2); }
+    });
+    const panel = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({ map: face })); panel.material.toneMapped = false; panel.material.color.setScalar(.85); g.add(panel);
+    const hood = new THREE.Mesh(new THREE.BoxGeometry(1, .12, .5), dark); g.add(hood);
+    const lamp = new THREE.Mesh(new THREE.BoxGeometry(1, .03, .3), glow(COL.warm, 2.4)); g.add(lamp);
+    g.traverse(o => { if (o.isMesh) o.userData.keep = true; });
+    this.billParts = { posts, frame, panel, hood, lamp };
+    this.setBoardShape(this.mobile ? .56 : 1.45, .78);
+  }
+  // the board's shape follows the screen (wide on a computer, tall on a phone); fill: how much of the screen's height it takes
+  setBoardShape(aspect, fill) {
+    const H = this.mobile ? 4.4 : 3.6, Wd = H * aspect, lift = 1.7, { posts, frame, panel, hood, lamp } = this.billParts;
+    this.billDim = { W: Wd, H, lift, fill };
+    panel.scale.set(Wd, H, 1); panel.position.set(0, lift + H / 2, .13);
+    frame.scale.set(Wd + .28, H + .28, .24); frame.position.set(0, lift + H / 2, 0);
+    posts.forEach(({ m, sd }) => { m.scale.y = lift + .2; m.position.set(sd * Math.min(Wd * .32, 1.6), (lift + .2) / 2, -.05); });
+    hood.scale.x = Wd + .4; hood.position.set(0, lift + H + .2, .1); lamp.scale.x = Wd * .9; lamp.position.set(0, lift + H + .13, .2);
+  }
+  // in front of the billboard, at the distance where its face fills `fill` of the screen's height
+  boardPose() {
+    const g = this.bill, D = this.billDim, n = new THREE.Vector3(Math.sin(g.rotation.y), 0, Math.cos(g.rotation.y)), c = g.position.clone().setY(FLOOR + D.lift + D.H / 2);
+    const d = (D.H / 2) / Math.tan(THREE.MathUtils.degToRad(this.camera.fov / 2)) / D.fill;
+    return { pos: c.clone().addScaledVector(n, d + .13), look: c };
+  }
+  // where its face lands on screen (CSS pixels)
+  boardRect() {
+    const p = this.billParts.panel; p.updateWorldMatrix(true, false); const o = { l: 1e9, r: -1e9, t: 1e9, b: -1e9 };
+    [[-.5, -.5], [.5, -.5], [-.5, .5], [.5, .5]].forEach(([x, y]) => { const v = new THREE.Vector3(x, y, 0).applyMatrix4(p.matrixWorld).project(this.camera); const sx = (v.x + 1) / 2 * innerWidth, sy = (1 - v.y) / 2 * innerHeight; o.l = Math.min(o.l, sx); o.r = Math.max(o.r, sx); o.t = Math.min(o.t, sy); o.b = Math.max(o.b, sy); });
+    return o;
+  }
+  // "Full leaderboard": he lowers the sign and points to the billboard, and the camera pans over to it. cb.arrive once it's there
+  copToBoard(cb = {}) {
+    const C = this.cop; if (!C.trip) return;
+    const f = this.boardPose(); C.trip.board = { t0: this.clock.elapsedTime, p0: this.camera.position.clone(), l0: this.look.clone(), p1: f.pos, l1: f.look, cb, fired: false };
+  }
   pickCop(nx, ny) { const rc = new THREE.Raycaster(); rc.setFromCamera(new THREE.Vector2(nx, ny), this.camera); return rc.intersectObject(this.cop.hit).length > 0; }
   // where his label goes on screen (CSS px): just over his cap
   // where the sound button goes: just above the headphone listener's head (CSS pixels), while he's in view
@@ -823,7 +870,7 @@ export class Station {
     const yaw = Math.max(-.7, Math.min(.7, Math.atan2(-d.x, -d.z))), pitch = -Math.max(-.4, Math.min(.4, Math.atan2(d.y, Math.hypot(d.x, d.z))));
     p.look.yaw += (yaw - p.look.yaw) * Math.min(1, dt * 3); p.look.pitch += (pitch - p.look.pitch) * Math.min(1, dt * 4);
     // the sign: up from low in front of him as you arrive, held at his chest with both hands, down again as you leave
-    const e = T ? t - T.t0 : 0, want = T && e > 1.05 ? 1 : 0;
+    const e = T ? t - T.t0 : 0, B = T && T.board, eb = B ? t - B.t0 : 0, want = T && e > 1.05 && !B ? 1 : 0;
     C.sign += (want - C.sign) * Math.min(1, dt * (want ? 5.5 : 7));
     const S = this.copSign, k = easeInOut(Math.min(1, C.sign)); S.g.visible = C.sign > .02;
     if (S.g.visible) {
@@ -838,7 +885,24 @@ export class Station {
       const leftNearer = sh.distanceTo(gl) < sh.distanceTo(gr);
       p.aim('arm-left', leftNearer ? gl : gr); p.aim('arm-right', leftNearer ? gr : gl);
     }
+    // pointing to the billboard: his head turns to it and the arm on that side comes up, for as long as you're near him
+    if (B) {
+      const bc = this.bill.position.clone().setY(FLOOR + this.billDim.lift + this.billDim.H / 2), pt = Math.max(0, Math.min(1, (eb - .1) / .4)) * Math.max(0, Math.min(1, (3.9 - eb) / .6));
+      if (pt > 0) {
+        const L = p.bones['arm-left'].getWorldPosition(new THREE.Vector3()), R = p.bones['arm-right'].getWorldPosition(new THREE.Vector3()), arm = L.distanceTo(bc) < R.distanceTo(bc) ? 'arm-left' : 'arm-right';
+        const sh = arm === 'arm-left' ? L : R, dir = bc.clone().sub(sh).normalize(), rest = sh.clone().add(new THREE.Vector3(0, -.5, 0));
+        p.aim(arm, rest.lerp(sh.clone().addScaledVector(dir, .6), easeInOut(pt)));
+        const d2 = bc.clone().sub(v).applyQuaternion(p.root.getWorldQuaternion(new THREE.Quaternion()).invert());
+        p.look.yaw += (Math.max(-.9, Math.min(.9, Math.atan2(-d2.x, -d2.z))) - p.look.yaw) * Math.min(1, dt * 4) * pt;
+      }
+    }
     if (!T) return false;
+    if (B) { // the camera: first the look swings over to the billboard (a pan), then it glides up in front of it
+      const ul = easeInOut(Math.max(0, Math.min(1, (eb - .85) / 1.3))), up = easeInOut(Math.max(0, Math.min(1, (eb - 1.25) / 2.4))); // he points first, then the look follows his arm
+      c.position.lerpVectors(B.p0, B.p1, up); c.position.y += Math.sin(Math.PI * up) * .5; this.look.lerpVectors(B.l0, B.l1, ul);
+      if (eb > 3.65 && !B.fired) { B.fired = true; B.cb.arrive && B.cb.arrive(); }
+      return true;
+    }
     const u = easeInOut(Math.min(1, e / 1.6));
     c.position.lerpVectors(T.p0, T.p1, u); c.position.y += Math.sin(Math.PI * u) * .25; this.look.lerpVectors(T.l0, T.l1, u);
     return true;

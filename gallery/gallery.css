@@ -1,7 +1,7 @@
 /* The gallery's parts, shared by /gallery/ and the platform's #gallery: album chips, the masonry of prints, the lightbox. */
 .albums{display:flex;flex-wrap:wrap;gap:8px;margin-top:22px}
 .albums[hidden]{display:none}
-.chip{padding:8px 15px;border-radius:999px;font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#fff;background:rgba(255,255,255,.14);box-shadow:inset 0 0 0 1px rgba(255,255,255,.28);transition:background-color .25s,color .25s}
+.chip{padding:7px 13px;border-radius:4px;font-family:var(--display,inherit);font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#fff;background:rgba(255,255,255,.14);box-shadow:inset 0 0 0 1px rgba(255,255,255,.28);transition:background-color .25s,color .25s}
 .chip:hover{background:rgba(255,255,255,.24)}
 .chip[aria-pressed="true"]{background:#fff;color:var(--ink);box-shadow:0 8px 22px -12px rgba(20,10,40,.6)}
 .chip i{font-style:normal;opacity:.55;margin-left:6px}
@@ -28,7 +28,7 @@
 .lb-foot{display:flex;align-items:baseline;justify-content:center;gap:16px;padding:12px var(--gut,clamp(16px,3vw,36px)) calc(18px + env(safe-area-inset-bottom,0px));text-align:center}
 .lb-cap{font-size:15px;font-weight:600}
 .lb-meta{font-size:11px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:rgba(255,255,255,.6);white-space:nowrap}
-.lb-btn{position:absolute;display:grid;place-items:center;width:46px;height:46px;border-radius:50%;background:rgba(255,255,255,.12);color:#fff;transition:background-color .25s}
+.lb-btn{position:absolute;display:grid;place-items:center;width:44px;height:44px;border-radius:6px;background:rgba(255,255,255,.12);color:#fff;transition:background-color .25s}
 .lb-btn:hover{background:rgba(255,255,255,.24)}
 .lb-btn svg{width:20px;height:20px}
 .lb-close{top:calc(12px + env(safe-area-inset-top,0px));right:var(--gut,clamp(16px,3vw,36px))}

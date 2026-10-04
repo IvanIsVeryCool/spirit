@@ -357,7 +357,7 @@ export class NextStops {
     this.st = st; this.events = EVENTS; this.k = 0; this.from = 0; this.t0 = -9; this.live = false; this.key = '';
     const c = this.canvas = document.createElement('canvas'); c.width = 1280; c.height = 720; this.x = c.getContext('2d');
     this.tex = tex(c, 8);
-    this.mat = new THREE.MeshBasicMaterial({ map: this.tex, color: new THREE.Color(.86, .86, .86) }); this.mat.toneMapped = false;
+    this.mat = new THREE.MeshBasicMaterial({ map: this.tex, color: new THREE.Color(.8, .8, .8) }); // just under the bloom threshold: crisp type, no glow this.mat.toneMapped = false;
     this.mark = st.logo ? tinted(st.logo, '#ffffff', 128) : null;
     this.draw(1);
   }

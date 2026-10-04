@@ -16,13 +16,15 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="/gallery/gallery.css">
+<link rel="stylesheet" href="/points/board.css">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..900&family=Public+Sans:wght@400;500;600;700&family=DotGothic16&family=Newsreader:ital,wght@0,400;0,600;0,700;0,800;1,400&display=swap">
 <style>
 /* Layout: a golden-hour 3D platform fills the screen; a white station sign sits top-left, the LED departure board (the menu) bottom-left, and the train's doors are the sections. */
 :root{
   --sky-top:#1c2a66; --sky-mid:#7468ab; --sky-low:#ffb07a;
   --paper:#f6f0e5; --ink:#16181f; --muted:#5b5e68; --red:#c9272c; --red-dark:#a61e22;
-  --board:#0b0b0e; --amber:#ffad1f; --amber-dim:#7a4f0a; --green:#5dff8f;
+  --board:#0b0b0e; --amber:#ffad1f; --amber-dim:#7a4f0a; --green:#5dff8f; --navy:#132047; --navy-2:#1c2d63;
+  --r:6px; --lift:0 8px 22px -12px rgba(10,8,30,.7); /* one corner radius and one shadow for every control */
   --display:'Archivo','Arial Narrow',system-ui,sans-serif;
   --body:'Public Sans',ui-sans-serif,system-ui,-apple-system,'Segoe UI',sans-serif;
   --led:'DotGothic16',ui-monospace,'SFMono-Regular',Menlo,monospace;
@@ -36,7 +38,7 @@ body{margin:0;background:linear-gradient(180deg,var(--sky-top) 0%,var(--sky-mid)
 h1,h2,p{margin:0}
 a{color:inherit}
 button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
-:focus-visible{outline:3px solid var(--amber);outline-offset:3px;border-radius:6px}
+:focus-visible{outline:2px solid var(--amber);outline-offset:3px}
 .logo-img{display:block;background:currentColor;-webkit-mask:var(--logo) center/contain no-repeat;mask:var(--logo) center/contain no-repeat}
 
 #station{position:fixed;inset:0;width:100%;height:100%;display:block;touch-action:pan-y}
@@ -55,15 +57,15 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
 .sign b{display:block;white-space:nowrap;font-family:var(--display);font-weight:800;font-size:15px;line-height:1;letter-spacing:.34em;text-transform:uppercase;color:#fff}
 .sign span.sub{display:block;white-space:nowrap;font-size:9.5px;font-weight:600;letter-spacing:.26em;text-transform:uppercase;color:rgba(255,255,255,.8);line-height:1}
 @media (max-width:640px){.sign b{font-size:13px;letter-spacing:.28em}.sign .logo-img{width:26px;height:26px}.sign .in{gap:11px}.sign .in>span:last-child{padding-left:11px}}
-.sound{display:flex;align-items:center;gap:9px;white-space:nowrap;background:#fff;border-radius:999px;padding:9px 14px;font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;box-shadow:0 10px 30px -12px rgba(20,10,40,.55);transition:background-color .3s,color .3s}
+.sound{display:flex;align-items:center;gap:9px;white-space:nowrap;background:#fff;border-radius:var(--r);padding:8px 12px;font-family:var(--display);font-size:12px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;box-shadow:var(--lift);transition:background-color .3s,color .3s}
 .hud-r{display:flex;gap:8px;align-items:center}
 /* over the headphone listener's head (placed every frame), with a little pointer down to him */
 .sound.float{position:fixed;left:0;top:0;z-index:16;will-change:transform}
-.sound.float::after{content:"";position:absolute;left:50%;bottom:-5px;margin-left:-5px;border:5px solid transparent;border-bottom:0;border-top-color:#fff;transition:border-color .3s}
+.sound.float::after{content:"";position:absolute;left:50%;bottom:-6px;margin-left:-6px;border:6px solid transparent;border-bottom:0;border-top-color:#fff;transition:border-color .3s}
 .sound.float.on::after{border-top-color:var(--red)}
 .replay{display:none}.replay svg{width:13px;height:13px}
 body.entered .replay{display:flex}
-@media (max-width:640px){.replay .lbl{display:none}.replay{padding:9px 11px}}
+@media (max-width:640px){.replay .lbl{display:none}.replay{padding:8px 10px}}
 .sound .bars{display:flex;align-items:flex-end;gap:2px;height:12px}
 .sound .bars i{display:block;width:2px;height:3px;background:currentColor;border-radius:1px}
 .sound.on{background:var(--red);color:#fff}
@@ -84,28 +86,28 @@ body.entered .replay{display:flex}
 .b-head{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:9px 14px;background:#132047;border-bottom:2px solid #0a0f22}
 .b-head .t{display:flex;align-items:center;gap:9px;font-family:var(--display);font-stretch:112%;font-weight:800;font-size:15px;letter-spacing:.06em;text-transform:uppercase;color:#fff}
 .b-head .t svg{width:18px;height:18px;flex:none}
-.b-cols,.row{display:grid;grid-template-columns:auto minmax(0,1fr) auto auto;gap:12px;align-items:center}
+.b-cols,.board .row{display:grid;grid-template-columns:auto minmax(0,1fr) auto auto;gap:12px;align-items:center}
 .b-cols{padding:8px 14px 3px;font-size:10px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:#8d909b}
 .b-cols span:nth-child(3),.b-cols span:nth-child(4){text-align:left}
-.row{width:100%;text-align:left;padding:5px 14px;position:relative;transition:background-color .2s}
-.row::before{content:"";position:absolute;left:0;top:5px;bottom:5px;width:3px;border-radius:0 2px 2px 0;background:#ffd23f;opacity:0;transition:opacity .2s}
-.row:hover,.row.on{background:rgba(255,255,255,.055)}
-.row:hover::before,.row.on::before{opacity:1}
-.row .d{overflow:hidden}
+.board .row{width:100%;text-align:left;padding:5px 14px;position:relative;transition:background-color .2s}
+.board .row::before{content:"";position:absolute;left:0;top:5px;bottom:5px;width:3px;border-radius:0 2px 2px 0;background:#ffd23f;opacity:0;transition:opacity .2s}
+.board .row:hover,.board .row.on{background:rgba(255,255,255,.055)}
+.board .row:hover::before,.board .row.on::before{opacity:1}
+.board .row .d{overflow:hidden}
 .flap{display:flex;gap:2px}
 .flap i{position:relative;flex:none;display:grid;place-items:center;width:var(--cw);height:calc(var(--cw) * 1.5);border-radius:2px;background:linear-gradient(180deg,#2d2e35 0,#25262c 49%,#1b1c21 51%,#202127 100%);box-shadow:inset 0 -1px 0 rgba(0,0,0,.55),0 1px 1px rgba(0,0,0,.4);font-style:normal;font-weight:700;font-size:calc(var(--cw) * .98);line-height:1;color:#f3efe6;text-transform:uppercase;backface-visibility:hidden}
 .flap i::after{content:"";position:absolute;left:0;right:0;top:calc(50% - .5px);height:1px;background:rgba(0,0,0,.8)} /* the split between the two flaps */
 .flap i.go{animation:flip .08s ease-in}
 @keyframes flip{50%{transform:perspective(60px) rotateX(-70deg);filter:brightness(.6)}}
-.row .s.live i{color:#7dffa6}
-.row .s.due i{color:#ffd23f}
-.row .s.soon i{color:#b9bcc6}
+.board .row .s.live i{color:#7dffa6}
+.board .row .s.due i{color:#ffd23f}
+.board .row .s.soon i{color:#b9bcc6}
 @media (max-width:760px){
   .board{--cw:12px;left:12px;right:12px;width:auto}
-  .b-cols,.row{grid-template-columns:minmax(0,1fr) auto auto;gap:8px}
-  .b-cols,.row{padding-left:10px;padding-right:10px}
-  .b-cols .tm,.row .tm,.b-cols .cr,.row .c{display:none}
-  .b-cols,.row{grid-template-columns:minmax(0,1fr) auto}
+  .b-cols,.board .row{grid-template-columns:minmax(0,1fr) auto auto;gap:8px}
+  .b-cols,.board .row{padding-left:10px;padding-right:10px}
+  .b-cols .tm,.board .row .tm,.b-cols .cr,.board .row .c{display:none}
+  .b-cols,.board .row{grid-template-columns:minmax(0,1fr) auto}
   .flap{gap:1.5px}
   .b-head{padding:8px 10px}.b-head .t{font-size:13px}
 }
@@ -114,7 +116,7 @@ body.entered .replay{display:flex}
 .notice{position:fixed;inset:0;z-index:40;display:grid;place-items:center;padding:20px}
 .notice[hidden]{display:none}
 .n-bg{position:absolute;inset:0;background:rgba(28,18,40,.45);opacity:0;transition:opacity .4s}
-.n-card{position:relative;width:min(440px,100%);background:var(--paper);border-radius:12px;overflow:hidden;box-shadow:0 40px 90px -30px rgba(20,10,30,.8);opacity:0;transform:translateY(18px) rotate(-1deg);transition:opacity .4s,transform .6s var(--ease)}
+.n-card{position:relative;width:min(440px,100%);background:var(--paper);border-radius:10px;overflow:hidden;box-shadow:0 40px 90px -30px rgba(20,10,30,.8);opacity:0;transform:translateY(14px);transition:opacity .4s,transform .6s var(--ease)}
 .notice.open .n-bg{opacity:1}
 .notice.open .n-card{opacity:1;transform:none}
 .n-top{background:var(--red);color:#fff;padding:10px 20px;font-size:12px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;display:flex;justify-content:space-between}
@@ -122,18 +124,20 @@ body.entered .replay{display:flex}
 .n-body .car{font-size:12px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
 .n-body h2{font-family:var(--display);font-stretch:118%;font-weight:850;font-size:clamp(24px,3.4vw,32px);line-height:1;text-transform:uppercase;margin-top:8px}
 .n-body p{color:#3b3e47;margin-top:12px}
-.n-close{margin-top:20px;background:var(--ink);color:#fff;border-radius:999px;padding:12px 20px;font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;transition:background-color .25s}
+.n-close{margin-top:20px;background:var(--ink);color:#fff;border-radius:var(--r);padding:12px 20px;font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;transition:background-color .25s}
 .n-close:hover{background:var(--red)}
 
 /* Meet the Cabinet: name tags over the crew in the cab, and the way back */
 #crew{position:fixed;inset:0;z-index:30;pointer-events:none}
-#crew .tag{position:absolute;left:0;top:0;display:flex;flex-direction:column;align-items:center;gap:1px;padding:7px 14px 8px;border-radius:7px;background:rgba(255,255,255,.96);color:var(--ink);box-shadow:0 10px 26px -10px rgba(10,8,30,.6),inset 4px 0 0 var(--red);white-space:nowrap;opacity:0;transition:opacity .45s ease;will-change:transform}
+#crew .tag{position:absolute;left:0;top:0;display:flex;flex-direction:column;align-items:center;gap:1px;padding:7px 14px 8px;border-radius:4px;background:rgba(255,255,255,.97);color:var(--ink);box-shadow:var(--lift),inset 0 3px 0 var(--red);white-space:nowrap;opacity:0;transition:opacity .45s ease;will-change:transform}
 #crew .tag.on{opacity:1}
 #crew .tag::after{content:"";position:absolute;left:50%;bottom:-6px;margin-left:-6px;border:6px solid transparent;border-bottom:0;border-top-color:rgba(255,255,255,.96)}
 #crew .tag b{font-family:var(--display);font-size:14px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;line-height:1.1}
 #crew .tag span{font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
 #crew .tag span:empty{display:none}
-.crew-back{position:absolute;left:50%;white-space:nowrap;bottom:calc(28px + env(safe-area-inset-bottom));transform:translate(-50%,12px);opacity:0;pointer-events:none;padding:12px 22px;border-radius:999px;background:#fff;color:var(--ink);font-size:13px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;box-shadow:0 10px 26px -10px rgba(10,8,30,.6);transition:opacity .5s ease,transform .6s var(--ease)}
+.crew-back{position:absolute;left:50%;white-space:nowrap;bottom:calc(28px + env(safe-area-inset-bottom));transform:translate(-50%,12px);opacity:0;pointer-events:none;display:inline-flex;align-items:center;gap:10px;padding:11px 18px 11px 16px;border-radius:var(--r);background:#fff;color:var(--ink);font-family:var(--display);font-size:12.5px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;box-shadow:var(--lift);transition:opacity .5s ease,transform .6s var(--ease),background-color .2s}
+.crew-back:hover{background:#f1ece2}
+.back::before{content:"";width:7px;height:7px;margin-right:1px;border-left:2px solid currentColor;border-bottom:2px solid currentColor;transform:rotate(45deg)}
 body.visiting .crew-back{opacity:1;transform:translate(-50%,0);pointer-events:auto}
 /* the photo gallery, over the inside of car 1: the evening sky, frosted, with the car behind it */
 #gallery{position:fixed;inset:0;z-index:31;color:#fff;background:linear-gradient(180deg,rgba(28,42,102,.8) 0%,rgba(116,104,171,.74) 55%,rgba(255,176,122,.72) 100%);-webkit-backdrop-filter:blur(16px) saturate(1.1);backdrop-filter:blur(16px) saturate(1.1);opacity:0;transition:opacity .6s ease}
@@ -144,31 +148,36 @@ body.visiting .crew-back{opacity:1;transform:translate(-50%,0);pointer-events:au
 #gallery.open .gal-head{transform:none}
 .gal-head h2{margin:0;font-family:var(--display);font-weight:850;font-stretch:112%;font-size:clamp(34px,6vw,64px);line-height:.95;letter-spacing:-.01em;text-shadow:0 2px 30px rgba(20,10,40,.35)}
 #gallery .gal-back{position:fixed;z-index:35}
+/* the leaderboard on the billboard: its own way back sits under it (the one at the foot of the board scrolls away) */
+.board-back{position:fixed;z-index:16}
+body.onboard .board-back{opacity:1;transform:translate(-50%,0);pointer-events:auto}
+#bboard .bb-back{display:none}
 #gallery.open .gal-back{opacity:1;transform:translate(-50%,0);pointer-events:auto}
 
 /* the newsletter and the events screen: page arrows and the way back */
 #scene-ui{position:fixed;inset:0;z-index:30;pointer-events:none}
-.sc-nav{position:absolute;left:50%;bottom:calc(84px + env(safe-area-inset-bottom));display:flex;align-items:center;gap:4px;padding:4px;border-radius:999px;background:rgba(18,16,36,.62);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);color:#fff;box-shadow:0 10px 26px -12px rgba(10,8,30,.7);transform:translate(-50%,12px);opacity:0;pointer-events:none;transition:opacity .5s ease,transform .6s var(--ease)}
+.sc-nav{position:absolute;left:50%;bottom:calc(84px + env(safe-area-inset-bottom));display:flex;align-items:center;gap:4px;padding:3px;border-radius:var(--r);background:rgba(18,16,36,.62);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);color:#fff;box-shadow:0 10px 26px -12px rgba(10,8,30,.7);transform:translate(-50%,12px);opacity:0;pointer-events:none;transition:opacity .5s ease,transform .6s var(--ease)}
 body.visiting .sc-nav{opacity:1;}
 .sc-nav[hidden]{display:none}
 body.visiting .sc-nav{transform:translate(-50%,0);pointer-events:auto}
-.sc-arrow{display:grid;place-items:center;width:38px;height:38px;border-radius:50%;transition:background-color .2s,opacity .2s}
+.sc-arrow{display:grid;place-items:center;width:38px;height:36px;border-radius:4px;transition:background-color .2s,opacity .2s}
 .sc-arrow:hover{background:rgba(255,255,255,.16)}
 .sc-arrow svg{width:16px;height:16px}
 .sc-arrow[disabled]{opacity:.3;pointer-events:none}
-.sc-count{min-width:52px;text-align:center;font-size:12px;font-weight:800;letter-spacing:.12em;font-variant-numeric:tabular-nums}
+.sc-count{min-width:52px;text-align:center;font-family:var(--display);font-size:12px;font-weight:700;letter-spacing:.12em;font-variant-numeric:tabular-nums}
 @media (max-width:560px){#crew .tag{padding:5px 10px 6px}#crew .tag b{font-size:12px}#crew .tag span{font-size:9px}}
 /* the officer: his label on the platform, and what he says */
-.cop-tag{position:fixed;left:0;top:0;z-index:15;display:flex;flex-direction:column;align-items:center;gap:3px;color:#fff;background:none;text-shadow:0 1px 2px rgba(10,8,30,.65),0 2px 16px rgba(10,8,30,.55);opacity:0;pointer-events:none;transition:opacity .5s ease;will-change:transform}
+.cop-tag{position:fixed;left:0;top:0;z-index:15;display:flex;align-items:center;gap:8px;padding:7px 12px 7px 10px;border-radius:4px;background:var(--navy);color:#fff;box-shadow:var(--lift),inset 0 0 0 1px rgba(255,255,255,.08);opacity:0;pointer-events:none;transition:opacity .5s ease,background-color .2s;will-change:transform}
 .cop-tag.on{opacity:1;pointer-events:auto}
-.cop-tag b{font-family:var(--display);font-weight:800;font-size:15px;line-height:1;letter-spacing:.16em;text-transform:uppercase}
-.cop-arrow{width:11px;height:11px;margin-top:4px;border-right:2.5px solid #fff;border-bottom:2.5px solid #fff;transform:rotate(45deg);filter:drop-shadow(0 1px 2px rgba(10,8,30,.6));animation:copBob 1.4s ease-in-out infinite}
-@keyframes copBob{50%{transform:translateY(5px) rotate(45deg)}}
-.cop-tag:hover b{color:#ffe1a8}
+.cop-tag b{font-family:var(--display);font-weight:800;font-size:12.5px;line-height:1;letter-spacing:.14em;text-transform:uppercase}
+.cop-tag::after{content:"";position:absolute;left:50%;bottom:-6px;margin-left:-6px;border:6px solid transparent;border-bottom:0;border-top-color:var(--navy);transition:border-color .2s}
+.cop-tag svg{width:14px;height:14px;flex:none;color:var(--amber)}
+.cop-tag:hover{background:var(--navy-2)}.cop-tag:hover::after{border-top-color:var(--navy-2)}
 .talk{position:fixed;left:50%;bottom:calc(28px + env(safe-area-inset-bottom,0px));z-index:32;display:flex;gap:10px;justify-content:center;width:max-content;max-width:calc(100% - 28px);transform:translate(-50%,14px);opacity:0;transition:opacity .45s ease,transform .6s var(--ease)}
 .talk[hidden]{display:none}
+.talk:not(.open){pointer-events:none} /* faded out, it mustn't catch clicks meant for what's underneath */
 .talk.open{opacity:1;transform:translate(-50%,0)}
-.talk-btn{padding:12px 20px;border-radius:999px;background:#fff;color:var(--ink);font-size:13px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;text-decoration:none;white-space:nowrap;box-shadow:0 10px 26px -10px rgba(10,8,30,.6);transition:background-color .25s,color .25s}
+.talk-btn{display:inline-flex;align-items:center;justify-content:center;gap:10px;padding:11px 18px;border-radius:var(--r);background:#fff;color:var(--ink);font-family:var(--display);font-size:12.5px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;text-decoration:none;white-space:nowrap;box-shadow:var(--lift);transition:background-color .2s,color .2s}
 .talk-btn:hover{background:#f1ece2}.talk-btn.primary{background:var(--red);color:#fff}.talk-btn.primary:hover{background:var(--red-dark)}
 @media (max-width:420px){.talk{flex-direction:column;align-items:stretch}.talk-btn{text-align:center}}
 #flash{position:fixed;inset:0;z-index:45;pointer-events:none;background:radial-gradient(circle at 50% 50%,#fffaf0 0%,#ffe2b8 45%,#ffb07a 100%);opacity:0;transition:opacity .5s ease}
@@ -181,11 +190,10 @@ body.visiting .sc-nav{transform:translate(-50%,0);pointer-events:auto}
 .ql-bar{width:150px;height:2px;border-radius:2px;background:rgba(255,255,255,.25);overflow:hidden}
 .ql-bar i{display:block;height:100%;background:#fff;transform-origin:left;transform:scaleX(0)}
 #loader.quick .quick-load{display:flex}#loader.quick .tk-wrap{display:none}
-.ql-tap{display:none;color:#fff;border:1px solid rgba(255,255,255,.55);border-radius:999px;padding:11px 22px;font-size:13px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;background:rgba(255,255,255,.08);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);transition:background-color .25s}
+.ql-tap{display:none;color:#fff;border:1px solid rgba(255,255,255,.55);border-radius:var(--r);padding:11px 20px;font-family:var(--display);font-size:12.5px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;background:rgba(255,255,255,.08);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);transition:background-color .25s}
 .ql-tap:hover,.ql-tap:focus-visible{background:rgba(255,255,255,.2)}
-#loader.tap{cursor:pointer}#loader.tap .ql-bar{display:none}#loader.tap .ql-tap{display:block;animation:qlTap .7s cubic-bezier(.2,.7,.2,1) both,qlPulse 2.4s ease-in-out .7s infinite}
+#loader.tap{cursor:pointer}#loader.tap .ql-bar{display:none}#loader.tap .ql-tap{display:block;animation:qlTap .7s cubic-bezier(.2,.7,.2,1) both}
 @keyframes qlTap{from{opacity:0;transform:translateY(8px)}}
-@keyframes qlPulse{50%{box-shadow:0 0 0 7px rgba(255,255,255,.1)}}
 #loader.out{opacity:0;visibility:hidden;pointer-events:none}
 .sunglow{position:absolute;left:22%;bottom:16%;width:520px;height:520px;margin:-260px 0 0 -260px;border-radius:50%;background:radial-gradient(circle,rgba(255,240,200,.95) 0 5%,rgba(255,200,140,.5) 12%,rgba(255,170,120,.18) 32%,transparent 62%);pointer-events:none}
 .stars{position:absolute;inset:0 0 55% 0;background-image:radial-gradient(1px 1px at 10% 20%,#fff9 50%,transparent),radial-gradient(1px 1px at 30% 8%,#fff8 50%,transparent),radial-gradient(1px 1px at 55% 15%,#fff7 50%,transparent),radial-gradient(1.5px 1.5px at 72% 6%,#fffa 50%,transparent),radial-gradient(1px 1px at 88% 22%,#fff8 50%,transparent),radial-gradient(1px 1px at 46% 30%,#fff5 50%,transparent);pointer-events:none}
@@ -225,17 +233,16 @@ body.visiting .sc-nav{transform:translate(-50%,0);pointer-events:auto}
 #loader.tap .ql-label{display:none}
 .gate{display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-top:12px;opacity:.35;pointer-events:none;transition:opacity .5s}
 .gate.ready{opacity:1;pointer-events:auto}
-.enter-btn{background:var(--red);color:#fff;border-radius:999px;padding:13px 22px;font-size:14px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;transition:background-color .25s,transform .3s var(--ease);box-shadow:0 8px 18px -8px rgba(201,39,44,.8)}
-.enter-btn:hover{background:var(--red-dark);transform:translateY(-2px)}
+.enter-btn{background:var(--red);color:#fff;border-radius:var(--r);padding:12px 20px;font-family:var(--display);font-size:13px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;transition:background-color .2s}
+.enter-btn:hover{background:var(--red-dark)}
 .quiet-btn{font-size:13px;font-weight:700;color:var(--ink);text-decoration:underline;text-underline-offset:4px;padding:6px 2px}
 .quiet-btn:hover{color:var(--red)}
 .fine{margin-top:12px;font-size:10.5px;line-height:1.45;color:#7a7568}
 .tk-stub{flex:none;width:168px;display:flex;flex-direction:column;align-items:center;gap:10px;padding:14px 12px 14px 16px;border-left:2px dashed rgba(22,24,31,.25)}
 .admit{font-family:var(--display);font-stretch:118%;font-weight:900;font-size:16px;letter-spacing:.14em;text-transform:uppercase;color:var(--red);text-align:center;line-height:1.05}
-.holo{position:relative;width:78px;height:78px;border-radius:50%;overflow:hidden;background:conic-gradient(from 0deg at var(--hx) var(--hy),#ff8fd0,#ffd27a,#9dffb0,#7fd8ff,#b49bff,#ff8fd0);box-shadow:inset 0 0 0 2px rgba(255,255,255,.6),0 2px 6px rgba(0,0,0,.2)}
-.holo::before{content:"";position:absolute;inset:0;background:repeating-linear-gradient(45deg,rgba(255,255,255,.35) 0 2px,transparent 2px 5px);mix-blend-mode:overlay}
-.holo::after{content:"";position:absolute;inset:-40%;background:linear-gradient(115deg,transparent 40%,rgba(255,255,255,.75) 50%,transparent 60%);transform:translateX(calc((var(--hx) - 50%) * 1.4));mix-blend-mode:soft-light}
-.holo .logo-img{position:absolute;inset:16px;color:rgba(255,255,255,.9);mix-blend-mode:overlay}
+.holo{position:relative;width:78px;height:78px;border-radius:50%;border:2px solid var(--red);color:var(--red);opacity:.85}
+.holo::before{content:"";position:absolute;inset:4px;border-radius:50%;border:1px dashed currentColor}
+.holo .logo-img{position:absolute;inset:18px;color:currentColor}
 .barcode{display:flex;align-items:stretch;gap:1.5px;height:44px;width:100%}
 .barcode i{background:var(--ink);flex:none}
 .serial{font-family:var(--led);font-size:12px;letter-spacing:.08em;color:var(--ink)}
@@ -252,11 +259,11 @@ body.visiting .sc-nav{transform:translate(-50%,0);pointer-events:auto}
   .tk-band{border-radius:12px 12px 0 0}
   .route{grid-template-columns:1fr 1fr;row-gap:4px}.route-line{grid-column:1/-1;grid-row:2;margin:0}
   .tk-stub{width:auto;flex-direction:row;flex-wrap:wrap;justify-content:space-between;border-left:0;border-top:2px dashed rgba(22,24,31,.25);padding:12px 16px}
-  .tk-stub .barcode{width:120px;height:34px}.holo{width:56px;height:56px}.holo .logo-img{inset:11px}.admit{font-size:13px}
+  .tk-stub .barcode{width:120px;height:34px}.holo{width:56px;height:56px}.holo .logo-img{inset:13px}.admit{font-size:13px}
   .stamp{right:24px;top:auto;bottom:70px}
   .hole{right:auto;left:50%;top:auto;bottom:-11px;margin-left:-11px}
 }
-.skip{position:fixed;z-index:30;right:clamp(16px,3vw,36px);bottom:calc(20px + env(safe-area-inset-bottom,0px));background:rgba(255,255,255,.9);color:var(--ink);border-radius:999px;padding:9px 16px;font-size:12px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;opacity:0;pointer-events:none;transition:opacity .6s}
+.skip{position:fixed;z-index:30;right:clamp(16px,3vw,36px);bottom:calc(20px + env(safe-area-inset-bottom,0px));background:rgba(255,255,255,.92);color:var(--ink);border-radius:var(--r);padding:8px 14px;font-family:var(--display);font-size:12px;font-weight:700;letter-spacing:.1em;box-shadow:var(--lift);text-transform:uppercase;opacity:0;pointer-events:none;transition:opacity .6s}
 body.intro .skip{opacity:1;pointer-events:auto}
 body.intro .hud,body.intro .head,body.intro .board{opacity:0!important;pointer-events:none}
 .hud,.head{transition:opacity 1s var(--ease),transform 1.2s var(--ease)}
@@ -319,7 +326,7 @@ body.static .board{position:relative;left:auto;bottom:auto;opacity:1;transform:n
         </div>
       </div>
       <div class="tk-stub">
-        <span class="admit">Admit<br>one</span>
+        <span class="admit">Single<br>journey</span>
         <div class="holo" aria-hidden="true"><span class="logo-img"></span></div>
         <div class="barcode" id="barcode" aria-hidden="true"></div>
         <span class="serial" id="tk-serial"></span>
@@ -364,7 +371,7 @@ body.static .board{position:relative;left:auto;bottom:auto;opacity:1;transform:n
 <section id="gallery" hidden aria-label="Photo Gallery"><div class="gal-scroll" id="gal-scroll">
   <header class="gal-head"><h2>Photo Gallery</h2><div class="albums" id="albums" role="group" aria-label="Albums" hidden></div></header>
   <div class="grid" id="grid"></div><p class="empty" id="empty" hidden>No photos yet.</p>
-</div><button class="crew-back gal-back" id="gal-back" type="button">Back to the platform</button>
+</div><button class="crew-back gal-back back" id="gal-back" type="button">Back to the platform</button>
 </section>
 <div class="lb" id="lb" role="dialog" aria-modal="true" aria-label="Photo" aria-hidden="true">
   <div class="lb-stage" id="lb-stage">
@@ -375,12 +382,41 @@ body.static .board{position:relative;left:auto;bottom:auto;opacity:1;transform:n
   <button class="lb-btn lb-close" id="lb-close" type="button" aria-label="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
   <div class="lb-foot"><p class="lb-cap" id="lb-cap"></p><p class="lb-meta" id="lb-meta"></p></div>
 </div>
-<div id="scene-ui" hidden><div class="sc-nav" id="sc-nav"><button class="sc-arrow" id="sc-prev" type="button" aria-label="Previous"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg></button><span class="sc-count" id="sc-count"></span><button class="sc-arrow" id="sc-next" type="button" aria-label="Next"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></button></div><button class="crew-back sc-back" id="sc-back" type="button">Back to the platform</button><div class="sr-only" id="sc-text" aria-live="polite"></div></div>
-<div id="crew" hidden><div id="crew-tags" aria-live="polite"></div><button class="crew-back" id="crew-back" type="button">Back to the platform</button></div>
-<button class="cop-tag" id="cop-tag" type="button" aria-label="Leaderboard: ask the officer for the standings"><b>Leaderboard</b><i class="cop-arrow" aria-hidden="true"></i></button>
+<div id="scene-ui" hidden><div class="sc-nav" id="sc-nav"><button class="sc-arrow" id="sc-prev" type="button" aria-label="Previous"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg></button><span class="sc-count" id="sc-count"></span><button class="sc-arrow" id="sc-next" type="button" aria-label="Next"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></button></div><button class="crew-back sc-back back" id="sc-back" type="button">Back to the platform</button><div class="sr-only" id="sc-text" aria-live="polite"></div></div>
+<div id="crew" hidden><div id="crew-tags" aria-live="polite"></div><button class="crew-back back" id="crew-back" type="button">Back to the platform</button></div>
+<button class="cop-tag" id="cop-tag" type="button" aria-label="Leaderboard: ask the officer for the standings"><svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M2 9h3v5H2zM6.5 5h3v9h-3zM11 2h3v12h-3z"/></svg><b>Leaderboard</b></button>
 <div class="talk" id="talk" hidden role="group" aria-label="The officer's sign"><p class="sr-only" id="talk-text" aria-live="polite"></p>
-  <a class="talk-btn primary" id="talk-full" href="/points/">Full leaderboard</a><button class="talk-btn" id="talk-back" type="button">Back to the platform</button>
+  <a class="talk-btn primary" id="talk-full" href="/points/">Full leaderboard</a><button class="talk-btn back" id="talk-back" type="button">Back to the platform</button>
 </div>
+<section class="bboard" id="bboard" aria-labelledby="bb-h1" aria-hidden="true">
+  <div class="bb-head">
+    <div class="bb-title"><span class="logo-img" aria-hidden="true"></span><div><h2 id="bb-h1">Spirit Points</h2><span class="season" id="season"></span></div></div>
+    <div class="live"><span class="dot" aria-hidden="true"></span><span id="live-text">Live</span></div>
+  </div>
+  <div class="bb-scroll" id="bb-scroll">
+    <p class="status" id="status">Loading…</p>
+    <div class="cols" aria-hidden="true"><span>Rank</span><span>Class</span><span>Points</span><span></span></div>
+    <ol class="stand" id="standings" aria-label="Standings"></ol>
+    <div class="sec-h"><h2>Results</h2><div class="filters" id="filters" role="group" aria-label="Show a class"></div></div>
+    <p class="f-summary" id="f-summary"></p>
+    <ol class="res" id="results" aria-label="Results, newest first"></ol>
+    <div class="bb-foot"><button class="bb-back" id="bb-back" type="button"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg>Back to the platform</button><span id="end-note"></span></div>
+  </div>
+</section>
+<div class="detail" id="detail" role="dialog" aria-modal="true" aria-labelledby="d-name" hidden>
+  <div class="d-bg" data-close></div>
+  <div class="d-card">
+    <div class="d-top"><span id="d-when"></span><span id="d-total"></span></div>
+    <div class="d-body">
+      <h3 id="d-name"></h3>
+      <h4>Places</h4><ol class="d-places" id="d-places"></ol>
+      <h4>Standings after</h4><ol class="d-after" id="d-after"></ol>
+      <button class="d-close" type="button" data-close>Close</button>
+    </div>
+  </div>
+</div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<button class="crew-back back board-back" id="board-back" type="button">Back to the platform</button>
 <div id="flash" aria-hidden="true"></div>
 <noscript><p style="padding:24px;color:#fff"><a href="/points/">Go to Spirit Points</a></p></noscript>
 <script>setTimeout(function(){if(!window.__hubBooted){var l=document.getElementById("loader");if(l)l.remove();document.body.classList.add("static");document.body.classList.remove("pre");}},9000);</script>

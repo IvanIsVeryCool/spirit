@@ -7,8 +7,9 @@
 - The cars, front to back: **Photo Gallery** (it opens inside the car), **Weekly Newsletter** (you sit down in the car and
   read it as a newspaper), **Events** (the car's next-stops screen, with events as the stops) and **Meet the Cabinet**
   (you walk to the cab at the back).
-- `/points/` is the live Spirit Points standings. Click the officer on the platform (the "Leaderboard" label): he holds
-  up a sign with the standings, and "Full leaderboard" takes you there. Visiting `/points/` directly rides the train up a map of the Peninsula to a big billboard (scores from the Google Sheet).
+- Click the officer on the platform (the "Leaderboard" label): he holds up a sign with the standings, and "Full
+  leaderboard" has him point you to the billboard at the end of the platform, where the full Spirit Points board opens.
+- `/points/` is the same standings as a page of its own (it opens with a ride up a map of the Peninsula). Visiting `/points/` directly rides the train up a map of the Peninsula to a big billboard (scores from the Google Sheet).
 
 ## Adding or opening a train car
 Edit `hub/doors.js`. Each entry is one car, front to back:
@@ -76,7 +77,7 @@ Settings for the points page (sheet ID, school name, refresh rate) are at the to
 
 ## Files
 - `index.html`, `hub/`: the train station (`station.js` 3D scene, `audio.js` sounds, `hub.js` page logic and departure board, `doors.js` the cars).
-- `points/`: the Spirit Points page and its scripts.
+- `points/`: the Spirit Points page and its scripts; `board.js` and `board.css` are the board itself, which the platform's billboard uses too.
 - `gallery/`: the photo gallery (`photos.js` lists the photos, which live in `assets/gallery/`); the platform opens it inside car 1.
 - `vendor/`: three.js r160 and its bloom/environment add-ons (MIT license, see `vendor/THREE-LICENSE.txt`).
 - `assets/logo.png`, icons and `share.png`: shared by both pages.

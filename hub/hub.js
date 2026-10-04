@@ -5,6 +5,12 @@ import { CONFIG, ranked, newestFirst, fetchScores, fmt } from '/points/js/data.j
 
 window.__hubBooted = true;
 const $ = id => document.getElementById(id);
+// focus moves to the next control only for people using the keyboard: for a mouse or a finger, a focus ring
+// appearing on its own (on load, say) just looks like a glitch
+let keyNav = false;
+addEventListener('keydown', e => { if (e.key === 'Tab' || e.key === 'Enter' || e.key === ' ' || e.key.startsWith('Arrow')) keyNav = true; }, { capture: true });
+addEventListener('pointerdown', () => { keyNav = false; }, { capture: true });
+const softFocus = el => { if (el && keyNav) el.focus({ preventScroll: true }); };
 const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const mobile = matchMedia('(max-width: 760px)').matches || matchMedia('(pointer: coarse)').matches;
 const audio = new StationAudio();
@@ -56,7 +62,7 @@ function ticketCanvas() {
   });
   x.fillStyle = '#7a7568'; x.font = '500 12px "Public Sans", Arial, sans-serif'; x.fillText('Valid for one ride on the day of issue. Go Nueva.', 22, 232);
   x.strokeStyle = 'rgba(22,24,31,.3)'; x.setLineDash([7, 6]); x.beginPath(); x.moveTo(552, 8); x.lineTo(552, H - 8); x.stroke(); x.setLineDash([]);
-  x.fillStyle = '#c9272c'; x.font = '900 22px Archivo, Arial, sans-serif'; x.textAlign = 'center'; x.fillText('ADMIT', 636, 58); x.fillText('ONE', 636, 84); x.textAlign = 'left';
+  x.fillStyle = '#c9272c'; x.font = '900 22px Archivo, Arial, sans-serif'; x.textAlign = 'center'; x.font = '900 19px Archivo, Arial, sans-serif'; x.fillText('SINGLE', 636, 58); x.fillText('JOURNEY', 636, 84); x.textAlign = 'left';
   let bx = 576; x.fillStyle = '#16181f'; bars.forEach((w, i) => { if (i % 2 === 0) x.fillRect(bx, 150, w * 1.6, 90); bx += w * 1.6 + 1.6; });
   x.font = '400 14px DotGothic16, monospace'; x.fillText(T.serial, 578, 262);
   // validation stamp
@@ -104,7 +110,7 @@ renderBoard();
 function setFocus(i) {
   focus = (i + DOORS.length) % DOORS.length;
   if (station) station.setFocus(focus);
-  document.querySelectorAll('.row').forEach((r, k) => r.classList.toggle('on', mobile && doorsOpen && k === focus));
+  document.querySelectorAll('#rows .row').forEach((r, k) => r.classList.toggle('on', mobile && doorsOpen && k === focus));
 }
 function setHover(i) {
   if (i === hover) return; hover = i;
@@ -133,7 +139,7 @@ function choose(i) {
   $('n-title').textContent = d.title;
   $('n-text').textContent = `${d.sub ? d.sub + '. ' : ''}This car isn’t in service yet. The Spirit Cabinet is still building it, so check back soon.`;
   const n = $('notice'); n.hidden = false; requestAnimationFrame(() => requestAnimationFrame(() => n.classList.add('open')));
-  n.querySelector('.n-close').focus({ preventScroll: true });
+  softFocus(n.querySelector('.n-close'));
   audio.chime();
 }
 // Meet the Cabinet: walk through the last car to the cab, where the cabinet are; their names float above them
@@ -145,7 +151,7 @@ function visitCabinet(i) {
   $('crew').hidden = false;
   station.visit(i, {
     door: () => audio.cabDoor(),
-    arrive: () => { document.body.classList.add('visiting'); [...tags.children].forEach((t, k) => setTimeout(() => t.classList.add('on'), 250 + k * 120)); $('crew-back').focus({ preventScroll: true }); }
+    arrive: () => { document.body.classList.add('visiting'); [...tags.children].forEach((t, k) => setTimeout(() => t.classList.add('on'), 250 + k * 120)); softFocus($('crew-back')); }
   });
 }
 function placeTags() {
@@ -183,7 +189,7 @@ function visitScene(i) {
       document.body.classList.add('visiting'); syncScene(true);
       if (kind === 'events') audio.chime();
       else $('sc-text').textContent = NEWSLETTER.stories.map(st => `${st.head}. ${st.body.join(' ')}`).join(' ');
-      $('sc-back').focus({ preventScroll: true });
+      softFocus($('sc-back'));
     }
   }, { standings });
   if (station.stops) station.stops.onAuto = () => syncScene();
@@ -215,7 +221,7 @@ function openGallery() {
   const g = $('gallery'); g.hidden = false; $('gal-scroll').scrollTop = 0; document.body.classList.add('visiting');
   loadGallery().then(m => { if (m) m.reveal(); });
   requestAnimationFrame(() => requestAnimationFrame(() => g.classList.add('open')));
-  setTimeout(() => $('gal-back').focus({ preventScroll: true }), 100);
+  setTimeout(() => softFocus($('gal-back')), 100);
   clearTimeout(stillT); stillT = setTimeout(() => { if (g.classList.contains('open')) galleryStill = true; }, 750);
 }
 function closeGallery() {
@@ -241,20 +247,45 @@ function talkToCop() {
   $('talk-text').textContent = rows.length ? 'Spirit Points standings: ' + rows.map(r => `${r.rank}. ${r.name}, ${fmt(r.pts)} points`).join('; ') + '.' : 'No scores yet.';
   const t = $('talk'); t.hidden = false; t.classList.remove('open');
   setTimeout(() => { if (!talking) return; audio.paper(); }, 1100); // the board comes up
-  setTimeout(() => { if (!talking) return; requestAnimationFrame(() => t.classList.add('open')); $('talk-full').focus({ preventScroll: true }); }, 1900);
+  setTimeout(() => { if (!talking) return; requestAnimationFrame(() => t.classList.add('open')); softFocus($('talk-full')); }, 1900);
 }
 function leaveCop() {
   if (!talking) return; talking = false; audio.tick();
+  if (onBoard) { onBoard = false; document.body.classList.remove('onboard'); const bb = $('bboard'); bb.classList.remove('on'); bb.setAttribute('aria-hidden', 'true'); if (lb) lb.then(m => { if (m) { m.setShown(false); m.closeDetail(); } }); }
   const t = $('talk'); t.classList.remove('open'); setTimeout(() => { t.hidden = true; }, 500);
   station.endCop();
   setTimeout(() => { boarding = false; document.body.classList.remove('boarding'); }, 700);
 }
 $('cop-tag').addEventListener('click', talkToCop);
 $('talk-back').addEventListener('click', leaveCop);
-$('talk-full').addEventListener('click', e => { // straight to the standings, no ride
-  e.preventDefault(); try { sessionStorage.setItem('spirit-rode', '1'); } catch (x) {}
-  $('flash').classList.add('on'); setTimeout(() => { location.href = '/points/'; }, 450);
+// "Full leaderboard": he points to the billboard past the end of the train, the camera pans over, and the full
+// Spirit Points board (points/js/board.js, the same one /points/ uses) opens on its face
+let lb = null, onBoard = false;
+const loadBoard = () => lb || (lb = import('/points/js/board.js').then(m => { m.initBoard({ mobile, audio }); m.load(false); return m; }).catch(e => { console.warn(e); lb = null; return null; }));
+function layoutBoard() {
+  const mob = innerWidth <= 760, w = mob ? innerWidth - 20 : Math.min(1080, innerWidth * .9), h = mob ? innerHeight * .8 : Math.min(innerHeight * .78, w / 1.25);
+  station.setBoardShape(w / h, h / innerHeight);
+}
+function placeBillboard() {
+  if (!onBoard || !station) return;
+  const r = station.boardRect(), b = $('bboard').style;
+  b.left = r.l + 'px'; b.top = r.t + 'px'; b.width = (r.r - r.l) + 'px'; b.height = (r.b - r.t) + 'px';
+}
+$('talk-full').addEventListener('click', e => {
+  e.preventDefault();
+  if (!station) { try { sessionStorage.setItem('spirit-rode', '1'); } catch (x) {} location.href = '/points/'; return; } // the static version
+  if (!talking || onBoard) return;
+  onBoard = true; loadBoard(); layoutBoard(); audio.tick(); $('talk').classList.remove('open'); setTimeout(() => { if (onBoard) $('talk').hidden = true; }, 500);
+  station.copToBoard({
+    arrive: () => {
+      if (!onBoard) return; placeBillboard();
+      const bb = $('bboard'); bb.classList.add('on'); bb.setAttribute('aria-hidden', 'false'); document.body.classList.add('onboard');
+      loadBoard().then(m => { if (!m || !onBoard) return; m.setShown(true); m.renderAll({ flipFresh: true }); audio.clatter(1.4); });
+      softFocus($('board-back'));
+    }
+  });
 });
+$('bb-back').addEventListener('click', leaveCop); $('board-back').addEventListener('click', leaveCop);
 function placeCopTag() {
   const tag = $('cop-tag'); if (!station || !station.cop) return;
   const p = station.copTag(), show = p.on && entered && !boarding && !introPlaying && document.body.classList.contains('entered');
@@ -277,6 +308,7 @@ $('rows').addEventListener('pointerleave', () => { if (!mobile) setHover(-1); })
 addEventListener('keydown', e => {
   if (e.key === 'Escape') {
     if (lightboxUp) return; // a photo is open: Escape closes that first (gallery.js)
+    if (onBoard && !$('detail').hidden) { lb && lb.then(m => m && m.closeDetail()); return; } // an event's breakdown, then the board
     closeNotice(); leaveCabinet(); leaveCop();
   }
   if ((e.key === 'ArrowRight' || e.key === 'ArrowLeft') && sceneStep(e.key === 'ArrowRight' ? 1 : -1)) { e.preventDefault(); return; }
@@ -343,7 +375,7 @@ function skipArrival() { if (doorsOpen || !station) return; station.park(); arri
 function loop() {
   if (station && !galleryStill) {
     if (doorsOpen && !mobile && !boarding && $('notice').hidden && !overUI) setHover(station.pick(...ndc(mx, my)));
-    station.render(); placeTags(); placeCopTag(); placeSound(); syncScene();
+    station.render(); placeTags(); placeCopTag(); placeSound(); syncScene(); placeBillboard();
   }
   requestAnimationFrame(loop);
 }
@@ -380,7 +412,7 @@ async function boot() {
   $('tk-status').classList.add('done'); $('load-label').textContent = 'Ready to board';
   if (!station) { document.body.classList.add('static'); enter(false); return; }
   if (!firstToday && !reduce) { setTimeout(() => (soundPref && held() ? tapToBoard() : quickEnter()), 350); return; }
-  setTimeout(() => { $('gate').classList.add('ready'); $('enter-sound').focus({ preventScroll: true }); }, 350);
+  setTimeout(() => { $('gate').classList.add('ready'); softFocus($('enter-sound')); }, 350);
 }
 function enter(withSound) {
   if (entered) return; entered = true;
@@ -412,7 +444,7 @@ function quickEnter() {
   setTimeout(() => showBoard(), 700);
 }
 function tapToBoard() {
-  const loader = $('loader'); loader.classList.add('tap'); $('ql-tap').focus({ preventScroll: true });
+  const loader = $('loader'); loader.classList.add('tap'); softFocus($('ql-tap'));
   const go = () => { loader.removeEventListener('click', go); removeEventListener('keydown', go); quickEnter(); };
   loader.addEventListener('click', go); addEventListener('keydown', go); // the press itself starts the sound (unlockAudio)
 }
