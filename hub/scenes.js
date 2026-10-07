@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { limbGeometry, aimBasis, library } from './people.js';
 import { READ_SEAT, SCREEN } from './interior.js';
-import { EVENTS, NEWSLETTER } from './doors.js';
+import { EVENTS, NEWSLETTER, CABINET, DOORS } from './doors.js';
 
 // Two of the cars are visits inside the train, like Meet the Cabinet:
 // - Weekly Newsletter: you walk down to the lower deck, sit down, and pull out the newsletter, a newspaper
@@ -49,6 +49,41 @@ function drawLine(x, line, px, y, width, justify) {
   if (!justify || line.last || line.words.length < 2 || gap > x.measureText(' ').width * 2.4) { x.fillText(line.words.join(' '), px, y); return; }
   let cx = px; line.words.forEach((w, i) => { x.fillText(w, cx, y); cx += ws[i] + gap; });
 }
+// The same, but breaking the lines where the edge comes out most even over the whole paragraph (as a typesetter
+// would, instead of filling each line and leaving the next one short), and no lone short word on the last line.
+// The columns are set ragged right: they're too narrow to justify well without hyphens
+function fit(x, text, widthAt) {
+  const words = String(text).split(/\s+/).filter(Boolean), N = words.length; if (!N) return [];
+  const ws = words.map(w => x.measureText(w).width), sp = x.measureText(' ').width, K = 3; // lines from the 4th on are all the same width
+  const INF = 1e30, cost = [], pi = [], pl = [];
+  for (let i = 0; i <= N; i++) { cost.push(new Float64Array(K + 1).fill(INF)); pi.push(new Int32Array(K + 1)); pl.push(new Int8Array(K + 1)); }
+  cost[0][0] = 0;
+  for (let i = 0; i < N; i++) for (let l = 0; l <= K; l++) {
+    if (cost[i][l] >= INF) continue;
+    const avail = widthAt(l); let nat = -sp;
+    for (let j = i + 1; j <= N; j++) {
+      nat += sp + ws[j - 1]; const gaps = j - i - 1, single = j === i + 1;
+      if (!single && nat > avail) break;
+      let d;
+      if (single && nat > avail) d = 1e8; // one word too long for the line: it has to go somewhere
+      else if (j === N) d = nat < avail * .3 && i > 0 ? 4e4 : 0; // the last line may be short, but not a word or two
+      else d = ((avail - nat) / avail * 100) ** 2;
+      const nl = Math.min(l + 1, K), c = cost[i][l] + d;
+      if (c < cost[j][nl]) { cost[j][nl] = c; pi[j][nl] = i; pl[j][nl] = l; }
+    }
+  }
+  let l = 0; for (let k = 1; k <= K; k++) if (cost[N][k] < cost[N][l]) l = k;
+  const lines = []; let j = N;
+  while (j > 0) { const i = pi[j][l], w = words.slice(i, j); lines.unshift({ words: w, w: ws.slice(i, j).reduce((a, b) => a + b, 0) + sp * (w.length - 1), last: j === N }); l = pl[j][l]; j = i; }
+  return lines;
+}
+// a headline's lines made even: the narrowest measure that still takes no more lines (no lone word on the last one)
+function balanced(x, text, maxW) {
+  const n = wrap(x, text, () => maxW).length; if (n < 2) return wrap(x, text, () => maxW);
+  let lo = maxW * .45, hi = maxW;
+  for (let k = 0; k < 12; k++) { const mid = (lo + hi) / 2; if (wrap(x, text, () => mid).length > n) lo = mid; else hi = mid; }
+  return wrap(x, text, () => hi);
+}
 // the logo (white on clear) in a colour of our choice
 function tinted(img, col, size) {
   const c = document.createElement('canvas'); c.width = c.height = size; const x = c.getContext('2d');
@@ -56,15 +91,35 @@ function tinted(img, col, size) {
   return c;
 }
 
-// The newsletter as pages (canvases): a masthead and the lead story on the front, then the stories flowed through
-// the columns, with the standings and the next events as boxes. Desktop: two columns a page, read as spreads;
+// The paper's photos: a story's `photo` (from assets/gallery/), and the ones in the house promotions. Loaded a little
+// after the station (so they don't hold up its loading), or when you board if that's sooner; the pages are set when you
+// board, and set again if a photo comes in before you've sat down to read (one that never loads is just left out).
+const PROMOS = [
+  { car: 'gallery', head: 'Photo Gallery', line: 'Pictures from every spirit event.', photo: 'spirit-line-banner.jpg' },
+  { car: 'cabinet', head: 'Meet the Cabinet', line: 'Walk to the back of the car. The cab door is open.', photo: 'spirit-line-cab.jpg' },
+  { car: 'events', head: 'The Next Stops', line: 'Every event coming up, on the screen in the car.', photo: 'spirit-line-doors.jpg' },
+  { car: null, head: 'The Leaderboard', line: 'Ask the officer on the platform for the standings.', photo: 'spirit-line-platform.jpg' }
+];
+const PHOTO = {}, LOADING = {};
+export function preloadNews() {
+  const files = [...NEWSLETTER.stories.map(s => s.photo), ...PROMOS.map(p => p.photo)].filter(Boolean);
+  return Promise.all(files.map(f => LOADING[f] || (LOADING[f] = new Promise(res => {
+    PHOTO[f] = null; const i = new Image(); i.decoding = 'async';
+    i.onload = () => { PHOTO[f] = i; res(); }; i.onerror = () => res(); i.src = '/assets/gallery/' + f;
+  }))));
+}
+const photosIn = () => Object.values(PHOTO).filter(Boolean).length;
+
+// The newsletter as pages (canvases). The front: the nameplate, the lead story's headline across the page over its
+// photo, then the stories flowed through the columns. Inside: the standings, the next stops, a guide to the train and
+// the cabinet, with house promotions in whatever room is left. Desktop: two columns a page, read as spreads;
 // phones: one tall single-column page at a time, the type bigger.
-export function typeset({ mobile, news, standings, events, logo }) {
+export function typeset({ mobile, news, standings, events, logo, cabinet = CABINET, doors = DOORS, here = 'newsletter' }) {
   const S = mobile
-    ? { W: 1024, H: 1700, M: 64, cols: 1, G: 0, body: 41, lh: 57, head: 60, hlh: 64, lead: 84, llh: 86, kick: 23, ksp: 4 }
-    : { W: 1024, H: 1400, M: 58, cols: 2, G: 36, body: 27.5, lh: 38.5, head: 42, hlh: 46, lead: 66, llh: 70, kick: 17, ksp: 3 };
+    ? { W: 1024, H: 1700, M: 64, cols: 1, G: 0, body: 41, lh: 57, head: 60, hlh: 64, lead: 84, llh: 88, kick: 23, ksp: 4, cap: 26, clh: 35 }
+    : { W: 1024, H: 1400, M: 58, cols: 2, G: 36, body: 27.5, lh: 38.5, head: 42, hlh: 46, lead: 64, llh: 68, kick: 17, ksp: 3, cap: 18.5, clh: 25 };
   const cw = (S.W - 2 * S.M - (S.cols - 1) * S.G) / S.cols, bottom = S.H - S.M - (mobile ? 70 : 64), pages = []; // a deeper bottom margin, where your hands hold it
-  const mark = tinted(logo, RED, 128);
+  const mark = tinted(logo, RED, 128), full = S.W - 2 * S.M;
   let x, col = 0, y = 0, top = 0;
   const colX = () => S.M + col * (cw + S.G);
   const newPage = () => {
@@ -74,30 +129,48 @@ export function typeset({ mobile, news, standings, events, logo }) {
     // rules between the columns
     x.fillStyle = 'rgba(29,28,32,.22)'; for (let k = 1; k < S.cols; k++) x.fillRect(S.M + k * (cw + S.G) - S.G / 2, top, 1.5, bottom - top);
   };
+  // a photo, cropped to fill its frame and printed: the paper's tone multiplied in, the colour a little muted
+  const photo = (img, px, py, w, h) => {
+    const r = Math.max(w / img.width, h / img.height), sw = w / r, sh = h / r;
+    x.drawImage(img, (img.width - sw) / 2, (img.height - sh) / 2, sw, sh, px, py, w, h);
+    x.save(); x.globalCompositeOperation = 'multiply'; x.fillStyle = NEWS; x.fillRect(px, py, w, h);
+    x.globalCompositeOperation = 'saturation'; x.globalAlpha = .2; x.fillStyle = '#808080'; x.fillRect(px, py, w, h); x.restore();
+    x.strokeStyle = 'rgba(29,28,32,.35)'; x.lineWidth = 1; x.strokeRect(px + .5, py + .5, w - 1, h - 1);
+  };
+  const caption = (text, px, py, w) => {
+    x.font = `500 ${S.cap}px ${TEXT}`; x.fillStyle = '#4b473f'; x.textAlign = 'left';
+    const lines = wrap(x, text, () => w); lines.forEach((l, k) => x.fillText(l.words.join(' '), px, py + S.cap + k * S.clh));
+    return S.cap * .3 + lines.length * S.clh;
+  };
   const masthead = () => {
     let yy = S.M;
-    x.fillStyle = MUTE; x.font = `700 ${mobile ? 21 : 16}px ${SANS}`;
-    spaced(x, 'NUEVA SCHOOL', S.M, yy + 14, 3); spaced(x, `ISSUE ${news.issue}`, S.W - S.M, yy + 14, 3, 'right');
-    yy += 26;
-    let fs = mobile ? 136 : 118; x.font = `800 ${fs}px ${SERIF}`; const room = S.W - 2 * S.M - (mobile ? 0 : 220), tw = x.measureText('The Spirit Line').width; if (tw > room) { fs *= room / tw; x.font = `800 ${fs}px ${SERIF}`; }
-    x.fillStyle = INK; x.textAlign = 'center'; x.fillText('The Spirit Line', S.W / 2, yy + fs * .8);
-    if (!mobile) { const ic = 74; x.drawImage(mark, S.M + 8, yy + fs * .42 - ic / 2, ic, ic); x.drawImage(mark, S.W - S.M - 8 - ic, yy + fs * .42 - ic / 2, ic, ic); } // the logo in each ear
-    yy += fs * 1.22;
-    x.font = `800 ${mobile ? 22 : 17}px ${SANS}`; x.fillStyle = RED;
-    spaced(x, 'WEEKLY NEWSLETTER OF THE NUEVA SPIRIT CABINET', S.W / 2, yy, mobile ? 2.4 : 3.2, 'center');
-    yy += mobile ? 24 : 20;
-    x.fillStyle = INK; x.fillRect(S.M, yy, S.W - 2 * S.M, 4); x.fillRect(S.M, yy + 8, S.W - 2 * S.M, 1.5);
-    x.font = `700 ${mobile ? 22 : 17}px ${SANS}`; x.fillStyle = INK;
-    spaced(x, news.week.toUpperCase(), S.M, yy + (mobile ? 42 : 36), 1.6); spaced(x, 'ALL ABOARD', S.W - S.M, yy + (mobile ? 42 : 36), 2.4, 'right');
-    yy += mobile ? 58 : 50; x.fillRect(S.M, yy, S.W - 2 * S.M, 1.5);
-    yy += mobile ? 34 : 28;
-    // the lead story's headline runs across the page
+    x.fillStyle = MUTE; x.font = `700 ${mobile ? 20 : 15}px ${SANS}`;
+    spaced(x, 'NUEVA SCHOOL  ·  SPIRIT CABINET', S.W / 2, yy + 12, 3.4, 'center');
+    yy += mobile ? 22 : 16;
+    let fs = mobile ? 150 : 124; x.font = `800 ${fs}px ${SERIF}`; const tw = x.measureText('The Spirit Line').width; if (tw > full * .94) { fs *= full * .94 / tw; x.font = `800 ${fs}px ${SERIF}`; }
+    x.fillStyle = INK; x.textAlign = 'center'; x.fillText('The Spirit Line', S.W / 2, yy + fs * .8); x.textAlign = 'left';
+    yy += fs * 1.0;
+    x.fillRect(S.M, yy, full, 4); x.fillRect(S.M, yy + 8, full, 1.5);
+    // the dateline: the week, the logo, the issue
+    const dl = yy + 8 + (mobile ? 42 : 34), ic = mobile ? 34 : 28;
+    x.font = `700 ${mobile ? 21 : 16}px ${SANS}`; x.fillStyle = INK;
+    spaced(x, news.week.toUpperCase(), S.M, dl, 1.8); spaced(x, `ISSUE ${news.issue}`, S.W - S.M, dl, 2.4, 'right');
+    x.drawImage(mark, S.W / 2 - ic / 2, dl - ic * .78, ic, ic);
+    yy = dl + (mobile ? 20 : 16); x.fillRect(S.M, yy, full, 1.5);
+    yy += mobile ? 40 : 32;
+    // the lead story's headline runs across the page, over its photo
     const lead = news.stories[0];
     if (lead) {
       if (lead.kicker) { x.font = `800 ${S.kick}px ${SANS}`; x.fillStyle = RED; spaced(x, lead.kicker.toUpperCase(), S.M, yy + S.kick, S.ksp); yy += S.kick + 14; }
       x.font = `700 ${S.lead}px ${SERIF}`; x.fillStyle = INK;
-      wrap(x, lead.head, () => S.W - 2 * S.M).forEach(l => { x.textAlign = 'left'; x.fillText(l.words.join(' '), S.M, yy + S.lead * .82); yy += S.llh; });
-      yy += mobile ? 16 : 12;
+      balanced(x, lead.head, full).forEach(l => { x.textAlign = 'left'; x.fillText(l.words.join(' '), S.M, yy + S.lead * .82); yy += S.llh; });
+      yy += mobile ? 18 : 14;
+      const img = lead.photo && PHOTO[lead.photo];
+      if (img) {
+        const ph = Math.round(full * (mobile ? .6 : .46)); photo(img, S.M, yy, full, ph); yy += ph + 10;
+        if (lead.caption) yy += caption(lead.caption, S.M, yy, full);
+        yy += mobile ? 26 : 20;
+      }
     }
     return yy;
   };
@@ -107,11 +180,12 @@ export function typeset({ mobile, news, standings, events, logo }) {
     x.font = `700 ${mobile ? 21 : 16}px ${SANS}`; x.fillStyle = MUTE;
     if (!mobile) spaced(x, news.week.toUpperCase(), S.W / 2, S.M + 14, 2, 'center');
     spaced(x, String(pages.length), S.W - S.M, S.M + 14, 2, 'right');
-    x.fillStyle = INK; x.fillRect(S.M, S.M + 28, S.W - 2 * S.M, 2);
+    x.fillStyle = INK; x.fillRect(S.M, S.M + 28, full, 2);
     return S.M + 56;
   };
   const nextCol = () => { col++; if (col >= S.cols) newPage(); else y = top; };
-  const need = h => { if (y + h > bottom) nextCol(); };
+  // when something that doesn't split (a box, a headline and its first lines) won't fit, the room it leaves goes to a promotion
+  const need = h => { if (y + h > bottom) { promoIn(); nextCol(); } };
   const para = (text, { first = false, cap = false } = {}) => {
     x.font = `400 ${S.body}px ${SERIF}`;
     let body = text, capCh = '', capW = 0, capLines = 0;
@@ -120,18 +194,18 @@ export function typeset({ mobile, news, standings, events, logo }) {
       x.font = `700 ${S.lh * 3.15}px ${SERIF}`; capW = x.measureText(capCh).width + 10; x.font = `400 ${S.body}px ${SERIF}`;
     }
     const indent = first || cap ? 0 : S.body * 1.2;
-    const lines = wrap(x, body, i => cw - (i < capLines ? capW : 0) - (i === 0 ? indent : 0));
+    const lines = fit(x, body, i => cw - (i < capLines ? capW : 0) - (i === 0 ? indent : 0));
     lines.forEach((l, i) => {
       need(S.lh);
       if (i === 0 && capCh) { x.font = `700 ${S.lh * 3.15}px ${SERIF}`; x.fillStyle = RED; x.textAlign = 'left'; x.fillText(capCh, colX() - 2, y + S.lh * 2.78); }
       x.font = `400 ${S.body}px ${SERIF}`; x.fillStyle = INK;
       const off = (i < capLines ? capW : 0) + (i === 0 ? indent : 0);
-      drawLine(x, l, colX() + off, y + S.lh * .74, cw - off, true); y += S.lh;
+      drawLine(x, l, colX() + off, y + S.lh * .74, cw - off, false); y += S.lh;
     });
     y += S.lh * .25;
   };
   const headline = (st) => {
-    x.font = `700 ${S.head}px ${SERIF}`; const lines = wrap(x, st.head, () => cw), h = (st.kicker ? S.kick + 12 : 0) + lines.length * S.hlh + 10;
+    x.font = `700 ${S.head}px ${SERIF}`; const lines = balanced(x, st.head, cw), h = (st.kicker ? S.kick + 12 : 0) + lines.length * S.hlh + 10;
     if (y > top + 2) { need(h + 30 + 2 * S.lh); if (y > top + 2) { x.fillStyle = 'rgba(29,28,32,.35)'; x.fillRect(colX(), y + 8, cw, 1.5); y += 30; } }
     else need(h + 2 * S.lh);
     if (st.kicker) { x.font = `800 ${S.kick}px ${SANS}`; x.fillStyle = RED; spaced(x, st.kicker.toUpperCase(), colX(), y + S.kick, S.ksp); y += S.kick + 12; }
@@ -170,48 +244,87 @@ export function typeset({ mobile, news, standings, events, logo }) {
       x.font = `700 ${S.kick}px ${SANS}`; x.fillStyle = MUTE; spaced(x, (e.date || 'TBA').toUpperCase(), bx + bw, cy + S.kick * .36, 1.5, 'right');
     });
   };
+  // the train, car by car (this one marked), and who's on the cabinet
+  const guideBox = () => {
+    const rowH = mobile ? 66 : 46;
+    box('On this train', doors.length, rowH, (k, bx, by, bw) => {
+      const d = doors[k], base = by + rowH * .62;
+      x.font = `800 ${S.kick * 1.1}px ${SANS}`; x.fillStyle = MUTE; x.textAlign = 'left'; spaced(x, 'CAR ' + (k + 1), bx, base, 1.5);
+      x.font = `600 ${S.body * 1.05}px ${SERIF}`; x.fillStyle = INK; x.fillText(d.title, bx + S.kick * 5.4, base);
+      const tw = x.measureText(d.title).width;
+      if (d.id === here) { x.font = `800 ${S.kick * .95}px ${SANS}`; x.fillStyle = RED; const lab = bx + S.kick * 5.4 + tw + S.kick * 12 < bx + bw ? 'YOU ARE HERE' : 'HERE'; spaced(x, lab, bx + bw, base, 1.6, 'right'); }
+    });
+  };
+  const cabinetBox = () => {
+    if (!cabinet.length) return;
+    const rowH = mobile ? 62 : 44;
+    box('The Cabinet', cabinet.length, rowH, (k, bx, by, bw) => {
+      const m = cabinet[k], base = by + rowH * .62;
+      x.font = `600 ${S.body * 1.05}px ${SERIF}`; x.fillStyle = INK; x.textAlign = 'left'; x.fillText(m.name, bx, base);
+      if (m.role) { x.font = `700 ${S.kick}px ${SANS}`; x.fillStyle = MUTE; spaced(x, m.role.toUpperCase(), bx + bw, base, 1.5, 'right'); }
+      if (k < cabinet.length - 1) { x.fillStyle = 'rgba(29,28,32,.12)'; x.fillRect(bx, by + rowH - 1, bw, 1); }
+    });
+  };
 
-  // house adverts for the rest of the line, where a column has room to spare
-  const ADS = [
-    { bg: RED, fg: '#fff', kick: 'Nueva Spirit', head: 'Every event counts', line: 'All aboard the Spirit Line.', logo: true },
-    { bg: '#1c2a66', fg: '#fff', kick: 'Car 1', head: 'Photo Gallery', line: 'Pictures from every spirit event.' },
-    { bg: '#ead9b8', fg: INK, kick: 'Car 4', head: 'Meet the Cabinet', line: 'Walk to the back of the car. The cab door is open.' },
-    { bg: INK, fg: '#fff', kick: 'On the platform', head: 'The Leaderboard', line: 'Ask the officer for the latest standings.' }
-  ];
-  let adN = 0;
-  const ad = (ax, ay, aw, ah) => {
-    const A = ADS[adN++ % ADS.length];
-    const tall = ah > 640; let k = Math.min(1.25, Math.max(.75, aw / 440)) * (mobile ? 1.35 : 1) * (tall ? 1.3 : 1), lines, sub, ih;
-    for (let n = 0; n < 6; n++) { // as big as the space allows
-      x.font = `700 ${40 * k}px ${SERIF}`; lines = wrap(x, A.head, () => aw - 60);
-      x.font = `italic 400 ${22 * k}px ${SERIF}`; sub = wrap(x, A.line, () => aw - 70);
-      ih = (A.logo || tall ? 110 * k : 0) + 30 * k + lines.length * 46 * k + 16 * k + sub.length * 30 * k;
-      if (ih <= ah - 50) break; k *= Math.max(.6, (ah - 50) / ih);
-    }
-    x.fillStyle = A.bg; x.fillRect(ax, ay, aw, ah);
-    if (A.bg === '#ead9b8') { x.strokeStyle = INK; x.lineWidth = 3; x.strokeRect(ax + 10, ay + 10, aw - 20, ah - 20); }
-    let yy = ay + (ah - ih) / 2;
-    if (A.logo || tall) { x.drawImage(tinted(logo, A.bg === '#ead9b8' ? RED : A.fg, 256), ax + aw / 2 - 45 * k, yy, 90 * k, 90 * k); yy += 110 * k; }
-    x.fillStyle = A.fg; x.globalAlpha = .75; x.font = `800 ${15 * k}px ${SANS}`; spaced(x, A.kick.toUpperCase(), ax + aw / 2, yy + 15 * k, 3 * k, 'center'); x.globalAlpha = 1; yy += 30 * k;
-    x.font = `700 ${40 * k}px ${SERIF}`; x.textAlign = 'center'; lines.forEach(l => { yy += 46 * k; x.fillText(l.words.join(' '), ax + aw / 2, yy - 10 * k); });
-    yy += 16 * k; x.font = `italic 400 ${22 * k}px ${SERIF}`; sub.forEach(l => { yy += 30 * k; x.fillText(l.words.join(' '), ax + aw / 2, yy - 6 * k); }); x.textAlign = 'left';
+  // house promotions for the rest of the line, in the room left at the foot of a column: a photo, a red kicker, a head
+  let pN = 0;
+  const promoText = (A, w) => {
+    x.font = `700 ${S.head}px ${SERIF}`; const hl = balanced(x, A.head, w);
+    x.font = `italic 400 ${S.body}px ${SERIF}`; const ln = wrap(x, A.line, () => w);
+    return { hl, ln, h: S.kick + 14 + hl.length * S.hlh + 6 + ln.length * S.lh };
+  };
+  const promo = (px, py, w, h, A, t) => {
+    const img = A.photo && PHOTO[A.photo];
+    x.fillStyle = INK; x.fillRect(px, py, w, 4); let yy = py + 24;
+    const room = h - 24 - t.h;
+    if (img && room > 120) { const ph = Math.min(room - 22, w * .9); photo(img, px, yy, w, ph); yy += ph + 22; }
+    const ci = doors.findIndex(d => d.id === A.car);
+    x.font = `800 ${S.kick}px ${SANS}`; x.fillStyle = RED; spaced(x, ci < 0 ? 'ON THE PLATFORM' : 'CAR ' + (ci + 1), px, yy + S.kick, S.ksp); yy += S.kick + 14;
+    x.font = `700 ${S.head}px ${SERIF}`; x.fillStyle = INK; t.hl.forEach(l => { x.textAlign = 'left'; x.fillText(l.words.join(' '), px, yy + S.head * .84); yy += S.hlh; });
+    yy += 6; x.font = `italic 400 ${S.body}px ${SERIF}`; x.fillStyle = '#3c3933'; t.ln.forEach(l => { x.fillText(l.words.join(' '), px, yy + S.lh * .74); yy += S.lh; });
+  };
+  const promos = PROMOS.filter(A => A.car !== here && (!A.car || doors.some(d => d.id === A.car)));
+  // one promotion in the room left in this column (with its photo if there's room for one; the last one takes what's
+  // left); false if there isn't room even for its words
+  const promoIn = () => {
+    const gap = y > top + 2 ? 30 : 0, room = bottom - y - gap, A = promos[pN % promos.length]; if (!A) return false;
+    const t = promoText(A, cw), img = A.photo && PHOTO[A.photo], text = 24 + t.h + 10, min = text + 160, max = text + 22 + cw * .72;
+    if (room < text) return false;
+    const h = !img || room < min ? text : room < min + max + 30 ? Math.min(room, text + 22 + cw * .9) : max;
+    promo(colX(), y + gap, cw, h, A, t); pN++; y += gap + h; return true;
   };
   const fill = () => {
-    if (bottom - y > 240) ad(colX(), y + 12, cw, bottom - y - 12);
-    for (let c = col + 1; c < S.cols; c++) { col = c; ad(colX(), top, cw, bottom - top); }
+    for (;;) {
+      if (promoIn()) continue;
+      if (col + 1 < S.cols) { col++; y = top; continue; }
+      break;
+    }
     y = bottom;
   };
 
   newPage();
   const [lead, ...rest] = news.stories, story = st => { headline(st); st.body.forEach((p, j) => para(p, { first: j === 0 })); };
   if (lead) lead.body.forEach((p, k) => para(p, { first: k === 0, cap: k === 0 }));
-  if (mobile) { standingsBox(); rest.forEach((st, k) => { story(st); if (k === 0) eventsBox(); }); if (!rest.length) eventsBox(); fill(); }
-  else { // the stories on the front; the standings and the next stops inside
+  if (mobile) { standingsBox(); rest.forEach((st, k) => { story(st); if (k === 0) eventsBox(); }); if (!rest.length) eventsBox(); guideBox(); cabinetBox(); fill(); }
+  else { // the stories on the front; the standings, the next stops, the guide and the cabinet inside
     rest.forEach(story);
     if (pages.length === 1) { fill(); newPage(); }
-    standingsBox(); eventsBox(); fill();
-    if (pages.length % 2) { newPage(); ad(S.M, top + 10, S.W - 2 * S.M, bottom - top - 10); } // spreads need an even count
+    standingsBox(); eventsBox(); guideBox(); cabinetBox(); fill();
+    if (pages.length % 2) { newPage(); fill(); } // spreads need an even count
   }
+  // the fold: the gutter between a spread's pages, or the crease across a phone's page, shaded as the paper bends
+  pages.forEach((c, i) => {
+    const g = c.getContext('2d'), W = S.W, H = S.H;
+    if (mobile) {
+      const gr = g.createLinearGradient(0, H / 2 - 46, 0, H / 2 + 46);
+      gr.addColorStop(0, 'rgba(80,62,35,0)'); gr.addColorStop(.5, 'rgba(80,62,35,.08)'); gr.addColorStop(.53, 'rgba(255,252,240,.05)'); gr.addColorStop(1, 'rgba(80,62,35,0)');
+      g.fillStyle = gr; g.fillRect(0, H / 2 - 46, W, 92);
+    } else {
+      const inner = i % 2 === 0 ? W : 0, gr = g.createLinearGradient(inner, 0, inner + (i % 2 === 0 ? -110 : 110), 0);
+      gr.addColorStop(0, 'rgba(70,54,30,.2)'); gr.addColorStop(.25, 'rgba(70,54,30,.07)'); gr.addColorStop(1, 'rgba(70,54,30,0)');
+      g.fillStyle = gr; g.fillRect(i % 2 === 0 ? W - 110 : 0, 0, 110, H);
+    }
+  });
   return pages;
 }
 // the back of the paper: newsprint with the columns of the other side showing through, faintly
@@ -227,15 +340,19 @@ function backside(mobile) {
 
 /* ---------------- the newspaper in your hands ---------------- */
 const tex = (canvas, aniso) => { const t = new THREE.CanvasTexture(canvas); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = aniso; return t; };
-// a page (or half a page): x from x0 to x0 + w, y from y0 to y0 + h, its texture's v from v0 to v1; bowed a touch
-function sheet(w, h, x0, y0, v0 = 0, v1 = 1, flipU = false, segs = 14) {
+// a page (or half a page): x from x0 to x0 + w, y from y0 to y0 + h, its texture's v from v0 to v1; `bow` curves it
+// toward you away from the spine (x = 0), as a spread does when it's held open by its outer edges
+const BOW = .022, bowZ = (xx, pw) => BOW * (1 - (1 - Math.min(1, Math.abs(xx) / pw)) ** 2);
+function sheet(w, h, x0, y0, v0 = 0, v1 = 1, flipU = false, segs = 14, bow = 0) {
   const g = new THREE.PlaneGeometry(w, h, segs, 1); g.translate(x0 + w / 2, y0 + h / 2, 0);
   const uv = g.attributes.uv; for (let i = 0; i < uv.count; i++) { uv.setY(i, v0 + (v1 - v0) * uv.getY(i)); if (flipU) uv.setX(i, 1 - uv.getX(i)); }
+  if (bow) { const pos = g.attributes.position; for (let i = 0; i < pos.count; i++) pos.setZ(i, bowZ(pos.getX(i), bow)); g.computeBoundingSphere(); }
   return g;
 }
 export class Reader {
   constructor(st) {
     this.st = st; const mob = this.mobile = st.mobile;
+    setTimeout(preloadNews, 9000); // the paper's photos, once the station has loaded
     const g = this.g = new THREE.Group(); g.visible = false; st.scene.add(g);
     const pw = this.pw = .3, ph = this.ph = mob ? .5 : .41, aniso = this.aniso = st.renderer.capabilities.getMaxAnisotropy();
     const paperMat = () => { const m = new THREE.MeshBasicMaterial({ color: new THREE.Color(.8, .79, .77) }); m.toneMapped = false; return m; }; // newsprint under the car's lights; kept under the bloom threshold
@@ -246,8 +363,8 @@ export class Reader {
     const pm = () => { const m = paperMat(); m.map = this.blank; this.mats.push(m); return m; }; // every page starts blank (the same shader as with its print)
     if (!mob) { // a spread: the left page, the right page hinged at the spine, and a leaf that turns over it
       this.left = new THREE.Group(); this.right = new THREE.Group(); paper.add(this.left, this.right);
-      this.leftFront = two(this.left, sheet(pw, ph, -pw, -ph / 2), pm())[0];
-      this.rightFront = two(this.right, sheet(pw, ph, 0, -ph / 2), pm())[0];
+      this.leftFront = two(this.left, sheet(pw, ph, -pw, -ph / 2, 0, 1, false, 18, pw), pm())[0];
+      this.rightFront = two(this.right, sheet(pw, ph, 0, -ph / 2, 0, 1, false, 18, pw), pm())[0];
     } else { // one tall page, folded across the middle: the top half, the bottom half hinged under it
       this.top = new THREE.Group(); this.bottom = new THREE.Group(); paper.add(this.top, this.bottom);
       const m = pm();
@@ -313,15 +430,17 @@ export class Reader {
     P.rotation.set(L.r + (R.r - L.r) * u + Math.sin(t * .9) * .008 * u, Math.sin(t * .6) * .012 * u, Math.sin(u * Math.PI) * .06 + Math.sin(t * .7) * .006 * u);
     // folded, it's centred in your hands; open, the spread (or the full page) is
     // (folded, the hidden half sits a hair behind, so the two don't fight over the same depth)
-    if (!this.mobile) { this.left.rotation.y = .09; this.right.rotation.y = (Math.PI - .03) * (1 - o) - .09 * o; this.right.position.z = -.004 * (1 - o); P.position.x += pw / 2 * (1 - o); }
+    // (the spread's curve comes in as it opens: folded, the halves lie flat together)
+    if (!this.mobile) { this.left.rotation.y = .09; this.right.rotation.y = (Math.PI - .03) * (1 - o) - .09 * o; this.right.position.z = -.004 * (1 - o); P.position.x += pw / 2 * (1 - o); this.left.scale.z = this.right.scale.z = Math.max(.001, o); }
     else { this.bottom.rotation.x = (Math.PI - .04) * (1 - o) + .02 * o; this.bottom.position.z = -.004 * (1 - o); this.top.rotation.x = -.02 * o; P.position.y -= ph / 4 * (1 - o); }
     // a page turning over: across the spine toward you (or round the left edge, on a phone), curling as it goes
     const T = this.turn;
     if (T) {
       const p = clamp01((performance.now() - T.t0) / T.dur), k = ease(p), a = this.mobile ? (T.d > 0 ? -k * Math.PI : -(1 - k) * Math.PI) : (T.d > 0 ? -.09 - k * (Math.PI - .18) : -(Math.PI - .09) + k * (Math.PI - .18));
       this.leaf.rotation.y = a;
-      const curl = Math.sin(Math.PI * p) * .07 * (T.d > 0 ? 1 : -1), pos = this.leafGeo.attributes.position, b = this.leafBase;
-      for (let i = 0; i < pos.count; i++) { const xx = b[i * 3] / pw; pos.setZ(i, -curl * xx * xx); }
+      // (on a spread the leaf keeps the page's curve, which turns over with it: toward you, flat on edge, then toward you again)
+      const curl = Math.sin(Math.PI * p) * .07 * (T.d > 0 ? 1 : -1), pos = this.leafGeo.attributes.position, b = this.leafBase, bw = this.mobile ? 0 : Math.cos(a);
+      for (let i = 0; i < pos.count; i++) { const xx = b[i * 3] / pw; pos.setZ(i, -curl * xx * xx + (bw && bowZ(b[i * 3], pw) * bw)); }
       pos.needsUpdate = true;
       if (p >= 1) {
         this.turn = null; this.leaf.visible = false;
@@ -334,8 +453,8 @@ export class Reader {
     const inP = (grp, v) => v.applyMatrix4(grp.matrix).applyMatrix4(P.matrix);
     let gl, gr;
     if (!this.mobile) {
-      gl = inP(this.left, V(-pw + .006, -ph / 2 + .028, .01));
-      const spine = V(-.014, -ph / 2 + .028, .03).applyMatrix4(P.matrix), edge = inP(this.right, V(pw - .006, -ph / 2 + .028, .01));
+      gl = inP(this.left, V(-pw + .006, -ph / 2 + .028, .01 + BOW));
+      const spine = V(-.014, -ph / 2 + .028, .03).applyMatrix4(P.matrix), edge = inP(this.right, V(pw - .006, -ph / 2 + .028, .01 + BOW));
       gr = spine.lerp(edge, clamp01(o * 1.3)); // folded, you hold it by the fold; it opens out in your right hand
     } else { // the lower corners: of the folded paper (the fold), then of the open page
       const kk = clamp01(o * 1.2);
@@ -352,6 +471,20 @@ export class Reader {
 }
 
 /* ---------------- the next-stops screen ---------------- */
+// how far off an event is, from its `date` as written ('Fri, Oct 16', 'Oct 16', '2026-10-16'): 'Today', 'Tomorrow',
+// 'In 9 days'; '' when it can't tell (no date, 'TBA', more than two months off, or already past)
+export function dueIn(date, now = new Date()) {
+  if (!date) return '';
+  const s = String(date).replace(/^[a-z]{3,9},?\s+/i, '').trim(), today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  let d = /\d{4}/.test(s) ? new Date(s) : new Date(s + ' ' + now.getFullYear());
+  if (isNaN(d)) return '';
+  d = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  if (!/\d{4}/.test(s) && d < today - 864e5 * 120) d.setFullYear(d.getFullYear() + 1); // 'Jan 9', read in October, is next year's
+  const n = Math.round((d - today) / 864e5);
+  return n < 0 || n > 60 ? '' : n === 0 ? 'Today' : n === 1 ? 'Tomorrow' : `In ${n} days`;
+}
+// The screen over the step down, like the passenger displays in a real train: the line's bar and the time across
+// the top, the stop you're looking at big on the left (when and where underneath), and the stops in order on the right
 export class NextStops {
   constructor(st) {
     this.st = st; this.events = EVENTS; this.k = 0; this.from = 0; this.t0 = -9; this.live = false; this.key = '';
@@ -362,52 +495,76 @@ export class NextStops {
     this.draw(1);
   }
   go(k) { const n = this.events.length; if (!n) return; k = ((k % n) + n) % n; if (k === this.k) return; this.from = this.k; this.k = k; this.t0 = performance.now() / 1000; }
-  // per frame while you're looking at it: the change of page slides, the current stop's ring pulses
+  // per frame while you're looking at it: it moves on by itself, like the real ones; a change of stop cross-fades
   update() {
-    let now = performance.now() / 1000; if (now - this.t0 > 6.5 && this.events.length > 1) { this.go(this.k + 1); this.onAuto && this.onAuto(); } // the display moves on by itself, like the real ones
-    const p = clamp01((now - this.t0) / .45), key = p < 1 ? 'slide' + p.toFixed(2) : 'pulse' + Math.floor(now * 6);
-    if (key !== this.key) { this.key = key; this.draw(p, now); }
+    const now = performance.now() / 1000; if (now - this.t0 > 6.5 && this.events.length > 1) { this.go(this.k + 1); this.onAuto && this.onAuto(); }
+    const p = clamp01((now - this.t0) / .4), key = p < 1 ? 'slide' + p.toFixed(2) : 'still' + Math.floor(now / 20); // (the clock ticks over)
+    if (key !== this.key) { this.key = key; this.draw(p); }
   }
-  draw(p = 1, now = 0) {
-    const x = this.x, W = 1280, H = 720, ev = this.events, n = ev.length, k = this.k;
-    const bg = x.createLinearGradient(0, 0, 0, H); bg.addColorStop(0, '#0d1433'); bg.addColorStop(1, '#141d45'); x.fillStyle = bg; x.fillRect(0, 0, W, H);
-    // the top bar: the line's name in its red, the time
-    x.fillStyle = '#0a0f28'; x.fillRect(0, 0, W, 92); x.fillStyle = '#c9272c'; x.fillRect(0, 0, 430, 92);
-    if (this.mark) x.drawImage(this.mark, 30, 18, 56, 56);
-    x.fillStyle = '#fff'; x.font = `900 36px ${SANS}`; x.textBaseline = 'alphabetic'; spaced(x, 'SPIRIT LINE', 104, 59, 5);
+  // (on a phone the screen is about a third of its pixels across, so it uses bigger type and shows fewer stops at once)
+  draw(p = 1) {
+    const x = this.x, W = 1280, H = 720, ev = this.events, n = ev.length, k = this.k, m = !!(this.st && this.st.mobile);
+    const Z = m ? { tb: 104, logo: 62, line: 36, time: 44, lab: 34, name: 150, nmin: 76, dlab: 28, dval: 52, dsm: 44, dgap: 70, note: 44, slab: 28, show: 4, sname: 42, gap: 128, y0: 236 }
+      : { tb: 84, logo: 50, line: 27, time: 32, lab: 22, name: 112, nmin: 56, dlab: 18, dval: 34, dsm: 30, dgap: 48, note: 30, slab: 18, show: 6, sname: 28, gap: 104, y0: 204 };
+    const PAPER = '#f5f3ef', PANEL = '#e8e5df', LINE = '#c9c4bb', SPIRIT = '#c3242a', GREY = '#77727a';
+    x.textBaseline = 'alphabetic'; x.textAlign = 'left';
+    x.fillStyle = PAPER; x.fillRect(0, 0, W, H);
+    // the top bar: the line in its red, the time
+    const TB = Z.tb; x.fillStyle = SPIRIT; x.fillRect(0, 0, W, TB);
+    if (this.mark) x.drawImage(this.mark, 34, (TB - Z.logo) / 2, Z.logo, Z.logo);
+    const tx = 50 + Z.logo, mid = TB / 2 + Z.line * .36;
+    x.fillStyle = '#fff'; x.font = `800 ${Z.line}px ${SANS}`; const nw = spaced(x, 'SPIRIT LINE', tx, mid, Z.line * .13);
+    x.fillStyle = 'rgba(255,255,255,.4)'; x.fillRect(tx + nw + 22, TB / 2 - Z.line * .62, 2, Z.line * 1.25);
+    x.fillStyle = 'rgba(255,255,255,.8)'; x.font = `500 ${Z.line}px ${TEXT}`; x.fillText('Events', tx + nw + 46, mid);
     const tm = new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-    x.font = `700 38px ${SANS}`; x.fillStyle = '#fff'; x.textAlign = 'right'; x.fillText(tm, W - 40, 60); x.textAlign = 'left';
-    if (!n) { x.font = `800 60px ${SANS}`; x.fillStyle = '#fff'; x.fillText('No events yet', 70, 330); this.tex.needsUpdate = true; return; }
-    // the stop: a label, the event's name, when and where. A change of page slides the old one out and the new one in
-    const card = (i, off, alpha) => {
-      if (alpha <= 0) return; const e = ev[i]; x.save(); x.globalAlpha = alpha; x.translate(off, 0);
-      x.font = `800 32px ${SANS}`; x.fillStyle = '#ffad1f'; spaced(x, i === 0 ? 'NEXT STOP' : `STOP ${i + 1}`, 70, 170, 7);
-      let fs = 136; x.font = `900 ${fs}px ${SANS}`; try { x.fontStretch = 'expanded'; } catch (er) {}
-      const nw = x.measureText(e.name.toUpperCase()).width; if (nw > W - 140) { fs *= (W - 140) / nw; x.font = `900 ${fs}px ${SANS}`; }
-      x.fillStyle = '#fff'; x.fillText(e.name.toUpperCase(), 66, 170 + 30 + fs * .8); try { x.fontStretch = 'normal'; } catch (er) {}
-      const when = [e.date, e.time].filter(Boolean).join('  ·  ') || 'Date to be announced';
-      x.font = `700 46px ${SANS}`; x.fillStyle = '#ffd27a'; x.fillText(when, 70, 400);
-      const sub = [e.place, e.note].filter(Boolean).join('  ·  ');
-      if (sub) { x.font = `500 36px ${TEXT}`; x.fillStyle = '#c3c8e6'; x.fillText(sub, 70, 456); }
+    x.fillStyle = '#fff'; x.font = `700 ${Z.time}px ${SANS}`; x.textAlign = 'right'; x.fillText(tm, W - 40, TB / 2 + Z.time * .36); x.textAlign = 'left';
+    const PX = 820; // the stops panel
+    if (!n) { x.font = `700 ${Z.name * .5}px ${SANS}`; x.fillStyle = INK; x.fillText('No events yet', 64, 330); this.tex.needsUpdate = true; return; }
+    // the stop: which one, its name, then when and where in labelled columns
+    const card = (i, alpha) => {
+      if (alpha <= 0) return; const e = ev[i]; x.save(); x.globalAlpha = alpha;
+      const L = 64, R = PX - 56, due = dueIn(e.date);
+      let fs = Z.name; x.font = `800 ${fs}px ${SANS}`; let lines = wrap(x, e.name, () => R - L);
+      while ((lines.length > 2 || lines.some(l => l.w > R - L)) && fs > Z.nmin) { fs -= 4; x.font = `800 ${fs}px ${SANS}`; lines = wrap(x, e.name, () => R - L); }
+      if (lines.length > 2) { lines = lines.slice(0, 2); lines[1].words = [...lines[1].words]; while (lines[1].words.length > 1 && x.measureText(lines[1].words.join(' ') + '…').width > R - L) lines[1].words.pop(); lines[1].words[lines[1].words.length - 1] += '…'; }
+      const cols = [['DATE', e.date || 'To be announced'], ['TIME', e.time], ['PLACE', e.place]].filter(c => c[1]);
+      // the block (label, name, rule, details, note) centred in the space under the bar
+      const hName = lines.length * fs * 1.02, hBlock = Z.lab + 14 + hName + 30 + Z.dgap + Z.dlab + Z.dval * 1.4 + (e.note ? Z.note * 3 : 0);
+      let y = TB + Math.max(30, (H - TB - hBlock) / 2) + Z.lab;
+      x.font = `800 ${Z.lab}px ${SANS}`; x.fillStyle = SPIRIT; const lw = spaced(x, i === 0 ? 'NEXT STOP' : `STOP ${i + 1}`, L, y, Z.lab * .18);
+      if (due) { x.font = `700 ${Z.lab}px ${SANS}`; x.fillStyle = GREY; spaced(x, '·  ' + due.toUpperCase(), L + lw + 16, y, Z.lab * .14); }
+      x.font = `800 ${fs}px ${SANS}`; x.fillStyle = INK; y += 14;
+      lines.forEach(l => { y += fs * 1.02; x.fillText(l.words.join(' '), L - 4, y - fs * .2); });
+      y += 30; x.fillStyle = LINE; x.fillRect(L, y, R - L, 2); y += Z.dgap + Z.dlab * .5;
+      let cx = L; const cwid = (R - L) / (m ? Math.min(2, cols.length) : Math.max(2, cols.length));
+      cols.slice(0, m ? 2 : 3).forEach(([lab, val], j) => {
+        x.font = `700 ${Z.dlab}px ${SANS}`; x.fillStyle = GREY; spaced(x, lab, cx, y, Z.dlab * .16);
+        x.font = `600 ${val.length > 16 ? Z.dsm : Z.dval}px ${TEXT}`; x.fillStyle = e.date || j ? INK : GREY;
+        let v = val; while (x.measureText(v).width > cwid - 20 && v.length > 4) v = v.slice(0, -2).trimEnd() + '…';
+        x.fillText(v, cx, y + Z.dval * 1.4); cx += cwid;
+      });
+      if (e.note) { const ny = y + Z.dval * 1.4 + Z.note * 2.2; x.fillStyle = SPIRIT; x.fillRect(L, ny - Z.note, 5, Z.note * 1.4); x.font = `600 ${Z.note}px ${TEXT}`; x.fillStyle = INK; x.fillText(e.note, L + 24, ny); }
       x.restore();
     };
-    const sp = ease(p), dir = this.k >= this.from ? 1 : -1;
-    if (p < 1) card(this.from, -dir * 90 * sp, 1 - sp);
-    card(k, dir * 90 * (1 - sp), sp);
-    // the route along the bottom: every event a stop, the current one ringed
-    const y0 = 590, xa = 110, xb = W - 110, xs = i => n === 1 ? (xa + xb) / 2 : xa + (xb - xa) * i / (n - 1);
-    x.lineCap = 'round'; x.strokeStyle = '#3a4676'; x.lineWidth = 10; x.beginPath(); x.moveTo(xa - 40, y0); x.lineTo(xb + 40, y0); x.stroke();
-    x.strokeStyle = '#ffad1f'; x.beginPath(); x.moveTo(xa - 40, y0); x.lineTo(xs(k), y0); x.stroke();
-    const pulse = (now * 1.4) % 1;
-    for (let i = 0; i < n; i++) {
-      const cx = xs(i), on = i === k;
-      if (on) { x.beginPath(); x.arc(cx, y0, 24 + pulse * 26, 0, Math.PI * 2); x.strokeStyle = `rgba(255,173,31,${.55 * (1 - pulse)})`; x.lineWidth = 5; x.stroke(); }
-      x.beginPath(); x.arc(cx, y0, on ? 22 : 14, 0, Math.PI * 2); x.fillStyle = on ? '#ffad1f' : i < k ? '#ffad1f' : '#fff'; x.fill();
-      x.lineWidth = 6; x.strokeStyle = '#0d1433'; x.stroke();
-      x.font = `${on ? 700 : 600} 25px ${TEXT}`; x.fillStyle = on ? '#ffd27a' : '#dfe3f5'; x.textAlign = 'center';
-      const lines = wrap(x, ev[i].name, () => Math.min(230, (xb - xa) / Math.max(1, n - 1) - 16));
-      lines.slice(0, 2).forEach((l, j) => x.fillText(l.words.join(' '), cx, y0 + 62 + j * 30));
-      x.textAlign = 'left';
+    const sp = ease(p), fade = p < 1 && this.from !== k;
+    if (fade) card(this.from, 1 - Math.min(1, sp * 2)); // the old stop fades out, then the new one in
+    card(k, fade ? Math.max(0, sp * 2 - 1) : 1);
+    // the stops, in order down a vertical line; the one shown is marked, a window of them if there are more
+    x.fillStyle = PANEL; x.fillRect(PX, TB, W - PX, H - TB);
+    x.font = `800 ${Z.slab}px ${SANS}`; x.fillStyle = GREY; spaced(x, 'STOPS', PX + 48, TB + Z.slab * 2.2, Z.slab * .22);
+    const show = Math.min(n, Z.show), first = Math.max(0, Math.min(k - 1, n - show)), y0 = Z.y0, gap = show > 1 ? Math.min(Z.gap, (H - 76 - y0) / (show - 1)) : 0, lx = PX + 62;
+    x.fillStyle = SPIRIT; if (show > 1) x.fillRect(lx - 3, y0, 6, gap * (show - 1));
+    if (first > 0) { x.fillRect(lx - 3, y0 - 40, 6, 40); }
+    if (first + show < n) { x.fillRect(lx - 3, y0 + gap * (show - 1), 6, 40); }
+    for (let j = 0; j < show; j++) {
+      const i = first + j, cy = y0 + gap * j, on = i === k, e = ev[i], sub = !m && e.date;
+      if (on) { x.fillStyle = 'rgba(195,36,42,.09)'; x.fillRect(PX, cy - gap / 2 + 4, W - PX, gap - 8); x.fillStyle = SPIRIT; x.fillRect(PX, cy - gap / 2 + 4, 6, gap - 8); }
+      x.beginPath(); x.arc(lx, cy, on ? 15 : 11, 0, Math.PI * 2); x.fillStyle = on ? SPIRIT : PAPER; x.fill(); x.lineWidth = 6; x.strokeStyle = SPIRIT; x.stroke();
+      if (on) { x.beginPath(); x.arc(lx, cy, 5, 0, Math.PI * 2); x.fillStyle = '#fff'; x.fill(); }
+      x.font = `${on ? 700 : 500} ${Z.sname}px ${TEXT}`; x.fillStyle = INK; let nm = e.name;
+      while (x.measureText(nm).width > W - lx - 72 && nm.length > 4) nm = nm.slice(0, -2).trimEnd() + '…';
+      x.fillText(nm, lx + 34, cy + (sub ? -3 : Z.sname * .36));
+      if (sub) { x.font = `600 19px ${TEXT}`; x.fillStyle = GREY; x.fillText(e.date, lx + 34, cy + 25); }
     }
     this.tex.needsUpdate = true;
   }
@@ -429,8 +586,9 @@ const fire = (T, e, k, at, fn) => { if (e >= at && !T.fired[k]) { T.fired[k] = 1
 
 // Weekly Newsletter: down to the lower deck, into the bay, sit, and read
 export function newsVisit(st, i, cb, standings = []) {
-  const pages = typeset({ mobile: st.mobile, news: NEWSLETTER, standings, events: EVENTS, logo: st.logo });
+  const set = () => typeset({ mobile: st.mobile, news: NEWSLETTER, standings, events: EVENTS, logo: st.logo }), had = photosIn(), pages = set();
   const T = base(st, i, cb), L = T.L, R = READ_SEAT;
+  preloadNews().then(() => { if (st.trip === T && !st.reader.g.visible && photosIn() > had) st.reader.setPages(set()); });
   T.walk = new THREE.CatmullRomCurve3([T.v0, L(.42, 1.61, -.42), L(1.0, 1.56, -.7), L(1.55, 1.49, -.44), L(2.47, 1.48, -.32)]);
   T.walkLen = T.walk.getLength();
   T.bay = L(2.42, 1.48, .1); T.seat = L(R.x + .1, 1.27, R.z); T.win = L(2.75, 1.38, 1.4); T.across = L(3.8, 1.2, R.z);

@@ -47,8 +47,10 @@ The gallery starts with a few pictures of the Spirit Line itself; delete their l
 ## The weekly newsletter
 Edit `NEWSLETTER` in `hub/doors.js` each week: the `issue` number, the `week`, and the
 `stories` (a `kicker` label, a `head`line and the `body` paragraphs; the first story leads
-the front page). The newspaper adds the live Spirit Points standings and the next events itself,
-and turns its own pages when there's more than fits.
+the front page). A story can have a `photo` (a file in `assets/gallery/`) and a `caption`:
+the lead story's prints across the front page under its headline. The newspaper adds the live
+Spirit Points standings, the next events, a guide to the cars and the cabinet itself, fills spare
+room with small promotions for the other cars, and turns its own pages when there's more than fits.
 
 ## Events
 Edit `EVENTS` in `hub/doors.js`, in order, soonest first. Each one shows up as a stop on the screen in the Events car:
@@ -57,7 +59,7 @@ Edit `EVENTS` in `hub/doors.js`, in order, soonest first. Each one shows up as a
 { name: 'Homecoming', date: 'Fri, Oct 16', time: '6 pm', place: 'Main field', note: 'Wear red' },
 ```
 
-Leave out `date` and the screen says "Date to be announced".
+Leave out `date` and the screen says "Date to be announced". Write the date like `Fri, Oct 16` and the screen also counts down ("In 9 days").
 
 ## Meet the Cabinet
 The cabinet stand in the cab at the back of the train. To change who's there, edit

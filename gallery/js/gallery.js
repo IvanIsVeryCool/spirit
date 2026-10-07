@@ -15,7 +15,7 @@ const grid = $('grid'), cards = PHOTOS.map((p, i) => {
   if (p.w && p.h) { img.width = p.w; img.height = p.h; }
   const show = () => setTimeout(() => b.classList.add('in'), reduce ? 0 : Math.min(i, 8) * 70);
   img.onload = show; img.onerror = () => { b.hidden = true; };
-  img.src = src(p); b.appendChild(img);
+  img.src = src(p); const f = document.createElement('span'); f.className = 'frame'; f.appendChild(img); b.appendChild(f);
   if (p.caption) { const c = document.createElement('span'); c.className = 'cap'; c.textContent = p.caption; b.appendChild(c); }
   b.setAttribute('aria-label', (p.caption || 'Photo') + (p.date ? ', ' + fmtDate(p.date) : ''));
   b.addEventListener('click', () => open(i));

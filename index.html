@@ -152,15 +152,15 @@ body.entered .replay{display:flex}
 .crew-back{position:absolute;left:50%;white-space:nowrap;bottom:calc(28px + env(safe-area-inset-bottom));transform:translate(-50%,12px);opacity:0;pointer-events:none;display:inline-flex;align-items:center;gap:10px;padding:11px 18px 11px 16px;border-radius:var(--r);background:#fff;color:var(--ink);font-family:var(--display);font-size:12.5px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;box-shadow:var(--lift);transition:opacity .5s ease,transform .6s var(--ease),background-color .2s}
 .crew-back:hover{background:#f1ece2}
 .back::before{content:"";width:7px;height:7px;margin-right:1px;border-left:2px solid currentColor;border-bottom:2px solid currentColor;transform:rotate(45deg)}
-body.visiting .crew-back{opacity:1;transform:translate(-50%,0);pointer-events:auto}
+body.visiting .crew-back:not(.board-back){opacity:1;transform:translate(-50%,0);pointer-events:auto}
 /* the photo gallery, over the inside of car 1: the evening sky, frosted, with the car behind it */
-#gallery{position:fixed;inset:0;z-index:31;color:#fff;background:linear-gradient(180deg,rgba(28,42,102,.8) 0%,rgba(116,104,171,.74) 55%,rgba(255,176,122,.72) 100%);-webkit-backdrop-filter:blur(16px) saturate(1.1);backdrop-filter:blur(16px) saturate(1.1);opacity:0;transition:opacity .6s ease}
+#gallery{position:fixed;inset:0;z-index:31;color:#fff;background:linear-gradient(180deg,rgba(16,21,50,.9) 0%,rgba(34,32,70,.87) 60%,rgba(84,52,66,.85) 100%);-webkit-backdrop-filter:blur(16px) saturate(1.1);backdrop-filter:blur(16px) saturate(1.1);opacity:0;transition:opacity .6s ease}
 #gallery.open{opacity:1}
 .gal-scroll{position:absolute;inset:0;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;padding:calc(30px + env(safe-area-inset-top,0px)) clamp(16px,3vw,36px) calc(110px + env(safe-area-inset-bottom,0px))}
 .gal-head,.gal-scroll .grid,.gal-scroll .empty{max-width:1480px;margin-left:auto;margin-right:auto}
-.gal-head{margin-bottom:22px;transform:translateY(10px);transition:transform .8s var(--ease)}
+.gal-head{margin-bottom:26px;padding-bottom:20px;border-bottom:1px solid rgba(255,255,255,.18);transform:translateY(10px);transition:transform .8s var(--ease)}
 #gallery.open .gal-head{transform:none}
-.gal-head h2{margin:0;font-family:var(--display);font-weight:850;font-stretch:112%;font-size:clamp(34px,6vw,64px);line-height:.95;letter-spacing:-.01em;text-shadow:0 2px 30px rgba(20,10,40,.35)}
+.gal-head h2{margin:0;font-family:var(--display);font-weight:800;font-size:clamp(30px,4.4vw,50px);line-height:1;letter-spacing:-.015em}
 #gallery .gal-back{position:fixed;z-index:35}
 /* the leaderboard on the billboard: its own way back sits under it (the one at the foot of the board scrolls away) */
 .board-back{position:fixed;z-index:16}
@@ -170,15 +170,18 @@ body.onboard .board-back{opacity:1;transform:translate(-50%,0);pointer-events:au
 
 /* the newsletter and the events screen: page arrows and the way back */
 #scene-ui{position:fixed;inset:0;z-index:30;pointer-events:none}
-.sc-nav{position:absolute;left:50%;bottom:calc(84px + env(safe-area-inset-bottom));display:flex;align-items:center;gap:4px;padding:3px;border-radius:var(--r);background:rgba(18,16,36,.62);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);color:#fff;box-shadow:0 10px 26px -12px rgba(10,8,30,.7);transform:translate(-50%,12px);opacity:0;pointer-events:none;transition:opacity .5s ease,transform .6s var(--ease)}
-body.visiting .sc-nav{opacity:1;}
+/* the controls in a row: the pages (or stops) and the way back, the same white plates */
+.sc-bar{position:absolute;left:50%;bottom:calc(28px + env(safe-area-inset-bottom));display:flex;align-items:center;gap:10px;transform:translate(-50%,12px);opacity:0;pointer-events:none;transition:opacity .5s ease,transform .6s var(--ease)}
+body.visiting .sc-bar{opacity:1;transform:translate(-50%,0);pointer-events:auto}
+.sc-bar .crew-back,body.visiting .sc-bar .crew-back{position:static;transform:none;opacity:1;pointer-events:auto;transition:background-color .2s}
+.sc-nav{display:flex;align-items:center;gap:2px;padding:3px;border-radius:var(--r);background:#fff;color:var(--ink);box-shadow:var(--lift)}
 .sc-nav[hidden]{display:none}
-body.visiting .sc-nav{transform:translate(-50%,0);pointer-events:auto}
-.sc-arrow{display:grid;place-items:center;width:38px;height:36px;border-radius:4px;transition:background-color .2s,opacity .2s}
-.sc-arrow:hover{background:rgba(255,255,255,.16)}
+.sc-arrow{display:grid;place-items:center;width:38px;height:34px;border-radius:4px;transition:background-color .2s,opacity .2s}
+.sc-arrow:hover{background:#f1ece2}
 .sc-arrow svg{width:16px;height:16px}
-.sc-arrow[disabled]{opacity:.3;pointer-events:none}
-.sc-count{min-width:52px;text-align:center;font-family:var(--display);font-size:12px;font-weight:700;letter-spacing:.12em;font-variant-numeric:tabular-nums}
+.sc-arrow[disabled]{opacity:.25;pointer-events:none}
+.sc-count{min-width:56px;text-align:center;font-family:var(--display);font-size:12.5px;font-weight:700;letter-spacing:.1em;font-variant-numeric:tabular-nums}
+@media (max-width:520px){.sc-bar{flex-direction:column;gap:8px}}
 @media (max-width:560px){#crew .tag{padding:5px 10px 6px}#crew .tag b{font-size:12px}#crew .tag span{font-size:9px}}
 /* the officer: his label on the platform, and what he says */
 .cop-tag{position:fixed;left:0;top:0;z-index:15;display:flex;align-items:center;gap:8px;padding:7px 12px 7px 10px;border-radius:4px;background:var(--navy);color:#fff;box-shadow:var(--lift),inset 0 0 0 1px rgba(255,255,255,.08);opacity:0;pointer-events:none;transition:opacity .5s ease,background-color .2s;will-change:transform}
@@ -394,7 +397,7 @@ body.static .board{position:relative;left:auto;bottom:auto;opacity:1;transform:n
   <button class="lb-btn lb-close" id="lb-close" type="button" aria-label="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
   <div class="lb-foot"><p class="lb-cap" id="lb-cap"></p><p class="lb-meta" id="lb-meta"></p></div>
 </div>
-<div id="scene-ui" hidden><div class="sc-nav" id="sc-nav"><button class="sc-arrow" id="sc-prev" type="button" aria-label="Previous"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg></button><span class="sc-count" id="sc-count"></span><button class="sc-arrow" id="sc-next" type="button" aria-label="Next"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></button></div><button class="crew-back sc-back back" id="sc-back" type="button">Back to the platform</button><div class="sr-only" id="sc-text" aria-live="polite"></div></div>
+<div id="scene-ui" hidden><div class="sc-bar"><div class="sc-nav" id="sc-nav"><button class="sc-arrow" id="sc-prev" type="button" aria-label="Previous"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg></button><span class="sc-count" id="sc-count"></span><button class="sc-arrow" id="sc-next" type="button" aria-label="Next"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></button></div><button class="crew-back sc-back back" id="sc-back" type="button">Back to the platform</button></div><div class="sr-only" id="sc-text" aria-live="polite"></div></div>
 <div id="crew" hidden><div id="crew-tags" aria-live="polite"></div><button class="crew-back back" id="crew-back" type="button">Back to the platform</button></div>
 <button class="cop-tag" id="cop-tag" type="button" aria-label="Leaderboard: ask the officer for the standings"><svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M2 9h3v5H2zM6.5 5h3v9h-3zM11 2h3v12h-3z"/></svg><b>Leaderboard</b></button>
 <div class="talk" id="talk" hidden role="group" aria-label="The officer's sign"><p class="sr-only" id="talk-text" aria-live="polite"></p>

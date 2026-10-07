@@ -387,15 +387,28 @@ export class Station {
   // desk with its screens, a ceiling light, and the cabinet (the "crew", from CABINET in doors.js) waiting for you.
   _cabRoom(car) {
     const g = new THREE.Group(); g.position.x = CAR_L / 2; g.scale.x = -1; car.add(g); // nose-local, mirrored like the nose
-    const geo = noseLiningGeometry(.07), pos = geo.attributes.position, col = new Float32Array(pos.count * 3), base = new THREE.Color(0x5a5f6b);
-    for (let k = 0; k < pos.count; k++) { const y = pos.getY(k), x = -pos.getX(k), lit = .42 + .5 * Math.min(1, Math.max(0, (y - .3) / 3.2)) + .25 * Math.max(0, 1 - Math.abs(x - .7) / 1.2) * Math.min(1, Math.max(0, (y - 2.2) / 1.2)); col.set([base.r * lit, base.g * lit, base.b * lit * 1.04], k * 3); }
+    const geo = noseLiningGeometry(.07), pos = geo.attributes.position, col = new Float32Array(pos.count * 3);
+    for (let k = 0; k < pos.count; k++) { const y = pos.getY(k), x = -pos.getX(k), lit = .55 + .32 * Math.min(1, Math.max(0, (y - .3) / 3.2)) + .12 * Math.max(0, 1 - Math.abs(x - .7) / 1.2) * Math.min(1, Math.max(0, (y - 2.2) / 1.2)); col.set([lit, lit, lit * 1.02], k * 3); }
     geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+    // the walls, painted round the section like the saloon's: charcoal below the windows, the Spirit red line at the sill,
+    // warm grey panels above with their seams, a lighter ceiling (the lining's v runs round the section; its first ring
+    // says which height each v is at)
+    const ring = [];
+    { const uvA = geo.attributes.uv; for (let k = 0; k < pos.count && (k === 0 || uvA.getY(k) > uvA.getY(k - 1)); k++) ring.push([uvA.getY(k), pos.getY(k)]); }
+    const yAt = v => { let i = 0; while (i < ring.length - 2 && ring[i + 1][0] < v) i++; const [v0, y0] = ring[i], [v1, y1] = ring[i + 1]; return y0 + (y1 - y0) * ((v - v0) / ((v1 - v0) || 1)); };
+    const wc = document.createElement('canvas'); wc.width = 256; wc.height = 512; const wx = wc.getContext('2d');
+    for (let r = 0; r < 512; r++) {
+      const y = yAt(1 - (r + .5) / 512);
+      wx.fillStyle = y < 1.12 ? '#2c2f36' : y < 1.19 ? '#a3262b' : y < 1.215 ? '#d9d4ca' : y > 3.35 ? '#bdb8af' : '#b2ada3'; wx.fillRect(0, r, 256, 1);
+    }
+    wx.fillStyle = 'rgba(40,36,30,.25)'; for (let u = 1; u < 6; u++) wx.fillRect(u * 256 / 6, 0, 2, 512); // panel seams along the nose
+    const wallMap = new THREE.CanvasTexture(wc); wallMap.colorSpace = THREE.SRGBColorSpace;
     const a = document.createElement('canvas'); a.width = a.height = 512; const x = a.getContext('2d'), U = u => u * 512, R = v => (1 - v) * 512;
     x.fillStyle = '#fff'; x.fillRect(0, 0, 512, 512); x.fillStyle = '#000';
     const hole = (s0, s1, v0, v1, r) => { x.beginPath(); x.roundRect(U(s0), R(v1), U(s1) - U(s0), R(v0) - R(v1), r); x.fill(); };
     hole(.5, .84, .32, .68, 10); hole(.21, .41, .17, .24, 5); hole(.21, .41, .76, .83, 5);
     const am = new THREE.CanvasTexture(a);
-    const lining = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ vertexColors: true, alphaMap: am, alphaTest: .5 }));
+    const lining = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ vertexColors: true, map: wallMap, alphaMap: am, alphaTest: .5 }));
     lining.userData.keep = true; lining.userData.noShadow = true; g.add(lining);
     const flat = (w, h, d, c, px, py, pz, parent = g) => { const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), new THREE.MeshBasicMaterial({ color: c })); m.position.set(px, py, pz); m.userData.noShadow = true; parent.add(m); return m; };
     const END = CAR_L / 2 - .22;
@@ -405,12 +418,16 @@ export class Station {
     [[-.45, 0x7fd0ff], [0, 0xffc46b], [.45, 0x9cff9a]].forEach(([z, c]) => { const sc = new THREE.Mesh(new THREE.PlaneGeometry(.32, .2), new THREE.MeshBasicMaterial({ color: new THREE.Color(c).multiplyScalar(.75) })); sc.position.set(.03, .035, z); sc.rotation.set(-Math.PI / 2, 0, -Math.PI / 2); desk.add(sc); });
     const lamp = new THREE.Mesh(new THREE.BoxGeometry(.9, .03, .22), new THREE.MeshBasicMaterial({ color: new THREE.Color(1.5, 1.32, 1.05) })); lamp.material.toneMapped = false; lamp.position.set(-.75, 3.62, 0); g.add(lamp);
     // the crew: Mini Characters for now (CABINET in doors.js says who), lit a little from within so the dim cab doesn't lose them
-    const mat = library().material.clone(); mat.emissiveMap = mat.map; mat.emissive = new THREE.Color(.3, .27, .25);
+    // (just enough that the bloom leaves their faces alone)
+    const mat = library().material.clone(); mat.emissiveMap = mat.map; mat.emissive = new THREE.Color(.19, .17, .16);
     const n = CABINET.length;
+    // in a shallow arc across the cab, evenly spaced with room between them, a little smaller than the passengers so the
+    // whole group fits the cab's view from the doorway, the windshield behind them
+    // (a phone's view is too narrow for a row: there they stand like a group photo, the outer ones a step further back)
     this.crew = CABINET.map((m, i) => {
-      const spread = Math.min(this.mobile ? 1.05 : 1.8, .58 * (n - 1)), z = n > 1 ? (i / (n - 1) - .5) * spread : 0, p = new Person(m.kind);
-      p.mesh.material = mat; p.pose('idle', { fade: 0, phase: i * .37 }); p.root.scale.multiplyScalar(.88); // the size of the passengers
-      p.root.position.set(CAR_L / 2 + 1.55 - Math.abs(z) * .25, FLOOR - .12, z); p.root.rotation.y = -Math.PI / 2; // facing the windshield until you come in
+      const spread = Math.min(this.mobile ? .9 : 1.6, .52 * (n - 1)), z = n > 1 ? (i / (n - 1) - .5) * spread : 0, p = new Person(m.kind);
+      p.mesh.material = mat; p.pose('idle', { fade: 0, phase: i * .37 }); p.root.scale.multiplyScalar(this.mobile ? .6 : .72);
+      p.root.position.set(this.mobile ? CAR_L / 2 + 1.32 + Math.abs(z) * .56 : CAR_L / 2 + 1.62 - z * z * .3, FLOOR - .12, z); p.root.rotation.y = -Math.PI / 2; // facing the windshield until you come in
       p.root.visible = false; car.add(p.root); p.info = m; p.turn = 0;
       return p;
     });
@@ -937,11 +954,11 @@ export class Station {
       p1: L(0, 1.75, z + 3.4), l1: L(0, 1.6, -1.4),
       // the walk: from the vestibule round the partition, down the step and along the aisle to the cab door
       walk: new THREE.CatmullRomCurve3([L(0, 1.62, .35), L(.55, 1.6, -.15), L(1.15, 1.56, -.45), L(1.9, 1.5, dz), L(3.3, 1.5, dz)]),
-      into: new THREE.CatmullRomCurve3([L(3.3, 1.5, dz), L(3.72, 1.5, dz), L(3.86, 1.42, -.14)]),
-      door: L(D.x, 1.35, dz), crew: L(CAR_L / 2 + 1.45, 1.05, 0), fired: {}, fov: this.camera.fov
+      into: new THREE.CatmullRomCurve3([L(3.3, 1.5, dz), L(3.72, 1.48, dz), this.mobile ? L(3.86, 1.24, -.06) : L(3.9, 1.34, -.1)]),
+      door: L(D.x, 1.35, dz), crew: this.mobile ? L(CAR_L / 2 + 1.45, .94, 0) : L(CAR_L / 2 + 1.6, 1.0, 0), fired: {}, fov: this.camera.fov
     };
-    // a wider view once you're in the cab, so the whole crew fits (about 80 degrees across, within reason on a tall phone)
-    const T = this.trip; T.resize = () => { T.fovIn = Math.min(84, Math.max(T_FOV_MIN, THREE.MathUtils.radToDeg(2 * Math.atan(Math.tan(THREE.MathUtils.degToRad(40)) / this.camera.aspect)))); };
+    // a wider view once you're in the cab, so the whole crew fits (about 72 degrees across, within reason on a tall phone)
+    const T = this.trip; T.resize = () => { T.fovIn = Math.min(84, Math.max(T_FOV_MIN, THREE.MathUtils.radToDeg(2 * Math.atan(Math.tan(THREE.MathUtils.degToRad(36)) / this.camera.aspect)))); };
     T.resize();
     this.trip.walkLen = this.trip.walk.getLength();
     this.doors[i].target = 1.25;
@@ -961,7 +978,7 @@ export class Station {
   crewTags() {
     const v = new THREE.Vector3();
     return this.crew.map(p => {
-      p.bones.head.getWorldPosition(v); v.y += .5; v.project(this.camera);
+      p.bones.head.getWorldPosition(v); v.y += .44; v.project(this.camera);
       return { x: (v.x + 1) / 2 * innerWidth, y: (1 - v.y) / 2 * innerHeight, on: v.z < 1 && Math.abs(v.x) < 1.2 && Math.abs(v.y) < 1.2 };
     });
   }

@@ -13,14 +13,15 @@ export const DOORS = [
 /* =====================================================================
    THE CABINET — who's in the cab when you visit Meet the Cabinet.
    One entry per person: `name` shows above them, `role` underneath it.
+     { name: 'Alex Kim', role: 'President', kind: 3 },
    `kind` picks the 3D model (0–11, Kenney's Mini Characters for now;
    these are stand-ins until each member's own model is made).
    ===================================================================== */
 export const CABINET = [
-  { name: 'President', role: 'Spirit Cabinet', kind: 3 },
-  { name: 'Vice President', role: 'Spirit Cabinet', kind: 6 },
-  { name: 'Secretary', role: 'Spirit Cabinet', kind: 8 },
-  { name: 'Treasurer', role: 'Spirit Cabinet', kind: 10 }
+  { name: 'President', role: '', kind: 3 },
+  { name: 'Vice President', role: '', kind: 6 },
+  { name: 'Secretary', role: '', kind: 8 },
+  { name: 'Treasurer', role: '', kind: 10 }
 ];
 
 export const SITE = {
@@ -47,7 +48,10 @@ export const EVENTS = [
    Each week: change `issue` and `week`, and the stories. A story is a
    `head`line, an optional `kicker` (the small red label over it) and
    `body`: a list of paragraphs. The first story leads the front page.
-   The Spirit Points standings and the next events are added by themselves.
+   A story can have a `photo` (a file in assets/gallery/) and a `caption`;
+   the lead story's prints across the front page, under its headline.
+   The Spirit Points standings, the next events, a guide to the cars and
+   the cabinet are added by themselves.
    ===================================================================== */
 export const NEWSLETTER = {
   issue: 1,
@@ -56,6 +60,8 @@ export const NEWSLETTER = {
     {
       kicker: 'All aboard',
       head: 'The Spirit Cabinet gets a train',
+      photo: 'spirit-line-arrival.jpg',
+      caption: 'The Spirit Line pulls in at golden hour. Every car is a part of the cabinet.',
       body: [
         'Nueva spirit has a new home online, and it runs on rails. Every car of the Spirit Line is a part of the cabinet’s work: step into a car and you’re there.',
         'Car 1 is the photo gallery, with pictures from spirit events. You’re reading car 2, the weekly newsletter. Car 3 shows the next stops: the events coming up. At the back of car 4, the cab door opens and you can meet the cabinet.',
