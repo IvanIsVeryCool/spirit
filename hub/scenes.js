@@ -357,7 +357,7 @@ export class NextStops {
     this.st = st; this.events = EVENTS; this.k = 0; this.from = 0; this.t0 = -9; this.live = false; this.key = '';
     const c = this.canvas = document.createElement('canvas'); c.width = 1280; c.height = 720; this.x = c.getContext('2d');
     this.tex = tex(c, 8);
-    this.mat = new THREE.MeshBasicMaterial({ map: this.tex, color: new THREE.Color(.8, .8, .8) }); // just under the bloom threshold: crisp type, no glow this.mat.toneMapped = false;
+    this.mat = new THREE.MeshBasicMaterial({ map: this.tex, color: new THREE.Color(.8, .8, .8) }); this.mat.toneMapped = false; // just under the bloom threshold: crisp type, no glow
     this.mark = st.logo ? tinted(st.logo, '#ffffff', 128) : null;
     this.draw(1);
   }
@@ -434,9 +434,14 @@ export function newsVisit(st, i, cb, standings = []) {
   T.walk = new THREE.CatmullRomCurve3([T.v0, L(.42, 1.61, -.42), L(1.0, 1.56, -.7), L(1.55, 1.49, -.44), L(2.47, 1.48, -.32)]);
   T.walkLen = T.walk.getLength();
   T.bay = L(2.42, 1.48, .1); T.seat = L(R.x + .1, 1.27, R.z); T.win = L(2.75, 1.38, 1.4); T.across = L(3.8, 1.2, R.z);
-  const a = st.camera.aspect; T.fovIn = Math.min(80, Math.max(52, THREE.MathUtils.radToDeg(2 * Math.atan(Math.tan(THREE.MathUtils.degToRad(36)) / a))));
   const rd = st.reader; rd.setPages(pages); rd.state.up = 0; rd.state.open = 0; rd.g.visible = false;
-  const cam = st.camera, f0 = cam.fov; cam.fov = T.fovIn; cam.updateProjectionMatrix(); rd.frame(cam); cam.fov = f0; cam.updateProjectionMatrix();
+  // the seated view's width, and the reading distance at that width (again if the window changes shape, or a phone turns)
+  T.resize = () => {
+    const cam = st.camera, f0 = cam.fov;
+    T.fovIn = Math.min(80, Math.max(52, THREE.MathUtils.radToDeg(2 * Math.atan(Math.tan(THREE.MathUtils.degToRad(36)) / cam.aspect))));
+    cam.fov = T.fovIn; cam.updateProjectionMatrix(); rd.frame(cam); cam.fov = f0; cam.updateProjectionMatrix();
+  };
+  T.resize();
   T.frame = (t, dt) => {
     const e = t - T.t0, c = st.camera;
     if (e < 1.9) flyIn(st, T, e);
@@ -470,8 +475,9 @@ export function eventsVisit(st, i, cb) {
   T.walk = new THREE.CatmullRomCurve3([T.v0, L(-.18, 1.62, .47), L(-.42, 1.62, .52)]);
   T.target = L(S.x - .04, S.y - .045, S.z);
   // a field of view that frames the screen, a little high so the buttons below don't cover it
-  const end = T.walk.getPointAt(1), d = end.distanceTo(T.target), a = st.camera.aspect;
-  T.fovIn = THREE.MathUtils.radToDeg(2 * Math.atan(Math.max((S.h / 2 + .05) / (d * .72), (S.w / 2) / (d * .86 * a))));
+  const d = T.walk.getPointAt(1).distanceTo(T.target);
+  T.resize = () => { T.fovIn = THREE.MathUtils.radToDeg(2 * Math.atan(Math.max((S.h / 2 + .05) / (d * .72), (S.w / 2) / (d * .86 * st.camera.aspect)))); };
+  T.resize();
   scr.go(0); scr.from = 0;
   T.frame = (t, dt) => {
     const e = t - T.t0, c = st.camera;

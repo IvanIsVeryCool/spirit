@@ -11,20 +11,20 @@ export const CONFIG = {
 };
 /* ===================================================================== */
 
+// the school year starts in the summer: from July, it's the new one. The classes' graduation years follow it,
+// so the labels ('27, '28…) move on by themselves each year
+const SY = (() => { const d = new Date(); return d.getMonth() >= 6 ? d.getFullYear() : d.getFullYear() - 1; })();
 export const GRADES = [
-  { id: 'sr', name: 'Seniors', year: 2027, match: /senior/i },
-  { id: 'jr', name: 'Juniors', year: 2028, match: /junior/i },
-  { id: 'so', name: 'Sophomores', year: 2029, match: /sophomore/i },
-  { id: 'fr', name: 'Freshmen', year: 2030, match: /fresh/i }
+  { id: 'sr', name: 'Seniors', year: SY + 1, match: /senior/i },
+  { id: 'jr', name: 'Juniors', year: SY + 2, match: /junior/i },
+  { id: 'so', name: 'Sophomores', year: SY + 3, match: /sophomore/i },
+  { id: 'fr', name: 'Freshmen', year: SY + 4, match: /fresh/i }
 ];
 
 export const yy = y => '’' + String(y).slice(2);
 export const fmt = n => Number(n).toLocaleString('en-US');
 export const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-export function season() {
-  const d = new Date(), y = d.getMonth() >= 6 ? d.getFullYear() : d.getFullYear() - 1;
-  return y + '–' + String(y + 1).slice(2);
-}
+export const season = () => SY + '–' + String(SY + 1).slice(2);
 export function totals(entries) {
   const t = {}; GRADES.forEach(g => t[g.id] = 0);
   entries.forEach(e => GRADES.forEach(g => { t[g.id] += Number(e.points[g.id] || 0); }));

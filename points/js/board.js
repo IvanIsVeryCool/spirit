@@ -18,7 +18,6 @@ const state = { entries: [], loaded: false, error: false, checkedAt: null };
 try { const c = JSON.parse(localStorage.getItem(CACHE_KEY) || 'null'); if (c && c.entries) state.entries = c.entries; } catch (e) {}
 let rows = ranked([]), filterId = null, boardShown = false;
 export const setShown = v => { boardShown = v; };
-export const detailOpen = () => !$('detail').hidden;
 
 function statusLine() {
   const es = state.entries;

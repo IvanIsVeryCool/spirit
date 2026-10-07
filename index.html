@@ -4,15 +4,33 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Nueva Spirit Cabinet</title>
-<meta name="description" content="Nueva Spirit Cabinet: spirit points, the weekly newsletter, events and the people behind Nueva spirit.">
+<meta name="description" content="Nueva Spirit Cabinet: the photo gallery, the weekly newsletter, events, the Spirit Points standings and the people behind Nueva spirit.">
 <meta name="theme-color" content="#c9272c">
 <meta property="og:title" content="Nueva Spirit Cabinet">
-<meta property="og:description" content="Spirit points, the weekly newsletter, events and more. All aboard.">
+<meta property="og:description" content="Photos, the weekly newsletter, events and the Spirit Points standings. All aboard.">
+<meta property="og:type" content="website">
+<meta name="twitter:card" content="summary_large_image">
 <meta property="og:image" content="/share.png">
 <link rel="icon" type="image/png" href="/favicon-64.png">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <script type="importmap">{"imports":{"three":"/vendor/three.module.min.js"}}</script>
 <link rel="modulepreload" href="/vendor/three.module.min.js">
+<!-- the station's modules, fetched in parallel while the ticket loads (otherwise each waits for the one that imports it) -->
+<link rel="modulepreload" href="/hub/hub.js">
+<link rel="modulepreload" href="/hub/station.js">
+<link rel="modulepreload" href="/hub/scenery.js">
+<link rel="modulepreload" href="/hub/train.js">
+<link rel="modulepreload" href="/hub/interior.js">
+<link rel="modulepreload" href="/hub/people.js">
+<link rel="modulepreload" href="/hub/city.js">
+<link rel="modulepreload" href="/hub/crowd.js">
+<link rel="modulepreload" href="/hub/surfaces.js">
+<link rel="modulepreload" href="/hub/scenes.js">
+<link rel="modulepreload" href="/vendor/jsm/loaders/GLTFLoader.js">
+<link rel="modulepreload" href="/vendor/jsm/utils/SkeletonUtils.js">
+<link rel="modulepreload" href="/vendor/jsm/utils/BufferGeometryUtils.js">
+<link rel="modulepreload" href="/vendor/jsm/postprocessing/EffectComposer.js">
+<link rel="modulepreload" href="/vendor/jsm/postprocessing/UnrealBloomPass.js">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="/gallery/gallery.css">
@@ -73,12 +91,8 @@ body.entered .replay{display:flex}
 .sound.on .bars i:nth-child(2){animation-delay:-.4s}.sound.on .bars i:nth-child(3){animation-delay:-.7s}.sound.on .bars i:nth-child(4){animation-delay:-.2s}
 @keyframes eq{0%,100%{height:3px}50%{height:12px}}
 
-/* Headline in the sky */
+/* screen-reader-only text */
 .sr-only{position:absolute;width:1px;height:1px;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
-.head{position:fixed;z-index:5;left:clamp(16px,3vw,36px);top:calc(92px + env(safe-area-inset-top,0px));pointer-events:none;color:#fff;max-width:min(640px,calc(100% - 32px));text-shadow:0 2px 24px rgba(40,20,70,.35)}
-.head .k{display:inline-block;background:var(--red);color:#fff;border-radius:4px;padding:4px 9px;font-size:11px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;text-shadow:none}
-.head h1{font-family:var(--display);font-stretch:125%;font-weight:900;text-transform:uppercase;font-size:clamp(26px,4.2vw,58px);line-height:.95;letter-spacing:-.015em;margin-top:6px}
-@media (max-width:760px){.head{top:calc(76px + env(safe-area-inset-top,0px))}.head h1{font-size:clamp(22px,7vw,30px)}}
 
 /* Departures: a split-flap timetable, like the big boards in a station hall. It's the menu. */
 .board{--cw:15px;position:fixed;z-index:20;left:clamp(16px,3vw,36px);bottom:calc(18px + env(safe-area-inset-bottom,0px));width:min(612px,calc(100% - 32px));background:linear-gradient(180deg,#1f2026,#15161a);border-radius:8px;padding:0 0 8px;color:#f3efe6;font-family:var(--body);box-shadow:0 0 0 1px #050506,inset 0 1px 0 rgba(255,255,255,.07),0 30px 60px -20px rgba(10,5,20,.75);overflow:hidden;transform:translateY(24px);opacity:0;transition:opacity .8s var(--ease),transform 1s var(--ease)}
@@ -265,17 +279,15 @@ body.visiting .sc-nav{transform:translate(-50%,0);pointer-events:auto}
 }
 .skip{position:fixed;z-index:30;right:clamp(16px,3vw,36px);bottom:calc(20px + env(safe-area-inset-bottom,0px));background:rgba(255,255,255,.92);color:var(--ink);border-radius:var(--r);padding:8px 14px;font-family:var(--display);font-size:12px;font-weight:700;letter-spacing:.1em;box-shadow:var(--lift);text-transform:uppercase;opacity:0;pointer-events:none;transition:opacity .6s}
 body.intro .skip{opacity:1;pointer-events:auto}
-body.intro .hud,body.intro .head,body.intro .board{opacity:0!important;pointer-events:none}
-.hud,.head{transition:opacity 1s var(--ease),transform 1.2s var(--ease)}
-body.pre .hud,body.pre .head{opacity:0;transform:translateY(-14px)}
-.hud{transition-delay:1.2s}.head{transition-delay:1.5s}
+body.intro .hud,body.intro .board{opacity:0!important;pointer-events:none}
+.hud{transition:opacity 1s var(--ease),transform 1.2s var(--ease);transition-delay:1.2s}
+body.pre .hud{opacity:0;transform:translateY(-14px)}
 /* stepping through a door: the platform UI gets out of the way */
-body.boarding .hud,body.boarding .head,body.boarding .board{opacity:0;transform:translateY(10px);transition:opacity .45s ease,transform .6s var(--ease);transition-delay:0s;pointer-events:none}
+body.boarding .hud,body.boarding .board{opacity:0;transform:translateY(10px);transition:opacity .45s ease,transform .6s var(--ease);transition-delay:0s;pointer-events:none}
 
 /* Without WebGL or with reduced motion: the board becomes the page */
 body.static{overflow:auto}
 body.static #station,body.static .vignette{display:none}
-body.static .head{position:relative;left:auto;top:auto;padding:110px 20px 0;max-width:640px;margin:0 auto}
 body.static #title{position:relative;width:auto;height:auto;margin:0 auto;clip:auto;overflow:visible;white-space:normal;padding:110px 20px 0;max-width:640px;color:#fff;font-family:var(--display);font-stretch:125%;font-weight:900;text-transform:uppercase;font-size:clamp(26px,6vw,48px);line-height:.95}
 body.static .board{position:relative;left:auto;bottom:auto;opacity:1;transform:none;margin:24px auto 40px;width:min(560px,calc(100% - 32px))}
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
@@ -418,7 +430,7 @@ body.static .board{position:relative;left:auto;bottom:auto;opacity:1;transform:n
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 <button class="crew-back back board-back" id="board-back" type="button">Back to the platform</button>
 <div id="flash" aria-hidden="true"></div>
-<noscript><p style="padding:24px;color:#fff"><a href="/points/">Go to Spirit Points</a></p></noscript>
+<noscript><style>#loader{display:none}</style><p style="position:relative;z-index:60;padding:96px 24px;color:#fff;font:600 16px/1.8 system-ui,sans-serif">The station needs JavaScript. Meanwhile: <a href="/points/" style="color:#fff">Spirit Points</a> · <a href="/gallery/" style="color:#fff">Photo Gallery</a></p></noscript>
 <script>setTimeout(function(){if(!window.__hubBooted){var l=document.getElementById("loader");if(l)l.remove();document.body.classList.add("static");document.body.classList.remove("pre");}},9000);</script>
 <script type="module" src="/hub/hub.js"></script>
 </body>

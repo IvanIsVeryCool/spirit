@@ -1,7 +1,7 @@
 import { DOORS, SITE, CABINET, EVENTS, NEWSLETTER } from './doors.js';
 import { StationAudio } from './audio.js';
 import { flap, pad, blank } from './flap.js';
-import { CONFIG, ranked, newestFirst, fetchScores, fmt } from '/points/js/data.js';
+import { CONFIG, ranked, fetchScores, fmt } from '/points/js/data.js';
 
 window.__hubBooted = true;
 const $ = id => document.getElementById(id);
@@ -14,7 +14,6 @@ const softFocus = el => { if (el && keyNav) el.focus({ preventScroll: true }); }
 const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const mobile = matchMedia('(max-width: 760px)').matches || matchMedia('(pointer: coarse)').matches;
 const audio = new StationAudio();
-const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const no = i => String(i + 1).padStart(2, '0');
 
 $('brand-name').textContent = SITE.school;
@@ -62,7 +61,7 @@ function ticketCanvas() {
   });
   x.fillStyle = '#7a7568'; x.font = '500 12px "Public Sans", Arial, sans-serif'; x.fillText('Valid for one ride on the day of issue. Go Nueva.', 22, 232);
   x.strokeStyle = 'rgba(22,24,31,.3)'; x.setLineDash([7, 6]); x.beginPath(); x.moveTo(552, 8); x.lineTo(552, H - 8); x.stroke(); x.setLineDash([]);
-  x.fillStyle = '#c9272c'; x.font = '900 22px Archivo, Arial, sans-serif'; x.textAlign = 'center'; x.font = '900 19px Archivo, Arial, sans-serif'; x.fillText('SINGLE', 636, 58); x.fillText('JOURNEY', 636, 84); x.textAlign = 'left';
+  x.fillStyle = '#c9272c'; x.font = '900 19px Archivo, Arial, sans-serif'; x.textAlign = 'center'; x.fillText('SINGLE', 636, 58); x.fillText('JOURNEY', 636, 84); x.textAlign = 'left';
   let bx = 576; x.fillStyle = '#16181f'; bars.forEach((w, i) => { if (i % 2 === 0) x.fillRect(bx, 150, w * 1.6, 90); bx += w * 1.6 + 1.6; });
   x.font = '400 14px DotGothic16, monospace'; x.fillText(T.serial, 578, 262);
   // validation stamp
@@ -146,7 +145,7 @@ function choose(i) {
 let visiting = false;
 function visitCabinet(i) {
   boarding = true; visiting = true; audio.beep(); audio.board(); document.body.classList.add('boarding');
-  const tags = $('crew-tags'); tags.innerHTML = '';
+  const tags = $('crew-tags'); [...tags.children].forEach(t => widths.delete(t)); tags.innerHTML = '';
   CABINET.forEach(m => { const t = document.createElement('div'); t.className = 'tag'; t.innerHTML = `<b></b><span></span>`; t.querySelector('b').textContent = m.name; t.querySelector('span').textContent = m.role || ''; tags.appendChild(t); });
   $('crew').hidden = false;
   station.visit(i, {
@@ -158,7 +157,7 @@ function placeTags() {
   if (!visiting || !station) return;
   const pos = station.crewTags(), tags = $('crew-tags').children;
   // kept on screen; where neighbours would overlap (a narrow phone), every other one sits a row higher
-  const w = [...tags].map(t => t.offsetWidth), crowded = pos.some((p, k) => k && Math.abs(p.x - pos[k - 1].x) < (w[k] + w[k - 1]) / 2 + 6);
+  const w = [...tags].map(widthOf), crowded = pos.some((p, k) => k && Math.abs(p.x - pos[k - 1].x) < (w[k] + w[k - 1]) / 2 + 6);
   pos.forEach((p, k) => {
     const t = tags[k]; if (!t) return;
     const x = Math.min(innerWidth - w[k] / 2 - 8, Math.max(w[k] / 2 + 8, p.x)), y = p.y - (crowded && k % 2 ? t.offsetHeight + 10 : 0);
@@ -181,7 +180,7 @@ function visitScene(i) {
   boarding = true; visiting = true; sceneKind = kind; sceneKey = ''; audio.beep(); audio.board(); document.body.classList.add('boarding');
   const ui = $('scene-ui'); ui.hidden = kind === 'gallery'; $('sc-text').textContent = '';
   if (kind === 'gallery') loadGallery(); // the photos start loading as you board
-  const standings = scores.length ? ranked(scores).slice().sort((a, b) => a.rank - b.rank || a.order - b.order) : [];
+  const standings = standingsNow();
   station.visit(i, {
     sit: () => audio.sit(), paper: () => audio.paper(),
     arrive: () => {
@@ -235,16 +234,20 @@ $('crew-back').addEventListener('click', leaveCabinet);
 /* the officer: a label over his head; click it (or him) and the camera goes over to him and he gives you the standings */
 const SCORES_KEY = 'spirit-cache-' + CONFIG.sheetId;
 let scores = []; try { const c = JSON.parse(localStorage.getItem(SCORES_KEY) || 'null'); if (c && c.entries) scores = c.entries; } catch (e) {}
-const refreshScores = () => fetchScores().then(es => { scores = es; try { localStorage.setItem(SCORES_KEY, JSON.stringify({ entries: es, at: Date.now() })); } catch (e) {} }).catch(() => {});
+const refreshScores = () => fetchScores().then(es => { scores = es; try { localStorage.setItem(SCORES_KEY, JSON.stringify({ entries: es, at: Date.now() })); } catch (e) {} return true; }).catch(() => false);
+const standingsNow = () => scores.length ? ranked(scores).slice().sort((a, b) => a.rank - b.rank || a.order - b.order) : [];
+const standingsText = rows => rows.length ? 'Spirit Points standings: ' + rows.map(r => `${r.rank}. ${r.name}, ${fmt(r.pts)} points`).join('; ') + '.' : 'No scores yet.';
 refreshScores();
 // he holds up a sign with the standings (drawn from the scores as you walk over); then the full leaderboard, or back
 let talking = false;
 function talkToCop() {
   if (!station || !station.cop || boarding || !entered || introPlaying || !$('notice').hidden) return;
   boarding = true; talking = true; document.body.classList.add('boarding'); audio.beep();
-  const rows = scores.length ? ranked(scores).slice().sort((a, b) => a.rank - b.rank || a.order - b.order) : [];
+  const rows = standingsNow();
   station.drawCopSign(rows); station.talkToCop();
-  $('talk-text').textContent = rows.length ? 'Spirit Points standings: ' + rows.map(r => `${r.rank}. ${r.name}, ${fmt(r.pts)} points`).join('; ') + '.' : 'No scores yet.';
+  $('talk-text').textContent = standingsText(rows);
+  // and check the sheet again while he walks over: the page may have been open a while
+  refreshScores().then(ok => { if (!ok || !talking) return; const fresh = standingsNow(); station.drawCopSign(fresh); $('talk-text').textContent = standingsText(fresh); });
   const t = $('talk'); t.hidden = false; t.classList.remove('open');
   setTimeout(() => { if (!talking) return; audio.paper(); }, 1100); // the board comes up
   setTimeout(() => { if (!talking) return; requestAnimationFrame(() => t.classList.add('open')); softFocus($('talk-full')); }, 1900);
@@ -286,11 +289,16 @@ $('talk-full').addEventListener('click', e => {
   });
 });
 $('bb-back').addEventListener('click', leaveCop); $('board-back').addEventListener('click', leaveCop);
+// labels placed over the 3D every frame: their widths are measured once (and again on resize), not every frame,
+// so the loop never forces a layout
+const widths = new Map(), widthOf = el => { let w = widths.get(el); if (w === undefined) { w = el.offsetWidth; widths.set(el, w); } return w; };
+addEventListener('resize', () => widths.clear());
+let copShown = null;
 function placeCopTag() {
   const tag = $('cop-tag'); if (!station || !station.cop) return;
   const p = station.copTag(), show = p.on && entered && !boarding && !introPlaying && document.body.classList.contains('entered');
-  tag.classList.toggle('on', show);
-  if (show) { const w = tag.offsetWidth, x = Math.min(innerWidth - w / 2 - 10, Math.max(w / 2 + 10, p.x)); tag.style.transform = `translate(${x.toFixed(1)}px, ${p.y.toFixed(1)}px) translate(-50%, -100%)`; } // kept on screen
+  if (show !== copShown) { copShown = show; tag.classList.toggle('on', show); }
+  if (show) { const w = widthOf(tag), x = Math.min(innerWidth - w / 2 - 10, Math.max(w / 2 + 10, p.x)); tag.style.transform = `translate(${x.toFixed(1)}px, ${p.y.toFixed(1)}px) translate(-50%, -100%)`; } // kept on screen
 }
 // the sound button rides just above the headphone listener's head while he's in view; otherwise it's back in its corner
 let soundFloat = false;
@@ -298,7 +306,7 @@ function placeSound() {
   const b = $('sound-btn'), p = station && station.listenerTag ? station.listenerTag() : { on: false };
   const float = p.on && entered && !boarding && !introPlaying && document.body.classList.contains('entered') && !document.body.classList.contains('intro');
   if (float !== soundFloat) { soundFloat = float; b.classList.toggle('float', float); if (!float) b.style.transform = ''; if (b.animate) b.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 380, easing: 'ease-out' }); }
-  if (float) { const w = b.offsetWidth, x = Math.min(innerWidth - w / 2 - 10, Math.max(w / 2 + 10, p.x)); b.style.transform = `translate(${x.toFixed(1)}px, ${p.y.toFixed(1)}px) translate(-50%, -100%)`; }
+  if (float) { const w = widthOf(b), x = Math.min(innerWidth - w / 2 - 10, Math.max(w / 2 + 10, p.x)); b.style.transform = `translate(${x.toFixed(1)}px, ${p.y.toFixed(1)}px) translate(-50%, -100%)`; }
 }
 function closeNotice() { const n = $('notice'); if (n.hidden) return; n.classList.remove('open'); setTimeout(() => { n.hidden = true; }, 450); audio.tick(); }
 $('notice').addEventListener('click', e => { if (e.target.closest('[data-close]')) closeNotice(); });
@@ -312,7 +320,7 @@ addEventListener('keydown', e => {
     closeNotice(); leaveCabinet(); leaveCop();
   }
   if ((e.key === 'ArrowRight' || e.key === 'ArrowLeft') && sceneStep(e.key === 'ArrowRight' ? 1 : -1)) { e.preventDefault(); return; }
-  if (!doorsOpen || !$('notice').hidden || !station) return;
+  if (!doorsOpen || boarding || !$('notice').hidden || !station) return;
   if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') { setFocus(focus + (e.key === 'ArrowRight' ? 1 : -1)); if (!mobile) setHover(focus); }
 });
 
@@ -345,7 +353,10 @@ function setSound(on, remember) {
 // After a reload, browsers keep audio paused until the first click, tap or key press on the page.
 // Until then the button says so; the first press anywhere (the button included) starts the sound.
 const held = () => audio.enabled && (!audio.ctx || audio.ctx.state !== 'running');
-function soundLabel() { $('sound-label').textContent = !audio.enabled ? 'Sound off' : held() ? 'Tap for sound' : 'Sound on'; }
+function soundLabel() {
+  const l = $('sound-label'), text = !audio.enabled ? 'Sound off' : held() ? 'Tap for sound' : 'Sound on';
+  if (l.textContent !== text) { l.textContent = text; widths.delete($('sound-btn')); } // its width changes with the words
+}
 let wokeAt = 0;
 const unlockAudio = () => {
   if (!audio.enabled || !audio.ctx || audio.ctx.state === 'running') return;
@@ -357,6 +368,8 @@ $('sound-btn').addEventListener('click', () => {
   setSound(!audio.enabled, true); audio.tick();
 });
 setInterval(soundLabel, 1000); // the browser can also resume or suspend on its own
+// quiet while the tab is in the background (the song and the station don't play to an empty room), back on return
+document.addEventListener('visibilitychange', () => { if (!audio.ctx) return; if (document.hidden) audio.ctx.suspend(); else if (audio.enabled) audio.ctx.resume(); });
 // Coming back the same day: start the sound right away, under the loading screen. Browsers that allow it play now;
 // the rest hold it until a press, so the loader then waits for one tap ("Tap to board") and you arrive with sound.
 if (!firstToday && !reduce && soundPref) setSound(true);
@@ -486,7 +499,7 @@ addEventListener('keydown', e => { if (introPlaying && (e.key === 'Escape' || e.
 $('enter-sound').addEventListener('click', () => enter(true));
 $('enter-quiet').addEventListener('click', () => enter(false));
 
-addEventListener('resize', () => { if (station) station.resize(); });
+addEventListener('resize', () => { if (!station) return; station.resize(); if (onBoard) { layoutBoard(); station.reframeBoard(); } });
 addEventListener('pageshow', e => {
   if (e.persisted) { boarding = false; document.body.classList.remove('boarding'); $('flash').classList.remove('on'); if (station) { station.flight = null; station.doors.forEach(d => { d.target = doorsOpen ? 1 : 0; }); } }
 });

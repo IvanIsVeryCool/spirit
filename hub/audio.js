@@ -145,7 +145,7 @@ export class StationAudio {
       const o = ctx.createOscillator(), g = ctx.createGain(), f2 = ctx.createBiquadFilter(); o.type = type; o.frequency.value = f; f2.type = 'lowpass'; f2.frequency.value = 2200; g.gain.value = g0;
       o.connect(f2).connect(g).connect(bus); o.start(t); return { o, f };
     });
-    let speed = 0, next = 0, dead = false;
+    let speed = 0, dead = false;
     const joints = () => { if (dead) return; if (this.live && speed > .15) { const n = ctx.currentTime; this._click(n, .07 * speed); this._click(n + .11, .06 * speed); } setTimeout(joints, 240 + (1 - speed) * 900); };
     joints();
     return {
@@ -157,10 +157,6 @@ export class StationAudio {
       stop: () => { dead = true; const n = ctx.currentTime; bus.gain.setTargetAtTime(0, n, .4); setTimeout(() => { rumble.stop(); tones.forEach(x => x.o.stop()); bus.disconnect(); }, 2500); }
     };
   }
-  // An original song in your headphones during the opening: slow, moody, dreamy indie (84 bpm, minor key):
-  // echoing clean-guitar arpeggios, a deep round bass, half-time drums and a soft pad. It's quiet and dry (not in the
-  // station's reverb, since it's in your ears), under the station sounds, and goes through the opening's own gains,
-  // so skipping cuts it too. Returns { stop(fade) }.
   // Your own song for the headphones: if assets/audio/headphones.mp3 is on the site, it's decoded while the page
   // loads and music() plays it instead of the built-in loop. If headphones_loop.mp3 is there too, the song plays
   // through once and then that loop repeats, seamlessly. No files, no change.
@@ -199,7 +195,10 @@ export class StationAudio {
     let dead = false;
     return { duck: out.duck, stop: (fade = 1.2) => { if (dead) return; dead = true; out.ramp(out.bus.gain, 0, fade); const n = ctx.currentTime + fade + .05; srcs.forEach(x => { try { x.stop(n); } catch (e) {} }); setTimeout(() => out.bus.disconnect(), fade * 1000 + 300); } };
   }
-  // background: start already ducked (later visits, a skipped opening)
+  // The song in your headphones: your own recording if loadTrack() found one, otherwise an original loop, slow, moody,
+  // dreamy indie (84 bpm, minor key): echoing clean-guitar arpeggios, a deep round bass, half-time drums and a soft pad.
+  // Quiet and dry (it's in your ears, not the station), straight into the station mix through _songOut(), so it outlives
+  // the opening. background: start already ducked (later visits, a skipped opening). Returns { duck(fade), stop(fade) }.
   music({ background = false } = {}) {
     if (!this.ctx) return { stop() {}, duck() {} };
     if (this.track) return this._playTrack(background);
@@ -265,14 +264,6 @@ export class StationAudio {
     let out = g; if (ctx.createStereoPanner) { const pn = ctx.createStereoPanner(); pn.pan.setValueAtTime(-.8, t); pn.pan.linearRampToValueAtTime(.8, t + dur); g.connect(pn); out = pn; }
     out.connect(this.dry); out.connect(this.verbIn); lfo.start(t); lfo.stop(t + dur + .1);
   }
-  // the officer's voice under his typed-out lines: a soft, slightly random pip
-  blip() {
-    if (!this.live) return;
-    const ctx = this.ctx, t = ctx.currentTime, o = ctx.createOscillator(), g = ctx.createGain(), f = ctx.createBiquadFilter();
-    o.type = 'triangle'; o.frequency.setValueAtTime(150 + Math.random() * 40, t); f.type = 'lowpass'; f.frequency.value = 900;
-    g.gain.setValueAtTime(.0001, t); g.gain.exponentialRampToValueAtTime(.05, t + .008); g.gain.exponentialRampToValueAtTime(.0001, t + .07);
-    o.connect(f).connect(g).connect(this.dry); o.start(t); o.stop(t + .08);
-  }
   // the cab's sliding door: a pneumatic sigh, the leaf running in its track, a soft stop
   cabDoor() {
     if (!this.live) return;
@@ -302,7 +293,7 @@ export class StationAudio {
     }
     this.birdT = setTimeout(() => this._birds(), 5000 + Math.random() * 9000);
   }
-  // first-person foley: sitting on the bench, handling the ticket, standing up
+  // first-person foley: sitting down, handling paper
   sit() {
     if (!this.live) return;
     const ctx = this.ctx, t = ctx.currentTime;
@@ -317,12 +308,6 @@ export class StationAudio {
     if (!this.live) return;
     const t = this.ctx.currentTime;
     for (let i = 0; i < 6; i++) this._noise(t + i * .045 + Math.random() * .03, .06 + Math.random() * .05, 'highpass', 2600 + Math.random() * 2000, 5200, .6, .05 + Math.random() * .04, .004, (Math.random() - .5) * .3);
-  }
-  stand() {
-    if (!this.live) return;
-    const t = this.ctx.currentTime;
-    this._noise(t, .7, 'lowpass', 900, 1600, .7, .08, .3, 0);
-    this._click(t + .62, .3); this._click(t + 1.02, .22);                 // two footsteps
   }
   // UI
   // the departures board: a soft patter of split-flap leaves settling

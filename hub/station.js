@@ -24,6 +24,7 @@ const T_FOV_MIN = 55; // the cab view's narrowest field of view
 const INTRO_D = 2.3; // the opening's cassette-player moment, before the ticket: everything after it is shifted by this
 const easeInOut = t => t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
 const glow = (hex, k) => { const m = new THREE.MeshBasicMaterial({ color: new THREE.Color(hex).multiplyScalar(k) }); m.toneMapped = false; return m; };
+const RAY = new THREE.Raycaster(), _ndc = new THREE.Vector2();
 const canvasTex = (w, h, draw) => { const c = document.createElement('canvas'); c.width = w; c.height = h; draw(c.getContext('2d'), w, h); const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; return t; };
 
 /* dot-matrix LED sign, drawn into a canvas */
@@ -164,7 +165,7 @@ export class Station {
     const bed = new THREE.Mesh(new THREE.PlaneGeometry(400, 10.4), new THREE.MeshStandardMaterial({ roughness: 1, ...tiled(ballast(this.mobile ? 256 : 512), 400, 10.4) })); // from the platform to the fence
     bed.rotation.x = -Math.PI / 2; bed.position.set(0, -.02, -3.4); s.add(bed);
     const ground = new THREE.Mesh(new THREE.PlaneGeometry(600, 204), new THREE.MeshStandardMaterial({ roughness: 1, ...tiled(grass(this.mobile ? 256 : 512), 600, 204) }));
-    ground.rotation.x = -Math.PI / 2; ground.position.set(0, -.06, -110.4); // grass from just behind the fence back ground.userData.noShadow = true; s.add(ground);
+    ground.rotation.x = -Math.PI / 2; ground.position.set(0, -.06, -110.4); ground.userData.noShadow = true; s.add(ground); // grass from just behind the fence back
     const ties = new THREE.InstancedMesh(new THREE.BoxGeometry(.24, .1, 2.6), new THREE.MeshStandardMaterial({ color: 0x8c8780, roughness: .95, map: this.surf.conc.map, normalMap: this.surf.conc.normalMap }), 1300);
     const railMat = new THREE.MeshStandardMaterial({ color: 0x9aa0a8, metalness: .9, roughness: .3 });
     const m = new THREE.Matrix4(); let k = 0;
@@ -334,10 +335,10 @@ export class Station {
     const statusMats = [-1, 1].map(sd => { const m = glow(0xffa31f, .3); side(new THREE.BoxGeometry(.09, .05, .02), m, sd * (DOOR_W / 2 + .1), FLOOR + DOOR_H + .12, .01); return m; });
     side(new THREE.BoxGeometry(DOOR_W + .1, .04, .22), M.steel, 0, FLOOR - .01, .1);
     side(new THREE.BoxGeometry(DOOR_W + .1, .045, .04), M.yellow, 0, FLOOR, .2);
-    // LED destination sign over the door
-    const cv = document.createElement('canvas'); cv.width = 640; cv.height = 128;
-    const tex = new THREE.CanvasTexture(cv); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 4;
-    const ledMat = new THREE.MeshBasicMaterial({ map: tex }); ledMat.toneMapped = false;
+    // LED destination sign over the door: its two pages (the destination, then the car number) are drawn once each
+    // and swapped, rather than redrawn dot by dot every time it flips
+    const pages = [0, 1].map(() => { const cv = document.createElement('canvas'); cv.width = 640; cv.height = 128; const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; return { ctx: cv.getContext('2d'), tex: t }; });
+    const ledMat = new THREE.MeshBasicMaterial({ map: pages[0].tex }); ledMat.toneMapped = false;
     side(new THREE.BoxGeometry(2.1, .6, .04), M.dark, 0, 3.08, .005);
     side(new THREE.PlaneGeometry(2, .5), ledMat, 0, 3.08, .03);
     const plateMat = new THREE.MeshBasicMaterial({ map: this._plate(String(i + 1).padStart(2, '0')), transparent: true });
@@ -349,7 +350,7 @@ export class Station {
     let pl = null; if (!this.mobile) { pl = new THREE.PointLight(COL.warm, 0, 6, 1.6); pl.position.set(0, 1.6, z + .7); car.add(pl); }
     const hit = new THREE.Mesh(new THREE.BoxGeometry(DOOR_W + .6, DOOR_H + 1, .8), new THREE.MeshBasicMaterial({ visible: false }));
     hit.position.set(0, FLOOR + DOOR_H / 2 + .3, z + .2); hit.userData.door = i; hit.userData.keep = true; hit.userData.noShadow = true; car.add(hit);
-    this.doors.push({ leaves, inside, spill, pl, hit, statusMats, open: 0, target: 0, hover: 0, led: { ctx: cv.getContext('2d'), tex, mat: ledMat, page: 0, key: '' } });
+    this.doors.push({ leaves, inside, spill, pl, hit, statusMats, open: 0, target: 0, hover: 0, led: { pages, mat: ledMat, page: 0 } });
     this.drawSign(i);
   }
   _gangway(x) {
@@ -454,14 +455,13 @@ export class Station {
     return (this._spill = new THREE.CanvasTexture(c));
   }
   drawSign(i) {
-    const d = this.doors[i], info = this.data[i], L = d.led;
-    const second = L.page % 2 ? `CAR ${String(i + 1).padStart(2, '0')}` : (info.href || info.scene ? 'NOW BOARDING' : 'COMING SOON');
-    if (second === L.key) return; L.key = second;
-    drawLED(L.ctx, [info.title.toUpperCase(), second]);
-    L.tex.needsUpdate = true;
+    const info = this.data[i];
+    [info.href || info.scene ? 'NOW BOARDING' : 'COMING SOON', `CAR ${String(i + 1).padStart(2, '0')}`].forEach((second, k) => {
+      const P = this.doors[i].led.pages[k]; drawLED(P.ctx, [info.title.toUpperCase(), second]); P.tex.needsUpdate = true;
+    });
   }
   redrawSigns() {
-    this.doors.forEach((d, i) => { d.led.key = ''; this.drawSign(i); });
+    this.doors.forEach((d, i) => this.drawSign(i));
     if (this.noseMesh) this._paintNose();
     if (this.flyer) this._paintBanner();
     if (this.stops) this.stops.draw(1);
@@ -762,7 +762,7 @@ export class Station {
     const tex = new THREE.CanvasTexture(cv); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 8;
     const face = new THREE.MeshBasicMaterial({ map: tex, color: new THREE.Color(.9, .9, .9) }); face.toneMapped = false; // readable in any light, under the bloom threshold
     const board = new THREE.MeshStandardMaterial({ color: 0xd9c7a4, roughness: .9 });
-    const SW = .64, SH = .42, sg = new THREE.Group(); // he's a small man: held at his chest it covers him from the chin down sg.visible = false;
+    const SW = .64, SH = .42, sg = new THREE.Group(); sg.visible = false; // he's a small man: held at his chest it covers him from the chin down
     sg.add(new THREE.Mesh(new THREE.BoxGeometry(SW, SH, .018), [board, board, board, board, face, board]));
     sg.traverse(o => { if (o.isMesh) { o.userData.keep = true; o.castShadow = true; } });
     this.scene.add(sg);
@@ -843,14 +843,14 @@ export class Station {
     const C = this.cop; if (!C.trip) return;
     const f = this.boardPose(); C.trip.board = { t0: this.clock.elapsedTime, p0: this.camera.position.clone(), l0: this.look.clone(), p1: f.pos, l1: f.look, cb, fired: false };
   }
-  pickCop(nx, ny) { const rc = new THREE.Raycaster(); rc.setFromCamera(new THREE.Vector2(nx, ny), this.camera); return rc.intersectObject(this.cop.hit).length > 0; }
-  // where his label goes on screen (CSS px): just over his cap
+  pickCop(nx, ny) { RAY.setFromCamera(_ndc.set(nx, ny), this.camera); return RAY.intersectObject(this.cop.hit).length > 0; }
   // where the sound button goes: just above the headphone listener's head (CSS pixels), while he's in view
   listenerTag() {
     const me = this.listener; if (!me || !me.root.visible) return { on: false };
     const v = new THREE.Vector3(); me.bones.head.getWorldPosition(v); v.y += .62; v.project(this.camera);
     return { x: (v.x + 1) / 2 * innerWidth, y: (1 - v.y) / 2 * innerHeight, on: v.z < 1 && Math.abs(v.x) < .92 && v.y > -.8 && v.y < .8 };
   }
+  // where his label goes on screen (CSS px): just over his cap
   copTag() {
     const v = new THREE.Vector3(); this.cop.p.bones.head.getWorldPosition(v); v.y += .95; v.project(this.camera);
     return { x: (v.x + 1) / 2 * innerWidth, y: (1 - v.y) / 2 * innerHeight, on: v.z < 1 && Math.abs(v.x) < 1.1 && v.y > -1.1 && v.y < 1.1 };
@@ -907,9 +907,9 @@ export class Station {
     c.position.lerpVectors(T.p0, T.p1, u); c.position.y += Math.sin(Math.PI * u) * .25; this.look.lerpVectors(T.l0, T.l1, u);
     return true;
   }
-  pick(nx, ny) {
-    const rc = new THREE.Raycaster(); rc.setFromCamera(new THREE.Vector2(nx, ny), this.camera);
-    const hit = rc.intersectObjects(this.doors.map(d => d.hit))[0];
+  pick(nx, ny) { // which door is under the pointer (every frame on a computer, for the hover)
+    RAY.setFromCamera(_ndc.set(nx, ny), this.camera);
+    const hit = RAY.intersectObjects(this.doorHits || (this.doorHits = this.doors.map(d => d.hit)))[0];
     return hit ? hit.object.userData.door : -1;
   }
   parkedPose(snap) {
@@ -941,7 +941,8 @@ export class Station {
       door: L(D.x, 1.35, dz), crew: L(CAR_L / 2 + 1.45, 1.05, 0), fired: {}, fov: this.camera.fov
     };
     // a wider view once you're in the cab, so the whole crew fits (about 80 degrees across, within reason on a tall phone)
-    const a = this.camera.aspect; this.trip.fovIn = Math.min(84, Math.max(T_FOV_MIN, THREE.MathUtils.radToDeg(2 * Math.atan(Math.tan(THREE.MathUtils.degToRad(40)) / a))));
+    const T = this.trip; T.resize = () => { T.fovIn = Math.min(84, Math.max(T_FOV_MIN, THREE.MathUtils.radToDeg(2 * Math.atan(Math.tan(THREE.MathUtils.degToRad(40)) / this.camera.aspect)))); };
+    T.resize();
     this.trip.walkLen = this.trip.walk.getLength();
     this.doors[i].target = 1.25;
     this.crew.forEach(p => { p.root.visible = true; p.turn = 0; p.root.rotation.y = -Math.PI / 2; p.look.yaw = p.look.pitch = 0; });
@@ -1019,7 +1020,10 @@ export class Station {
     this.renderer.setPixelRatio(this.pr || Math.min(devicePixelRatio || 1, this.mobile ? 1.5 : 1.75));
     this.renderer.setSize(w, h, false); this.camera.aspect = w / h; this.camera.updateProjectionMatrix();
     this.composer.setPixelRatio(this.renderer.getPixelRatio()); this.composer.setSize(w, h); if (this.bloom) this.bloom.resolution.set(w / 2, h / 2);
+    if (this.trip && this.trip.resize) this.trip.resize(); // a visit re-frames for the new shape (a phone turned, say)
   }
+  // the billboard's camera spot again, after its shape changed with the window
+  reframeBoard() { const B = this.cop.trip && this.cop.trip.board; if (B) { const f = this.boardPose(); B.p1 = f.pos; B.l1 = f.look; } }
 
   render() {
     const dt = Math.min(this.clock.getDelta(), .1), t = this.clock.elapsedTime;
@@ -1052,7 +1056,7 @@ export class Station {
       d.spill.material.opacity = o * (.28 + d.hover * .3);
       if (d.pl) d.pl.intensity = o * (5 + d.hover * 6);
       d.led.mat.color.setScalar(1.15 + d.hover * .9);
-      const page = Math.floor(t / 2.6 + i * .3) % 2; if (page !== d.led.page) { d.led.page = page; this.drawSign(i); }
+      const page = Math.floor(t / 2.6 + i * .3) % 2; if (page !== d.led.page) { d.led.page = page; d.led.mat.map = d.led.pages[page].tex; }
     });
     const c = this.camera;
     if (this.intro) { this._introFrame(t, dt); }
@@ -1102,6 +1106,7 @@ export class Station {
     this.copSign.g.visible = true;
     this.reader.g.visible = true; this.reader.frame(this.camera); this.reader.state.up = 1; this.reader.state.open = 1; this.reader.update(this.camera, 0); // and the newspaper
     try { if (this.renderer.compileAsync) { this.introGroup.visible = true; await this.renderer.compileAsync(this.scene, this.camera); } } catch (e) {}
+    this.doors.forEach(d => d.led.pages.forEach(p => this.renderer.initTexture(p.tex))); // both pages of every door sign, not just the one showing
     const culled = []; this.scene.traverse(o => { if (o.frustumCulled) { culled.push(o); o.frustumCulled = false; } });
     const x = this.train.position.x, cam = this.camera.position.clone(), q = this.camera.quaternion.clone();
     this.introGroup.visible = true;

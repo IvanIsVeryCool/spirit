@@ -86,11 +86,17 @@ function updateRideUI() {
   ride.stops.forEach((s, i) => pinAt(pins[i], s.label, ride.state === 'ride' && i >= Math.floor(f) && i <= Math.floor(f) + 1));
 }
 
-let last = performance.now();
+// quiet while the tab is in the background (the song and the station don't play to an empty room), back on return
+document.addEventListener('visibilitychange', () => { if (!audio.ctx) return; if (document.hidden) audio.ctx.suspend(); else if (audio.enabled) audio.ctx.resume(); });
+let last = performance.now(), redraw = 0, wasStill = false;
 function loop() {
   const now = performance.now(), dt = Math.min(.05, (now - last) / 1000); last = now;
   if (ride) {
-    ride.update(dt); ride.render();
+    // once the camera has settled in front of the billboard nothing in view moves: stop redrawing the 3D (it's mostly
+    // under the board anyway) until the window changes
+    const still = ride.state === 'board' && ride.at > 2.6;
+    if (still && !wasStill) redraw = 3; wasStill = still; // a few frames as it settles (or straight after a jump to the board)
+    ride.update(dt); if (!still || redraw > 0) { ride.render(); if (redraw > 0) redraw--; }
     if (hum) hum.set(audio.enabled && ride.state === 'ride' ? ride.speed : 0);
     updateRideUI();
     if (boardShown) placeBoard();
@@ -136,7 +142,7 @@ $('skip').addEventListener('click', () => { if (ride) { ride.skip(); audio.tick(
 addEventListener('keydown', e => {
   if (e.key === 'Escape') { if (!$('detail').hidden) closeDetail(); else if (ride && ride.state === 'ride') ride.skip(); }
 });
-let rT; addEventListener('resize', () => { clearTimeout(rT); rT = setTimeout(() => { if (!ride) return; ride.resize(); layoutBoard(); if (ride.state === 'board') ride.jumpToBoard(); }, 150); });
+let rT; addEventListener('resize', () => { clearTimeout(rT); rT = setTimeout(() => { if (!ride) return; ride.resize(); layoutBoard(); if (ride.state === 'board') ride.jumpToBoard(); redraw = 3; }, 150); });
 
 boot();
 requestAnimationFrame(loop);

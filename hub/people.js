@@ -137,7 +137,9 @@ export function posedGeometry(kind, pose, t = .3) {
 
 // One limb of a character as its own still mesh, in that limb bone's space (origin at the shoulder or hip):
 // for the hands you see in the opening, which are your own character's arms. Returns { geometry, tip, material }.
+const LIMBS = {}; // built once per character and limb: the opening, the cassette player and the newspaper share them
 export function limbGeometry(kind, bone) {
+  const key = kind + bone, hit = LIMBS[key]; if (hit) return { geometry: hit.geometry, tip: hit.tip.clone(), material: LIB.material };
   const model = LIB.models[kind % LIB.models.length], mesh = model.getObjectByName('person'), sk = mesh.skeleton;
   const j = sk.bones.findIndex(b => b.name === bone), inv = sk.boneInverses[j], src = mesh.geometry;
   const pos = src.attributes.position, nor = src.attributes.normal, uv = src.attributes.uv, si = src.attributes.skinIndex, sw = src.attributes.skinWeight;
@@ -148,6 +150,7 @@ export function limbGeometry(kind, bone) {
   }
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.Float32BufferAttribute(P, 3)); g.setAttribute('normal', new THREE.Float32BufferAttribute(N, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(U, 2));
+  LIMBS[key] = { geometry: g, tip: LIB.hand[bone].clone() };
   return { geometry: g, tip: LIB.hand[bone].clone(), material: LIB.material };
 }
 // a rotation that turns a limb (pointing along `from` with `up` its upper side, in its own space) to point along `to`, upper side toward `upTo`
