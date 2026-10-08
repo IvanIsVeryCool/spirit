@@ -390,7 +390,7 @@ export class Station {
         const wg = new THREE.Mesh(softBox(lw - .12, 1.06, .03, .05), M.gasket); wg.position.set(0, .3, .026); leaf.add(wg);
         M.doorGlass = M.doorGlass || new THREE.MeshStandardMaterial({ color: 0x232a3a, roughness: .25, metalness: 0, envMapIntensity: .6 }); // solid dark glass (see-through, the red leaf showed behind it)
         const w = new THREE.Mesh(softBox(lw - .2, .98, .012, .04), M.doorGlass); w.position.set(0, .3, .046); leaf.add(w);
-        const stripe = new THREE.Mesh(softBox(lw - .008, .05, .066, .015), M.door); stripe.position.set(0, -.36, 0); leaf.add(stripe);
+        const stripe = new THREE.Mesh(softBox(lw - .04, .05, .076, .015), M.door); // (inset from the leaf's edges and clearly proud of its faces: flush, it flickered) stripe.position.set(0, -.36, 0); leaf.add(stripe);
         const btn = new THREE.Mesh(new THREE.CylinderGeometry(.05, .05, .03, 12), glow(0x5dff8f, .2)); btn.rotation.x = Math.PI / 2; btn.position.set(-sd * (lw / 2 - .11), -.5, .036); leaf.add(btn); // (below the window and the stripe, clear of both)
         const ring = new THREE.Mesh(softBox(.13, .13, .02, .03), M.dark); ring.position.set(-sd * (lw / 2 - .11), -.5, .03); leaf.add(ring);
         leaf.position.set(sd * DOOR_W / 4, FLOOR + DOOR_H / 2, z + .03); leaf.userData.keep = true; leaf.userData.sd = sd; leaf.userData.btn = btn; car.add(leaf); return leaf;
@@ -991,7 +991,7 @@ export class Station {
     const e = T ? t - T.t0 : 0, B = T && T.board, eb = B ? t - B.t0 : 0, want = T && e > 1.05 && !B ? 1 : 0;
     // a steady ramp (0.85 s up, 0.6 s down) eased once: the arms follow the same curve, so nothing hurries in the middle
     C.sign += Math.sign(want - C.sign) * Math.min(Math.abs(want - C.sign), dt / (want ? .85 : .6));
-    const S = this.copSign, k = .5 - Math.cos(Math.PI * Math.min(1, C.sign)) / 2; // (a sine ease: no hurried middle) S.g.visible = C.sign > .02;
+    const S = this.copSign, k = .5 - Math.cos(Math.PI * Math.min(1, C.sign)) / 2; S.g.visible = C.sign > .02; // (a sine ease: no hurried middle)
     if (!S.g.visible) C.lr = undefined;
     if (S.g.visible) {
       const f = new THREE.Vector3(-Math.sin(p.root.rotation.y), 0, -Math.cos(p.root.rotation.y)), side = new THREE.Vector3(f.z, 0, -f.x), up = new THREE.Vector3(0, 1, 0);
@@ -1117,7 +1117,7 @@ export class Station {
     // the crew turn round as the door opens, then watch you; a couple of them wave
     const cam = c.position, v = new THREE.Vector3(), q = new THREE.Quaternion();
     this.crew.forEach((p, k) => {
-      const tt = Math.max(0, Math.min(1, (e - 4.75 - k * .14) / 1.05)); // (turning round over about a second) p.root.rotation.y = -Math.PI / 2 + easeInOut(tt) * Math.PI;
+      const tt = Math.max(0, Math.min(1, (e - 4.75 - k * .14) / 1.05)); p.root.rotation.y = -Math.PI / 2 + easeInOut(tt) * Math.PI; // (turning round over about a second)
       if (tt > 0 && tt < 1 && p.poseName !== 'walk') p.pose('walk', { fade: .2, speed: .6 }); else if (tt >= 1 && p.poseName !== 'idle') p.pose('idle', { fade: .4 });
       p.update(dt); p.root.updateMatrixWorld(true);
       // head: toward you once they've turned

@@ -1,7 +1,7 @@
 import { DOORS, SITE, CABINET, EVENTS, NEWSLETTER } from './doors.js';
 import { StationAudio } from './audio.js';
 import { flap, pad, blank } from './flap.js';
-import { CONFIG, ranked, fetchScores, fmt } from '/points/js/data.js';
+import { CONFIG, ranked, fetchScores } from '/points/js/data.js';
 
 window.__hubBooted = true;
 const $ = id => document.getElementById(id);
@@ -236,21 +236,14 @@ const SCORES_KEY = 'spirit-cache-' + CONFIG.sheetId;
 let scores = []; try { const c = JSON.parse(localStorage.getItem(SCORES_KEY) || 'null'); if (c && c.entries) scores = c.entries; } catch (e) {}
 const refreshScores = () => fetchScores().then(es => { scores = es; try { localStorage.setItem(SCORES_KEY, JSON.stringify({ entries: es, at: Date.now() })); } catch (e) {} return true; }).catch(() => false);
 const standingsNow = () => scores.length ? ranked(scores).slice().sort((a, b) => a.rank - b.rank || a.order - b.order) : [];
-const standingsText = rows => rows.length ? 'Spirit Points standings: ' + rows.map(r => `${r.rank}. ${r.name}, ${fmt(r.pts)} points`).join('; ') + '.' : 'No scores yet.';
 refreshScores();
-// he holds up a sign with the standings (drawn from the scores as you walk over); then the full leaderboard, or back
+// click him (or his label) and he points straight to the big leaderboard past the end of the train: the camera follows
+// his arm over and the full board opens on its face (the owner wanted this rather than his sign with the standings first)
 let talking = false;
 function talkToCop() {
   if (!station || !station.cop || boarding || !entered || introPlaying || !$('notice').hidden) return;
   boarding = true; talking = true; document.body.classList.add('boarding'); audio.beep();
-  const rows = standingsNow();
-  station.drawCopSign(rows); station.talkToCop();
-  $('talk-text').textContent = standingsText(rows);
-  // and check the sheet again while he walks over: the page may have been open a while
-  refreshScores().then(ok => { if (!ok || !talking) return; const fresh = standingsNow(); station.drawCopSign(fresh); $('talk-text').textContent = standingsText(fresh); });
-  const t = $('talk'); t.hidden = false; t.classList.remove('open');
-  setTimeout(() => { if (!talking) return; audio.paper(); }, 1100); // the board comes up
-  setTimeout(() => { if (!talking) return; requestAnimationFrame(() => t.classList.add('open')); softFocus($('talk-full')); }, 1900);
+  station.talkToCop(); openBoard();
 }
 function leaveCop() {
   if (!talking) return; talking = false; audio.tick();
@@ -274,11 +267,14 @@ function placeBillboard() {
   const r = station.boardRect(), b = $('bboard').style;
   b.left = r.l + 'px'; b.top = r.t + 'px'; b.width = (r.r - r.l) + 'px'; b.height = (r.b - r.t) + 'px';
 }
-$('talk-full').addEventListener('click', e => {
+$('talk-full').addEventListener('click', e => { // (only the static version shows these buttons now: it goes to /points/)
   e.preventDefault();
-  if (!station) { try { sessionStorage.setItem('spirit-rode', '1'); } catch (x) {} location.href = '/points/'; return; } // the static version
+  if (!station) { try { sessionStorage.setItem('spirit-rode', '1'); } catch (x) {} location.href = '/points/'; return; }
+  openBoard();
+});
+function openBoard() {
   if (!talking || onBoard) return;
-  onBoard = true; loadBoard(); layoutBoard(); audio.tick(); $('talk').classList.remove('open'); setTimeout(() => { if (onBoard) $('talk').hidden = true; }, 500);
+  onBoard = true; loadBoard(); layoutBoard(); audio.tick();
   station.copToBoard({
     arrive: () => {
       if (!onBoard) return; placeBillboard();
@@ -287,7 +283,7 @@ $('talk-full').addEventListener('click', e => {
       softFocus($('board-back'));
     }
   });
-});
+}
 $('bb-back').addEventListener('click', leaveCop); $('board-back').addEventListener('click', leaveCop);
 // labels placed over the 3D every frame: their widths are measured once (and again on resize), not every frame,
 // so the loop never forces a layout
