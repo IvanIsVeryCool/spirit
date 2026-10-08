@@ -6,7 +6,7 @@ import { UnrealBloomPass } from '/vendor/jsm/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from '/vendor/jsm/postprocessing/OutputPass.js';
 import { mergeGeometries } from '/vendor/jsm/utils/BufferGeometryUtils.js';
 import { mergeStatic, addPeople, updatePeople, addPlatformProps, addBackground, updateBackground } from './scenery.js';
-import { CAR_L, GAP, W, H, BASE, FLOOR, DOOR_W, DOOR_H, NOSE_L, bodyGeometry, capGeometry, noseGeometry, noseLiningGeometry, nosePoint, paintBody, paintNose, windowSlots } from './train.js';
+import { TOY, CAR_L, GAP, W, H, BASE, FLOOR, DOOR_W, DOOR_H, NOSE_L, bodyGeometry, capGeometry, noseGeometry, noseLiningGeometry, nosePoint, paintBody, paintNose, windowSlots } from './train.js';
 import { buildInterior, CAB_DOOR } from './interior.js';
 import { CABINET } from './doors.js';
 import { Crowd } from './crowd.js';
@@ -284,6 +284,15 @@ export class Station {
     };
     // tinted glass you can see through: the lit decks and the passengers inside show, with the evening sky on top
     M.window = new THREE.MeshPhysicalMaterial({ color: 0x262c3a, transparent: true, opacity: .5, depthWrite: false, roughness: .06, metalness: 0, clearcoat: .8, clearcoatRoughness: .05, envMapIntensity: .9 });
+    if (TOY) { // the toy look: flat paint, matte like the people (no stainless, no clear coat), the glass softer
+      const matte = c => new THREE.MeshStandardMaterial({ color: c, roughness: .8, metalness: 0, envMapIntensity: .45 });
+      Object.assign(M, {
+        body: new THREE.MeshStandardMaterial({ map: paint.map, roughness: .8, metalness: 0, envMapIntensity: .45 }),
+        cap: matte(0xb9b5ad), dark: matte(0x2a2a31), under: matte(0x34373e), steel: matte(0xa3a8b0), gray: matte(0x7d828b), roof: matte(0x8f949c),
+        grille: new THREE.MeshStandardMaterial({ map: M.grille.map, roughness: .85, metalness: 0 }), gasket: matte(0x1e2026), door: matte(0xd2cdc3), yellow: matte(0xe0b02a)
+      });
+      M.window.clearcoat = .2; M.window.roughness = .3; M.window.envMapIntensity = .4;
+    }
     const shell = bodyGeometry({ windows: true }), cap = capGeometry();
     this.stops = new NextStops(this); // the Events car's next-stops screen
     this.cars = []; this.doors = [];
@@ -301,6 +310,12 @@ export class Station {
   }
   _roof(car) {
     const M = this.mats;
+    if (TOY) { // chunky bevelled roof units, a vent stripe on each, and the hatch
+      [-2, 2].forEach(x => { const ac = new THREE.Mesh(softBox(1.6, .42, 1.6, .12), M.roof); ac.position.set(x, H + .2, 0); ac.userData.cast = true; car.add(ac);
+        const v = new THREE.Mesh(softBox(1.1, .08, 1.62, .03), M.dark); v.position.set(x, H + .24, 0); car.add(v); });
+      const hatch = new THREE.Mesh(softBox(.8, .12, .8, .04), M.gray); hatch.position.set(0, H + .06, 0); car.add(hatch);
+      return;
+    }
     const roof = new THREE.Mesh(new THREE.BoxGeometry(CAR_L - .3, .04, W - 1), M.roof); roof.position.y = H + .02; car.add(roof);
     // air-conditioning units with grilles, a walkway strip and roof hatches
     [-2, 2].forEach(x => {
@@ -314,6 +329,23 @@ export class Station {
   }
   _under(car) {
     const M = this.mats;
+    if (TOY) { // chunky bogies: a bevelled frame, fat wheels with pale hubs, axle boxes; equipment boxes between (all kept under the lower deck)
+      [-1, 1].forEach(sd => {
+        const g = new THREE.Group(); g.position.set(sd * (CAR_L / 2 - 1.25), 0, 0);
+        const frame = new THREE.Mesh(softBox(2.4, .22, W - .5, .07), M.under); frame.position.y = .3; g.add(frame);
+        [-.86, .86].forEach(dz => {
+          const sf = new THREE.Mesh(softBox(2.3, .2, .16, .05), M.under); sf.position.set(0, .3, dz); g.add(sf);
+          [-.7, .7].forEach(dx => {
+            const wh = new THREE.Mesh(new THREE.CylinderGeometry(.28, .28, .14, 12), M.dark); wh.rotation.x = Math.PI / 2; wh.position.set(dx, .27, dz * .92); g.add(wh);
+            const hub = new THREE.Mesh(new THREE.CylinderGeometry(.11, .11, .16, 8), M.steel); hub.rotation.x = Math.PI / 2; hub.position.set(dx, .27, dz * .92 + Math.sign(dz) * .01); g.add(hub);
+            const box = new THREE.Mesh(softBox(.26, .22, .18, .05), M.gray); box.position.set(dx, .31, dz + Math.sign(dz) * .1); g.add(box);
+          });
+        });
+        car.add(g);
+      });
+      [[-.6, .9, .34], [.7, 1.2, .3]].forEach(([x, len, hgt]) => { const box = new THREE.Mesh(softBox(len, hgt, W - .9, .06), M.under); box.position.set(x, BASE - hgt / 2 + .02, 0); car.add(box); });
+      return;
+    }
     // two bogies, each with side frames, springs, axle boxes and two wheelsets
     [-1, 1].forEach(sd => {
       const bx = sd * (CAR_L / 2 - 1.25), g = new THREE.Group(); g.position.set(bx, 0, 0);
@@ -388,7 +420,8 @@ export class Station {
   // dir -1: the leading cab on the front of the first car; +1: the trailing cab on the back of the last (the same nose, mirrored)
   _cab(car, dir) {
     const M = this.mats, g = new THREE.Group(); g.position.x = dir * CAR_L / 2; g.scale.x = -dir; car.add(g); // nose-local: the nose runs toward -x
-    const nose = new THREE.Mesh(noseGeometry(), new THREE.MeshPhysicalMaterial({ roughness: 1, metalness: 0, clearcoat: 1, clearcoatRoughness: .06, emissive: 0xffffff, emissiveIntensity: 2.2 }));
+    const nose = new THREE.Mesh(noseGeometry(), TOY ? new THREE.MeshStandardMaterial({ roughness: .75, metalness: 0, envMapIntensity: .45, emissive: 0xffffff, emissiveIntensity: 2.2 })
+      : new THREE.MeshPhysicalMaterial({ roughness: 1, metalness: 0, clearcoat: 1, clearcoatRoughness: .06, emissive: 0xffffff, emissiveIntensity: 2.2 }));
     nose.userData.cast = true; nose.userData.keep = true; g.add(nose);
     if (dir < 0) this.noseMesh = nose; else this.tailMesh = nose;
     // wipers resting at the bottom of the windshield

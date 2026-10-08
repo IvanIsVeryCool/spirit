@@ -1,6 +1,10 @@
 import * as THREE from 'three';
 
 // Shared dimensions for the train (metres-ish).
+// The toy look (flat paint, matte, chunky running gear, as the Mini Characters are made): waiting for the owner's OK,
+// so it's off on the live site; ?toytrain in the address turns it on to preview
+const TOY_DEFAULT = false;
+export const TOY = TOY_DEFAULT || (typeof location !== 'undefined' && /[?&]toytrain\b/.test(location.search));
 export const CAR_L = 8, GAP = .36, W = 2.9, H = 4.05, BASE = .3, FLOOR = .55, DOOR_W = 1.3, DOOR_H = 2.1, NOSE_L = 2.6;
 const HW = W / 2, YC = (H + BASE) / 2, HH = (H - BASE) / 2, N_EXP = 8, M = 112;
 
@@ -146,29 +150,32 @@ export function paintBody(logo) {
     const a2 = R(1 - vOfY(y0)), b2 = R(1 - vOfY(y1)); ctx.fillRect(X(xa), a2, X(xb) - X(xa), b2 - a2);
   };
   const col = canvas(TW, TH), x = col.getContext('2d');
-  const g = x.createLinearGradient(0, R(vOfY(H)), 0, R(vOfY(BASE))); g.addColorStop(0, '#e4e7ec'); g.addColorStop(.5, '#cdd1d7'); g.addColorStop(1, '#b3b8c0');
-  x.fillStyle = g; x.fillRect(0, 0, TW, TH);
-  for (let i = 0; i < 1400; i++) { x.fillStyle = Math.random() < .5 ? 'rgba(255,255,255,.07)' : 'rgba(60,66,76,.06)'; x.fillRect(Math.random() * TW, Math.random() * TH, 40 + Math.random() * 260, 1); }
+  if (TOY) { x.fillStyle = '#dcd8cf'; x.fillRect(0, 0, TW, TH); } // flat paint: a warm off-white
+  else {
+    const g = x.createLinearGradient(0, R(vOfY(H)), 0, R(vOfY(BASE))); g.addColorStop(0, '#e4e7ec'); g.addColorStop(.5, '#cdd1d7'); g.addColorStop(1, '#b3b8c0');
+    x.fillStyle = g; x.fillRect(0, 0, TW, TH);
+    for (let i = 0; i < 1400; i++) { x.fillStyle = Math.random() < .5 ? 'rgba(255,255,255,.07)' : 'rgba(60,66,76,.06)'; x.fillRect(Math.random() * TW, Math.random() * TH, 40 + Math.random() * 260, 1); }
+  }
   x.fillStyle = '#8f949c'; x.fillRect(0, R(.62), TW, R(.38) - R(.62)); // roof
   both(BASE, .78, '#c3262c', undefined, undefined, x);
   both(.8, .84, '#f4f1ea', undefined, undefined, x);
-  both(2.0, 2.27, '#5f656e', undefined, undefined, x);
+  both(2.0, 2.27, TOY ? '#3a3f4a' : '#5f656e', undefined, undefined, x);
   both(3.55, 3.63, '#c3262c', undefined, undefined, x);
   // window gaskets
   windowSlots().forEach(w => {
     const a = R(vOfY(w.y + w.h / 2 + .045)), b = R(vOfY(w.y - w.h / 2 - .045));
-    x.fillStyle = '#121318'; x.beginPath(); x.roundRect(X(w.x - w.w / 2 - .045), a, X(w.w + .09) - X(0), b - a, 14); x.fill();
+    x.fillStyle = TOY ? '#1e2026' : '#121318'; x.beginPath(); x.roundRect(X(w.x - w.w / 2 - .045), a, X(w.w + .09) - X(0), b - a, TOY ? 26 : 14); x.fill();
   });
   // door surround
-  { const a = R(vOfY(FLOOR + DOOR_H + .12)), b = R(vOfY(FLOOR)); x.fillStyle = '#9da3ab'; x.fillRect(X(-DOOR_W / 2 - .16), a, X(DOOR_W + .32) - X(0), b - a); }
+  { const a = R(vOfY(FLOOR + DOOR_H + .12)), b = R(vOfY(FLOOR)); x.fillStyle = TOY ? '#bdb8ae' : '#9da3ab'; x.fillRect(X(-DOOR_W / 2 - .16), a, X(DOOR_W + .32) - X(0), b - a); }
   // panel seams with rivets
   const seams = [-CAR_L / 2 + .02, CAR_L / 2 - .02, ...[-1, 1].flatMap(sd => [.35, .65].map(f => sd * (DOOR_W / 2 + .12 + f * (CAR_L / 2 - DOOR_W / 2 - .12))))];
-  seams.forEach(sx => {
+  if (!TOY) seams.forEach(sx => { // (the toy paint has no seams, rivets or grime)
     const a = R(vOfY(3.52)), b = R(vOfY(.86));
     x.fillStyle = 'rgba(70,76,86,.55)'; x.fillRect(X(sx), a, 2, b - a); x.fillStyle = 'rgba(255,255,255,.4)'; x.fillRect(X(sx) + 2, a, 1, b - a);
     x.fillStyle = 'rgba(80,86,96,.5)'; for (let y = a; y < b; y += 18) { x.beginPath(); x.arc(X(sx) - 5, y, 1.6, 0, 7); x.fill(); x.beginPath(); x.arc(X(sx) + 7, y, 1.6, 0, 7); x.fill(); }
   });
-  { const a = R(vOfY(.86)); x.fillStyle = 'rgba(80,86,96,.45)'; for (let px = 6; px < TW; px += 22) { x.beginPath(); x.arc(px, a + 4, 1.6, 0, 7); x.fill(); } }
+  if (!TOY) { const a = R(vOfY(.86)); x.fillStyle = 'rgba(80,86,96,.45)'; for (let px = 6; px < TW; px += 22) { x.beginPath(); x.arc(px, a + 4, 1.6, 0, 7); x.fill(); } }
   // lettering on the band between the decks
   [-1, 1].forEach(sd => {
     const cx = X(sd * (CAR_L / 2 - 1.15)), cy = (R(vOfY(2.27)) + R(vOfY(2.0))) / 2;
@@ -181,10 +188,12 @@ export function paintBody(logo) {
     x.restore();
   });
   // grime: dirt rising from the bottom, streaks under the windows
+  if (!TOY) {
   const gb = x.createLinearGradient(0, R(vOfY(1.5)), 0, R(vOfY(BASE))); gb.addColorStop(0, 'rgba(70,52,40,0)'); gb.addColorStop(1, 'rgba(70,52,40,.45)');
   x.fillStyle = gb; x.fillRect(0, R(vOfY(1.5)), TW, R(vOfY(BASE)) - R(vOfY(1.5)));
   windowSlots().forEach(w => { if (w.y > 2) return; for (let k = 0; k < 5; k++) { const sx = X(w.x - w.w / 2 + Math.random() * w.w), a = R(vOfY(w.y - w.h / 2 - .05)); const sg = x.createLinearGradient(0, a, 0, a + 120); sg.addColorStop(0, 'rgba(60,50,45,.12)'); sg.addColorStop(1, 'rgba(60,50,45,0)'); x.fillStyle = sg; x.fillRect(sx, a, 3 + Math.random() * 4, 120); } });
   noise(x, TW, TH, .035);
+  }
   // roughness (green) and metalness (blue): stainless is metallic, paint is not
   const mr = canvas(512, 256), y = mr.getContext('2d'), sx = 512 / TW, sy = 256 / TH;
   y.fillStyle = 'rgb(0,95,210)'; y.fillRect(0, 0, 512, 256);
@@ -213,7 +222,7 @@ export function paintNose(logo, ledDraw, { tail = false } = {}) { // tail: the t
   const TW = 1024, TH = 1024, U = s => s * TW, R = v => (1 - v) * TH;
   const c = canvas(TW, TH), x = c.getContext('2d'), e = canvas(TW, TH), ex = e.getContext('2d');
   const gr = x.createLinearGradient(0, 0, TW, 0); gr.addColorStop(0, '#c3262c'); gr.addColorStop(1, '#b51f25');
-  x.fillStyle = gr; x.fillRect(0, 0, TW, TH);
+  x.fillStyle = TOY ? '#c3262c' : gr; x.fillRect(0, 0, TW, TH);
   ex.fillStyle = '#000'; ex.fillRect(0, 0, TW, TH);
   // dark skirt along the bottom
   x.fillStyle = '#2a2c31'; x.fillRect(0, R(.05), TW, R(0) - R(.05)); x.fillRect(0, R(1), TW, R(.95) - R(1));
@@ -240,7 +249,7 @@ export function paintNose(logo, ledDraw, { tail = false } = {}) { // tail: the t
   });
   [[.24, .27], [.73, .76]].forEach(([v0, v1]) => { [x, ex].forEach(k => { k.fillStyle = tail ? '#ff5a3a' : '#ffd99a'; k.fillRect(U(.885), R(v1), 26, R(v0) - R(v1)); }); });
   if (logo) { x.save(); x.translate(U(.915), R(.5)); x.rotate(Math.PI / 2); x.drawImage(logo, -46, -46, 92, 92); x.restore(); }
-  noise(x, TW, TH, .025);
+  if (!TOY) noise(x, TW, TH, .025);
   // windshield and display are glossy glass; paint gets a clear coat
   const mr = canvas(256, 256), y = mr.getContext('2d'); y.fillStyle = 'rgb(0,90,40)'; y.fillRect(0, 0, 256, 256);
   y.fillStyle = 'rgb(0,10,0)'; y.beginPath(); y.roundRect(U(.47) / 4, R(.71) / 4, (U(.87) - U(.47)) / 4, (R(.29) - R(.71)) / 4, 6); y.fill();
