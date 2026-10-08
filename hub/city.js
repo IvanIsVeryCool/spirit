@@ -147,6 +147,9 @@ export function addCity(st) {
   return { group: g, blades, traffic: addTraffic(st) };
 }
 export const cityLoaded = () => !!LIB;
+// the kits as loaded for the platform (nature, shops, cars), for the little world on the Events car's screen
+export const cityKits = () => KIT;
+export { TREES };
 
 // the cars on the frontage road (scenery.js keeps their lanes and speeds in st.bg.cars): Kenney's cars,
 // each one draw call, with their head and tail lights as two shared instanced glows

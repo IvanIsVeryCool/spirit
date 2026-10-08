@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { CAR_L, GAP, W, FLOOR, NOSE_L } from './train.js';
 import { rideTrain } from './ridetrain.js';
 import { mergeStatic } from './scenery.js';
+import { cityKits, townMaterial, modelGeometry, SHOPS, LOW, TREES } from './city.js';
 
 // The ride on the Events car's screen: a little Spirit Line of its own, a loop through the golden-hour countryside with
 // a station for every event (its name on the signs), and a three-car train that runs from stop to stop. It's drawn by
@@ -130,33 +131,66 @@ export class EventRide {
     x.fillText(sg.name, 44, h / 2 + 3, w - 66); sg.tex.needsUpdate = true;
   }
   redrawSigns() { this.signs.forEach(s => this._paintSign(s)); }
-  // the towns by the stations (blocks with lit windows) and trees everywhere else
+  // the towns by the stations and trees everywhere else: from the Kenney kits the platform loaded (City Kit Commercial's
+  // shops and low-detail buildings, their windows lit; Nature Kit trees), instanced per model; plain blocks and
+  // low-poly trees if the kits didn't load
   _towns() {
-    const rnd = this.rnd, m = new THREE.Matrix4(), q = new THREE.Quaternion(), cc = new THREE.Color(), spots = [];
+    const rnd = this.rnd, m = new THREE.Matrix4(), q = new THREE.Quaternion(), cc = new THREE.Color(), spots = [], kits = cityKits();
     this.stations.forEach(sp => {
-      for (let k = 0, tries = 0; k < 16 && tries < 200; tries++) {
-        const a = (rnd() - .5) * 120, d = 22 + rnd() * 70, x = sp.p.x + sp.t.x * a + sp.out.x * d, z = sp.p.z + sp.t.z * a + sp.out.z * d;
-        if (!this._clear(x, z, 16)) continue; spots.push([x, z, Math.atan2(sp.t.x, sp.t.z)]); k++;
+      for (let k = 0, tries = 0; k < 18 && tries < 240; tries++) {
+        const a = (rnd() - .5) * 130, d = 20 + rnd() * 80, x = sp.p.x + sp.t.x * a + sp.out.x * d, z = sp.p.z + sp.t.z * a + sp.out.z * d;
+        if (!this._clear(x, z, 15) || spots.some(([sx, sz]) => (sx - x) ** 2 + (sz - z) ** 2 < 140)) continue;
+        spots.push([x, z, Math.atan2(sp.t.x, sp.t.z) + (rnd() < .5 ? 0 : Math.PI / 2) + Math.round(rnd()) * Math.PI, d < 50 && Math.abs(a) < 45]); k++;
       }
     });
-    const win = canvas(128, 64, (x, w, h) => { x.fillStyle = '#000'; x.fillRect(0, 0, w, h); for (let r = 0; r < 3; r++) for (let c = 0; c < 6; c++) { x.fillStyle = rnd() < .45 ? (rnd() < .5 ? '#ffcf8a' : '#ffe2b0') : '#16141c'; x.fillRect(6 + c * 20, 6 + r * 20, 10, 10); } });
-    const white = canvas(4, 4, x => { x.fillStyle = '#fff'; x.fillRect(0, 0, 4, 4); });
-    const box = new THREE.BoxGeometry(1, 1, 1); box.translate(0, .5, 0);
-    const blocks = new THREE.InstancedMesh(box, new THREE.MeshStandardMaterial({ map: tex(white), emissiveMap: tex(win), emissive: 0xffffff, emissiveIntensity: .85, roughness: .9 }), Math.max(1, spots.length));
-    spots.forEach(([x, z, yaw], k) => {
-      const w = 8 + rnd() * 8, d = 8 + rnd() * 7, h = 5 + rnd() * 8; q.setFromAxisAngle(V(0, 1, 0), yaw + (rnd() - .5) * .2); blocks.setMatrixAt(k, m.compose(V(x, 0, z), q, V(w, h, d)));
-      blocks.setColorAt(k, cc.set([0xcdb79a, 0xc29f80, 0xb07e60, 0xc8c0b2, 0xa89886, 0x9c8c7c][Math.floor(rnd() * 6)]));
-    });
-    blocks.count = spots.length; this.scene.add(blocks);
-    const nT = this.mobile ? 320 : 600, trees = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, 0), new THREE.MeshStandardMaterial({ roughness: .95, flatShading: true }), nT), rx = this.R * 1.3 * .5, rz = this.R * .82 * .48;
-    let kt = 0; // (kept well back from the line: the camera stands beside it)
-    for (let tries = 0; kt < nT && tries < nT * 8; tries++) {
+    if (kits && kits.shops) {
+      const T = kits.shops, lit = townMaterial(T[SHOPS[0]].getObjectByProperty('isMesh', true).material, .85), kinds = {};
+      const add = (name, mat) => (kinds[name] = kinds[name] || []).push(mat.clone());
+      let shops = this.mobile ? 16 : 32; // the full shop models are ~1,500 triangles each: the ones closest to each platform
+      spots.forEach(([x, z, yaw, dense]) => {
+        q.setFromAxisAngle(V(0, 1, 0), yaw + (rnd() - .5) * .1);
+        if (dense && shops > 0) { shops--; const name = SHOPS[Math.floor(rnd() * SHOPS.length)], k = 8.5 + rnd() * 3; add(name, m.compose(V(x, 0, z), q, V(k, k * (.9 + rnd() * .4), k))); }
+        else { const name = LOW[Math.floor(rnd() * LOW.length)], sz = T[name].userData.size, w = 8 + rnd() * 7, d = 8 + rnd() * 6, h = dense ? 7 + rnd() * 8 : 4.5 + rnd() * 4; add(name, m.compose(V(x, 0, z), q, V(w / sz.x, h / sz.y, d / sz.z))); }
+      });
+      Object.entries(kinds).forEach(([name, mats]) => {
+        const im = new THREE.InstancedMesh(modelGeometry(T[name]), lit, mats.length);
+        mats.forEach((mm, i) => { im.setMatrixAt(i, mm); im.setColorAt(i, cc.setHSL(.06 + rnd() * .04, .3, .62 + rnd() * .16)); }); // warm stucco, sandstone and brick tones
+        im.computeBoundingSphere(); this.scene.add(im);
+      });
+    } else {
+      const win = canvas(128, 64, (x, w, h) => { x.fillStyle = '#000'; x.fillRect(0, 0, w, h); for (let r = 0; r < 3; r++) for (let c = 0; c < 6; c++) { x.fillStyle = rnd() < .45 ? (rnd() < .5 ? '#ffcf8a' : '#ffe2b0') : '#16141c'; x.fillRect(6 + c * 20, 6 + r * 20, 10, 10); } });
+      const white = canvas(4, 4, x => { x.fillStyle = '#fff'; x.fillRect(0, 0, 4, 4); });
+      const box = new THREE.BoxGeometry(1, 1, 1); box.translate(0, .5, 0);
+      const blocks = new THREE.InstancedMesh(box, new THREE.MeshStandardMaterial({ map: tex(white), emissiveMap: tex(win), emissive: 0xffffff, emissiveIntensity: .85, roughness: .9 }), Math.max(1, spots.length));
+      spots.forEach(([x, z, yaw], k) => {
+        const w = 8 + rnd() * 8, d = 8 + rnd() * 7, h = 5 + rnd() * 8; q.setFromAxisAngle(V(0, 1, 0), yaw); blocks.setMatrixAt(k, m.compose(V(x, 0, z), q, V(w, h, d)));
+        blocks.setColorAt(k, cc.set([0xcdb79a, 0xc29f80, 0xb07e60, 0xc8c0b2, 0xa89886, 0x9c8c7c][Math.floor(rnd() * 6)]));
+      });
+      blocks.count = spots.length; this.scene.add(blocks);
+    }
+    // trees, kept well back from the line (the camera stands beside it), out of the lake and the towns
+    const nT = this.mobile ? 300 : 560, rx = this.R * 1.3 * .5, rz = this.R * .82 * .48, at = [];
+    for (let tries = 0; at.length < nT && tries < nT * 8; tries++) {
       const x = (rnd() - .5) * this.R * 5, z = (rnd() - .5) * this.R * 3.6;
       if (!this._clear(x, z, 32) || (x / (rx * 1.1)) ** 2 + (z / (rz * 1.12)) ** 2 < 1 || spots.some(([sx, sz]) => (sx - x) ** 2 + (sz - z) ** 2 < 110)) continue;
-      const sc = 2.5 + rnd() * 3.5; trees.setMatrixAt(kt, m.compose(V(x, sc * .8, z), q.setFromAxisAngle(V(0, 1, 0), rnd() * 6), V(sc, sc * (1 + rnd() * .5), sc)));
-      trees.setColorAt(kt++, cc.set([0x24402f, 0x2c4a2f, 0x34502e, 0x3c5a34][Math.floor(rnd() * 4)]));
+      at.push([x, z, rnd() * 6.28, 4.5 + rnd() * 4.5]);
     }
-    trees.count = kt; this.scene.add(trees);
+    if (kits && kits.nature) { // one instanced mesh per tree model and per part (trunk, leaves)
+      const byModel = {}; at.forEach(t => { const name = TREES[Math.floor(rnd() * TREES.length)]; (byModel[name] = byModel[name] || []).push(t); });
+      Object.entries(byModel).forEach(([name, list]) => {
+        const obj = kits.nature[name], h0 = obj.userData.size.y; obj.updateMatrixWorld(true);
+        obj.traverse(o => {
+          if (!o.isMesh) return;
+          const geo = o.geometry.clone().applyMatrix4(o.matrixWorld), im = new THREE.InstancedMesh(geo, o.material, list.length);
+          list.forEach(([x, z, yaw, h], i) => { const k = h / h0; im.setMatrixAt(i, m.compose(V(x, 0, z), q.setFromAxisAngle(V(0, 1, 0), yaw), V(k, k, k))); });
+          im.computeBoundingSphere(); this.scene.add(im);
+        });
+      });
+    } else {
+      const trees = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, 0), new THREE.MeshStandardMaterial({ roughness: .95, flatShading: true }), Math.max(1, at.length));
+      at.forEach(([x, z, yaw, h], k) => { const sc = h * .55; trees.setMatrixAt(k, m.compose(V(x, sc * .8, z), q.setFromAxisAngle(V(0, 1, 0), yaw), V(sc, sc * 1.3, sc))); trees.setColorAt(k, cc.set([0x24402f, 0x2c4a2f, 0x34502e, 0x3c5a34][Math.floor(rnd() * 4)])); });
+      trees.count = at.length; this.scene.add(trees);
+    }
   }
 
   /* ---------- the train ---------- */

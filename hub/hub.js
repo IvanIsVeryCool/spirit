@@ -472,7 +472,7 @@ function playIntro() {
     // and fades as the view pulls out
     press: () => audio.cassette(), start: () => { if (song) song.stop(.3); song = audio.ctx ? audio.music() : null; },
     leave: () => { if (song) song.duck(1.6); }, // it doesn't stop: it carries on faintly, leaking from the headphones on the bench
-    sit: () => audio.sit(), paper: () => audio.paper(), bells: () => audio.bells(8.5),
+    sit: () => audio.sit(), bells: () => audio.bells(8.5),
     arrive: skipped => { if (!skipped) audio.arrive(6, { bells: false }); },
     stop: arrived, end: endIntro
   });

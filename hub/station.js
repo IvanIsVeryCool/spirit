@@ -4,6 +4,7 @@ import { EffectComposer } from '/vendor/jsm/postprocessing/EffectComposer.js';
 import { RenderPass } from '/vendor/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from '/vendor/jsm/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from '/vendor/jsm/postprocessing/OutputPass.js';
+import { mergeGeometries } from '/vendor/jsm/utils/BufferGeometryUtils.js';
 import { mergeStatic, addPeople, updatePeople, addPlatformProps, addBackground, updateBackground } from './scenery.js';
 import { CAR_L, GAP, W, H, BASE, FLOOR, DOOR_W, DOOR_H, NOSE_L, bodyGeometry, capGeometry, noseGeometry, noseLiningGeometry, nosePoint, paintBody, paintNose, windowSlots } from './train.js';
 import { buildInterior, CAB_DOOR } from './interior.js';
@@ -51,6 +52,17 @@ function grilleTex() {
   return canvasTex(64, 64, (x, w, h) => { x.fillStyle = '#7c838d'; x.fillRect(0, 0, w, h); x.fillStyle = '#4c525b'; for (let i = 2; i < h; i += 6) x.fillRect(4, i, w - 8, 3); });
 }
 
+// a box with bevelled edges, like the Kenney models: each edge cut by one chamfer facet of radius r
+function softBox(w, h, d, r) {
+  const g = new THREE.BoxGeometry(1, 1, 1, 4, 4, 4), p = g.attributes.position, half = [w / 2, h / 2, d / 2], v = new THREE.Vector3(), inner = new THREE.Vector3();
+  for (let i = 0; i < p.count; i++) {
+    const c = [p.getX(i), p.getY(i), p.getZ(i)].map((t, k) => { const a = Math.min(1, Math.abs(t) * 2), m = a <= .5 ? a / .5 * (half[k] - r) : half[k] - r + (a - .5) / .5 * r; return Math.sign(t) * m; });
+    v.set(...c); inner.set(...c.map((x, k) => Math.max(-(half[k] - r), Math.min(half[k] - r, x))));
+    const dv = v.clone().sub(inner); if (dv.lengthSq() > 1e-12) v.copy(inner).addScaledVector(dv.normalize(), r);
+    p.setXYZ(i, v.x, v.y, v.z);
+  }
+  g.computeVertexNormals(); return g;
+}
 export class Station {
   constructor(canvas, { mobile, doors, logo }) {
     this.mobile = mobile; this.data = doors; this.count = doors.length; this.logo = logo;
@@ -599,38 +611,48 @@ export class Station {
     g.traverse(o => { if (o.isMesh) { o.castShadow = false; o.receiveShadow = false; } });
     this.scene.add(g); this.introGroup = g;
   }
-  // Before the ticket: your cassette player. Our own design (Spirit Line red, a silver face, a window onto the tape,
-  // piano keys along the top, the headphone cable running up). One hand holds it, the other presses play, the reels turn.
+  // Before the ticket: your cassette player. Our own design, made the way Kenney's Mini Characters are (chunky blocks with
+  // bevelled edges, a few flat colours from a palette texture, their material: the same as your arms), so it looks like
+  // it came in the same box. Spirit Line red, a cream face, a window onto the tape (its label, the tape wound on two
+  // reels with white hexagonal hubs), piano keys along the top (play in red), a volume wheel, the headphone cable up.
   _player(g, armMat, z0) {
     const P = new THREE.Group(), S = 1.8, B = new THREE.Group(); g.add(P); B.scale.setScalar(S); P.add(B); // B: the player, in toy proportion to your fists
-    const red = new THREE.MeshStandardMaterial({ color: 0xb8262b, roughness: .4, metalness: .25 }), face = new THREE.MeshStandardMaterial({ color: 0xc9ccd2, roughness: .35, metalness: .7 });
-    const dark = new THREE.MeshStandardMaterial({ color: 0x15161a, roughness: .5 }), keyMat = new THREE.MeshStandardMaterial({ color: 0xd8dade, roughness: .3, metalness: .6 });
-    const box = (w, h, d, m, x, y, z, parent = B) => { const o = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m); o.position.set(x, y, z); parent.add(o); return o; };
-    box(.118, .086, .03, red, 0, 0, 0);                    // body
-    box(.106, .072, .002, face, 0, -.002, .0155);          // brushed face
-    box(.084, .042, .001, dark, 0, .002, .0162);           // tape window
-    // the cassette behind the window: a label and two reels with three spokes, turning when it plays
-    const lc = document.createElement('canvas'); lc.width = 256; lc.height = 128; const x = lc.getContext('2d');
-    x.fillStyle = '#efe6d2'; x.fillRect(0, 0, 256, 128); x.fillStyle = '#c9272c'; x.fillRect(0, 84, 256, 14); x.fillStyle = '#2a2a33'; x.fillRect(0, 98, 256, 4);
-    x.strokeStyle = 'rgba(40,40,50,.35)'; x.lineWidth = 2; [24, 38, 52].forEach(y => { x.beginPath(); x.moveTo(14, y); x.lineTo(242, y); x.stroke(); });
-    x.fillStyle = '#1a1a20'; x.beginPath(); x.roundRect(58, 44, 140, 36, 18); x.fill();
-    const lt = new THREE.CanvasTexture(lc); lt.colorSpace = THREE.SRGBColorSpace;
-    const label = new THREE.Mesh(new THREE.PlaneGeometry(.08, .04), new THREE.MeshStandardMaterial({ map: lt, roughness: .7 })); label.position.set(0, .002, .017); B.add(label);
-    const reelMat = new THREE.MeshStandardMaterial({ color: 0xf2f2f2, roughness: .5 });
-    this.reels = [-1, 1].map(sd => {
-      const r = new THREE.Group(); r.position.set(sd * .021, .0035, .0177); B.add(r);
-      const hub = new THREE.Mesh(new THREE.CylinderGeometry(.0055, .0055, .002, 16), reelMat); hub.rotation.x = Math.PI / 2; r.add(hub);
-      for (let k = 0; k < 3; k++) { const sp = box(.0016, .0042, .0022, dark, 0, 0, 0, r); sp.rotation.z = k * Math.PI * 2 / 3; sp.translateY(.0036); }
-      return r;
-    });
-    const glass = new THREE.Mesh(new THREE.PlaneGeometry(.084, .042), new THREE.MeshPhysicalMaterial({ color: 0x223, transparent: true, opacity: .22, roughness: .05, clearcoat: 1, envMapIntensity: 1 }));
-    glass.position.set(0, .002, .0192); B.add(glass);
-    // piano keys along the top: rewind, play, fast-forward, stop; play is the one you press
-    this.keys = [-.033, -.011, .011, .033].map((kx, i) => box(.019, .01, .018, i === 1 ? red : keyMat, kx, .047, .002));
-    [0x15161a, 0xffffff, 0x15161a, 0x15161a].forEach((c, i) => { const t = new THREE.Mesh(new THREE.ConeGeometry(.003, .005, 3), new THREE.MeshBasicMaterial({ color: c })); t.rotation.set(-Math.PI / 2, 0, -Math.PI / 2); t.position.set(0, .0051, 0); this.keys[i].add(t); }); // each key's symbol rides on it
+    // its own little palette, painted with the characters' material (the same shading as your arms): their palette
+    // has no true Spirit red or cream, and its nearest swatches read as brick and skin
+    const COLS = ['#c9272c', '#efe7d6', '#2a2a31', '#d2d4da', '#f6f6f6', '#4a3226', '#f3ebd9'], pc = document.createElement('canvas'); pc.width = COLS.length; pc.height = 1;
+    const px = pc.getContext('2d'); COLS.forEach((c, i) => { px.fillStyle = c; px.fillRect(i, 0, 1, 1); });
+    const pt = new THREE.CanvasTexture(pc); pt.colorSpace = THREE.SRGBColorSpace; pt.flipY = false; pt.magFilter = pt.minFilter = THREE.NearestFilter; pt.generateMipmaps = false;
+    const mat = armMat.clone(); mat.map = mat.emissiveMap = pt;
+    const paint = (geo, hex) => { const uv = geo.attributes.uv, u = (COLS.indexOf(hex) + .5) / COLS.length; for (let i = 0; i < uv.count; i++) uv.setXY(i, u, .5); return geo; };
+    const [RED, CREAM, DARK, LIGHT, WHITE, TAPE, LABEL] = COLS;
+    const place = (geo, x, y, z, rx = 0, ry = 0, rz = 0) => { geo.rotateX(rx); geo.rotateY(ry); geo.rotateZ(rz); geo.translate(x, y, z); return geo; };
+    const parts = [], mesh = (geo, parent = B) => { const m = new THREE.Mesh(geo, mat); parent.add(m); return m; };
+    const flat = q => q.index ? q.toNonIndexed() : q;
+    parts.push(paint(place(softBox(.12, .088, .036, .009), 0, 0, 0), RED));                 // body
+    parts.push(paint(place(softBox(.104, .07, .006, .0035), 0, -.003, .016), CREAM));        // face
+    parts.push(paint(place(softBox(.084, .042, .006, .003), 0, .003, .0175), DARK));         // the tape window
+    // the cassette through the window: its label across the top (a red line on it), the tape wound round each reel
+    parts.push(paint(place(softBox(.074, .011, .003, .001), 0, .0165, .0205), LABEL));
+    parts.push(paint(place(softBox(.074, .0022, .0032, .0005), 0, .0128, .0206), RED));
+    [-1, 1].forEach(sd => parts.push(paint(place(new THREE.CylinderGeometry(.0105, .0105, .002, 10), sd * .02, -.004, .0207, Math.PI / 2), TAPE)));
+    parts.push(paint(place(new THREE.CylinderGeometry(.011, .011, .008, 8), .062, .014, 0, 0, 0, Math.PI / 2), DARK)); // the volume wheel
+    parts.push(paint(place(new THREE.CylinderGeometry(.0045, .0045, .008, 8), -.046, .046, -.006), DARK));            // the headphone jack
     // the headphone cable, from the jack up toward your headphones
-    const cable = new THREE.CatmullRomCurve3([new THREE.Vector3(-.045, .045, -.004), new THREE.Vector3(-.05, .07, 0), new THREE.Vector3(-.045, .15, .04), new THREE.Vector3(-.02, .36, .16)]);
-    B.add(new THREE.Mesh(new THREE.TubeGeometry(cable, 24, .0015, 6), dark));
+    const cable = new THREE.CatmullRomCurve3([new THREE.Vector3(-.046, .048, -.006), new THREE.Vector3(-.05, .07, -.002), new THREE.Vector3(-.045, .15, .04), new THREE.Vector3(-.02, .36, .16)]);
+    parts.push(paint(new THREE.TubeGeometry(cable, 20, .0024, 5), DARK));
+    mesh(mergeGeometries(parts.map(flat)));
+    // the reels' hubs: white hexagons with a dark centre, turning when it plays
+    this.reels = [-1, 1].map(sd => {
+      const r = mesh(mergeGeometries([paint(place(new THREE.CylinderGeometry(.0058, .0058, .003, 6), 0, 0, 0, Math.PI / 2), WHITE), paint(place(new THREE.CylinderGeometry(.0022, .0022, .004, 6), 0, 0, .0005, Math.PI / 2), DARK)].map(flat)));
+      r.position.set(sd * .02, -.004, .0222); return r;
+    });
+    // piano keys along the top: rewind, play, fast-forward, stop; play is the one you press. Each key's symbol rides on it
+    this.keyY = .05;
+    this.keys = [-.033, -.011, .011, .033].map((kx, i) => {
+      const sym = i === 3 ? place(softBox(.006, .002, .006, .0008), 0, .0068, 0) : place(new THREE.CylinderGeometry(.0042, .0042, .002, 3), 0, .0068, 0, 0, i === 0 ? Math.PI / 2 : -Math.PI / 2);
+      const k = mesh(mergeGeometries([paint(softBox(.0195, .012, .02, .003), i === 1 ? RED : LIGHT), paint(sym, i === 1 ? WHITE : DARK)].map(flat)));
+      k.position.set(kx, this.keyY, .002); return k;
+    });
     // your hands: the right one holds it, the left one comes in to press play
     const arm = bone => { const { geometry, tip } = limbGeometry(0, bone), m = new THREE.Mesh(geometry, armMat); m.scale.setScalar(.88); P.add(m); return { m, tip }; };
     const hold = arm('arm-left'), grip = new THREE.Vector3(.118, -.02, -.012), hdir = new THREE.Vector3(-.2, .62, -.75).normalize();
@@ -644,12 +666,12 @@ export class Station {
   }
   // the pressing fist: k = 0 resting out of view, 1 over the play key, 2 pressing it down
   _press(k) {
-    const pr = this.presser, rest = new THREE.Vector3(-.2, -.26, .12), over = new THREE.Vector3(-.03, .17, .06), down = new THREE.Vector3(-.026, .1, .004); // the play key's top is at y .094
+    const pr = this.presser, rest = new THREE.Vector3(-.2, -.26, .12), over = new THREE.Vector3(-.03, .17, .06), down = new THREE.Vector3(-.026, .106, .004); // the play key's top is at y .101
     const target = k <= 1 ? rest.clone().lerp(over, k) : over.clone().lerp(down, k - 1);
     const dir = target.clone().sub(pr.shoulder).normalize();
     pr.m.quaternion.copy(aimBasis(pr.tip, new THREE.Vector3(0, 1, 0), dir, new THREE.Vector3(0, .3, 1)));
     pr.m.position.copy(target).addScaledVector(dir, -pr.tip.length() * .88);
-    this.keys[1].position.y = .047 - Math.max(0, k - 1) * .005;
+    this.keys[1].position.y = this.keyY - Math.max(0, k - 1) * .005;
   }
   startIntro(ticketCanvas, cb = {}) {
     if (!this.introGroup) this._rig(ticketCanvas);
@@ -675,7 +697,7 @@ export class Station {
     const I = this.intro, e = t - I.t0, cb = I.cb, D = INTRO_D, E = e - D; // E: the ticket and the train, after the cassette player
     const fire = (k, at, fn) => { if (e >= at && !I.fired[k]) { I.fired[k] = 1; fn && fn(); } };
     fire('sit', .25, cb.sit); fire('press', 2.32, cb.press); fire('start', 2.45, cb.start); // the song starts as the tape gets up to speed
-    fire('lift', D + 1.15, cb.paper); fire('paper', D + 2.6, cb.paper); fire('bells', D + 3.4, cb.bells);
+    fire('bells', D + 3.4, cb.bells); // (reading the ticket is silent: the song's in your ears)
     fire('arrive', D + 5.2, () => { this.arrive(6, cb.stop, I.t0 + D + 5.2); cb.arrive && cb.arrive(false); });
     // when the doors open, the view lifts out of your head and pulls back: you stay on the bench, headphones on
     fire('leave', D + 12.1, () => { this.introGroup.visible = false; this._me(true); cb.leave && cb.leave(); });
@@ -691,8 +713,7 @@ export class Station {
     P.position.lerpVectors(this.plDown.p, this.plUp.p, up); P.position.z += Math.sin(up * Math.PI) * .04; P.quaternion.slerpQuaternions(this.plDown.q, this.plUp.q, up);
     P.rotateZ(Math.sin(up * Math.PI) * .05 + (e > 2.2 && e < 2.5 ? -Math.sin((e - 2.2) / .3 * Math.PI) * .02 : 0)); // a little give as you press
     this._press(e < 1.85 ? 0 : e < 2.2 ? easeInOut((e - 1.85) / .35) : e < 2.32 ? 1 + easeInOut((e - 2.2) / .12) : e < 2.42 ? 2 : e < 2.75 ? 2 - 2 * easeInOut((e - 2.42) / .33) : 0);
-    if (e < 2.75 && e > 2.42) this.keys[1].position.y = .047 - .005; // play stays down while it plays
-    else if (e >= 2.75) this.keys[1].position.y = .042;
+    if (e > 2.42) this.keys[1].position.y = this.keyY - .005; // play stays down while it plays
     const spin = e < 2.35 ? 0 : Math.min(1, (e - 2.35) / .35); this.reels.forEach((r, i) => { r.rotation.z -= dt * 7 * spin * (i ? 1 : 1.25); });
     this.rig.visible = E > 1.0; // the ticket waits on your lap until the player is put away
     // the ticket: on your lap as you sit, lifted up to your face and looked over, then lowered as the train is coming
