@@ -374,9 +374,27 @@ export class Station {
     // flush tinted windows, set into the painted gaskets
     windowSlots().forEach(w => side(new THREE.PlaneGeometry(w.w, w.h), M.window, w.x, w.y, .004));
     // door: a frame around the real opening, sliding stainless leaves with tall windows, grab handles, status lights, step
+    // (the toy train: chunky bevelled parts, Spirit red leaves with round-cornered windows, a thick charcoal frame)
+    if (TOY) M.doorRed = M.doorRed || new THREE.MeshStandardMaterial({ color: 0xc3262c, roughness: .75, metalness: 0, envMapIntensity: .45 });
+    if (TOY) {
+      [-1, 1].forEach(sd => side(softBox(.1, DOOR_H + .1, .07, .03), M.dark, sd * (DOOR_W / 2 + .05), FLOOR + DOOR_H / 2 + .05, .015));
+      side(softBox(DOOR_W + .2, .1, .07, .03), M.dark, 0, FLOOR + DOOR_H + .05, .015);
+    } else {
     [-1, 1].forEach(sd => side(new THREE.BoxGeometry(.05, DOOR_H + .05, .03), M.dark, sd * (DOOR_W / 2 + .025), FLOOR + DOOR_H / 2 + .025, .005));
     side(new THREE.BoxGeometry(DOOR_W + .1, .05, .03), M.dark, 0, FLOOR + DOOR_H + .025, .005);
+    }
     const leaves = [-1, 1].map(sd => {
+      if (TOY) { // a red leaf, a round-cornered window in a dark rubber surround, a white stripe at hand height, a fat button
+        const leaf = new THREE.Group(), lw = DOOR_W / 2;
+        leaf.add(new THREE.Mesh(softBox(lw - .008, DOOR_H, .06, .025), M.doorRed));
+        const wg = new THREE.Mesh(softBox(lw - .12, 1.06, .03, .05), M.gasket); wg.position.set(0, .3, .026); leaf.add(wg);
+        M.doorGlass = M.doorGlass || new THREE.MeshStandardMaterial({ color: 0x232a3a, roughness: .25, metalness: 0, envMapIntensity: .6 }); // solid dark glass (see-through, the red leaf showed behind it)
+        const w = new THREE.Mesh(softBox(lw - .2, .98, .012, .04), M.doorGlass); w.position.set(0, .3, .046); leaf.add(w);
+        const stripe = new THREE.Mesh(softBox(lw - .008, .05, .066, .015), M.door); stripe.position.set(0, -.36, 0); leaf.add(stripe);
+        const btn = new THREE.Mesh(new THREE.CylinderGeometry(.05, .05, .03, 12), glow(0x5dff8f, .2)); btn.rotation.x = Math.PI / 2; btn.position.set(-sd * (lw / 2 - .11), -.16, .036); leaf.add(btn);
+        const ring = new THREE.Mesh(softBox(.13, .13, .02, .03), M.dark); ring.position.set(-sd * (lw / 2 - .11), -.16, .03); leaf.add(ring);
+        leaf.position.set(sd * DOOR_W / 4, FLOOR + DOOR_H / 2, z + .03); leaf.userData.keep = true; leaf.userData.sd = sd; leaf.userData.btn = btn; car.add(leaf); return leaf;
+      }
       const leaf = new THREE.Group();
       leaf.add(new THREE.Mesh(new THREE.BoxGeometry(DOOR_W / 2, DOOR_H, .045), M.door));
       const wg = new THREE.Mesh(new THREE.BoxGeometry(DOOR_W / 2 - .14, 1.02, .02), M.gasket); wg.position.set(0, .28, .024); leaf.add(wg);
@@ -385,10 +403,18 @@ export class Station {
       const btn = new THREE.Mesh(new THREE.CylinderGeometry(.035, .035, .015, 16), glow(0x5dff8f, .2)); btn.rotation.x = Math.PI / 2; btn.position.set(-sd * (DOOR_W / 4 - .1), -.12, .03); leaf.add(btn);
       leaf.position.set(sd * DOOR_W / 4, FLOOR + DOOR_H / 2, z + .03); leaf.userData.keep = true; leaf.userData.sd = sd; leaf.userData.btn = btn; car.add(leaf); return leaf;
     });
+    let statusMats;
+    if (TOY) { // chunky grab handles, rounded status lamps, a thick step with a yellow nose
+      [-1, 1].forEach(sd => side(softBox(.05, 1.1, .05, .02), M.steel, sd * (DOOR_W / 2 + .17), FLOOR + 1.15, .06));
+      statusMats = [-1, 1].map(sd => { const m = glow(0xffa31f, .3); side(softBox(.12, .07, .04, .02), m, sd * (DOOR_W / 2 + .17), FLOOR + DOOR_H + .14, .02); return m; });
+      side(softBox(DOOR_W + .2, .07, .24, .025), M.gray, 0, FLOOR - .02, .1);
+      side(softBox(DOOR_W + .2, .06, .05, .02), M.yellow, 0, FLOOR, .21);
+    } else {
     [-1, 1].forEach(sd => side(new THREE.CylinderGeometry(.018, .018, 1.1, 8), M.steel, sd * (DOOR_W / 2 + .1), FLOOR + 1.15, .04));
-    const statusMats = [-1, 1].map(sd => { const m = glow(0xffa31f, .3); side(new THREE.BoxGeometry(.09, .05, .02), m, sd * (DOOR_W / 2 + .1), FLOOR + DOOR_H + .12, .01); return m; });
+    statusMats = [-1, 1].map(sd => { const m = glow(0xffa31f, .3); side(new THREE.BoxGeometry(.09, .05, .02), m, sd * (DOOR_W / 2 + .1), FLOOR + DOOR_H + .12, .01); return m; });
     side(new THREE.BoxGeometry(DOOR_W + .1, .04, .22), M.steel, 0, FLOOR - .01, .1);
     side(new THREE.BoxGeometry(DOOR_W + .1, .045, .04), M.yellow, 0, FLOOR, .2);
+    }
     // LED destination sign over the door: its two pages (the destination, then the car number) are drawn once each
     // and swapped, rather than redrawn dot by dot every time it flips
     const pages = [0, 1].map(() => { const cv = document.createElement('canvas'); cv.width = 640; cv.height = 128; const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; return { ctx: cv.getContext('2d'), tex: t }; });
