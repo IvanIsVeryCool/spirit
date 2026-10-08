@@ -7,8 +7,13 @@
 - The cars, front to back: **Photo Gallery** (it opens inside the car), **Weekly Newsletter** (you sit down in the car and
   read it as a newspaper), **Events** (the car's next-stops screen, with events as the stops) and **Meet the Cabinet**
   (you walk to the cab at the back).
-- Click the officer on the platform (the "Leaderboard" label): he holds up a sign with the standings, and "Full
-  leaderboard" has him point you to the billboard at the end of the platform, where the full Spirit Points board opens.
+- Click the officer on the platform (the "Leaderboard" label): he points you to the billboard at the end of the
+  platform, where the full Spirit Points board opens.
+- Click **Drive** (over the front of the train) to sit in the driver's seat. The desk has a button for each place the
+  train can go: **Golden Hour** (the station you start at), **Snow Peaks**, **Red Canyon** and **Seaside**. Pick one and
+  the train pulls out, runs through the tunnel past the end of the platform, and comes into the station there: a new
+  world behind the fence, its own sky and weather, and everyone dressed for it (scarves and beanies in the snow, hats
+  and bandanas in the canyon, sunglasses and straw hats by the sea). Reloading the page brings you back to Golden Hour.
 - `/points/` is the same standings as a page of its own (it opens with a ride up a map of the Peninsula). Visiting `/points/` directly rides the train up a map of the Peninsula to a big billboard (scores from the Google Sheet).
 
 ## Adding or opening a train car
@@ -77,6 +82,11 @@ Edit `EVENTS` in `hub/doors.js`, in order, soonest first. Each one shows up as a
 
 Each event is a station on the little train line on the screen, with its name on the station sign. Leave out `date` and the screen says "Date to be announced". Write the date like `Fri, Oct 16` and the screen also counts down ("In 9 days").
 
+## The places the train goes
+They're in `hub/biomes.js`: `THEMES` at the top gives each one's name, station name (on the "Next stop" sign and the
+desk's screens), button colour and light (sky colours, sun, fog). The places themselves are built from blocks in the
+same toy style as the people (`snow()`, `desert()`, `coast()`). Adding a place takes some code: ask Claude.
+
 ## Meet the Cabinet
 The cabinet stand in the cab at the back of the train: right now Christina and Eliya, the
 Spirit Co-Leads. To change who's there, edit `CABINET` in `hub/doors.js`: one line per person,
@@ -95,7 +105,7 @@ Settings for the points page (sheet ID, school name, refresh rate) are at the to
 `points/js/data.js`.
 
 ## Files
-- `index.html`, `hub/`: the train station (`station.js` 3D scene, `audio.js` sounds, `hub.js` page logic and departure board, `doors.js` the cars).
+- `index.html`, `hub/`: the train station (`station.js` 3D scene, `audio.js` sounds, `hub.js` page logic and departure board, `doors.js` the cars, `biomes.js` the places you can drive to).
 - `points/`: the Spirit Points page and its scripts; `board.js` and `board.css` are the board itself, which the platform's billboard uses too.
 - `gallery/`: the photo gallery (`photos.js` lists the photos, which live in `assets/gallery/`); the platform opens it inside car 1.
 - `vendor/`: three.js r160 and its bloom/environment add-ons (MIT license, see `vendor/THREE-LICENSE.txt`).

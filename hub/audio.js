@@ -24,10 +24,11 @@ export class StationAudio {
     const wf = ctx.createBiquadFilter(); wf.type = 'lowpass'; wf.frequency.value = 520;
     const wg = ctx.createGain(); wg.gain.value = .05;
     const lfo = ctx.createOscillator(), la = ctx.createGain(); lfo.frequency.value = .09; la.gain.value = .03; lfo.connect(la).connect(wg.gain); lfo.start();
-    wind.connect(wf).connect(wg); wg.connect(this.dry); wg.connect(this.verbIn); wind.start();
+    wind.connect(wf).connect(wg); wg.connect(this.dry); wg.connect(this.verbIn); wind.start(); this.windG = wg; this.windF = wf;
     const hum = ctx.createOscillator(), hg = ctx.createGain(); hum.frequency.value = 58; hg.gain.value = .012; hum.connect(hg).connect(this.dry); hum.start();
     this.outDry = this.dry; this.outVerb = this.verbIn;
     if (this.sceneWanted) this.beginScene();
+    if (this.amb) this.ambience(this.amb);
   }
   // Everything the opening plays (bells, horn, the train pulling in, foley) goes through its own pair of gains,
   // so skipping the opening can fade all of it out at once, including sounds already scheduled ahead.
@@ -283,6 +284,7 @@ export class StationAudio {
     }
   }
   _birds() {
+    if (this.amb && this.amb !== 'home') { this.birdT = setTimeout(() => this._birds(), 6000); return; } // (only at the home station; the coast has its gulls)
     if (!this.live) return;
     const ctx = this.ctx, t0 = ctx.currentTime, n = 2 + (Math.random() * 3 | 0), pan = Math.random() * 1.6 - .8, base = 2600 + Math.random() * 1800;
     for (let i = 0; i < n; i++) {
@@ -292,6 +294,44 @@ export class StationAudio {
       o.connect(g); this._out(g, pan); o.start(t); o.stop(t + .12);
     }
     this.birdT = setTimeout(() => this._birds(), 5000 + Math.random() * 9000);
+  }
+  // Driving (the front cab): pulling out, the horn and the motor taking up; into the tunnel, a rush of air
+  depart() {
+    if (!this.live) return;
+    const t = this.ctx.currentTime; this._horn(t, [.9, .4], .1);
+    this._noise(t + .3, 1.4, 'lowpass', 300, 900, .7, .07, .5, 0);
+  }
+  tunnel() {
+    if (!this.live) return;
+    const t = this.ctx.currentTime; this._noise(t, 1.6, 'bandpass', 300, 1400, .6, .2, .08, 0); this._noise(t + .05, 2.4, 'lowpass', 900, 300, .7, .12, .3, 0);
+  }
+  // the air of each place (biomes.js): the wind, higher and brighter in the snow, low and dry in the canyon, soft by the
+  // sea, where the waves break and gulls call; the birds sing only at home
+  ambience(id) {
+    this.amb = id; if (!this.ctx) return;
+    const ctx = this.ctx, t = ctx.currentTime, W = { home: [.05, 520], snow: [.07, 1150], desert: [.085, 380], coast: [.03, 650] }[id] || [.05, 520];
+    this.windG.gain.setTargetAtTime(W[0], t, 1.2); this.windF.frequency.setTargetAtTime(W[1], t, 1.2);
+    if (!this.sea && id === 'coast') {
+      const src = ctx.createBufferSource(); src.buffer = this.noise; src.loop = true;
+      const f = ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 700;
+      const g = ctx.createGain(); g.gain.value = 0; const swell = ctx.createGain(); swell.gain.value = .5;
+      const lfo = ctx.createOscillator(), la = ctx.createGain(); lfo.frequency.value = .11; la.gain.value = .45; lfo.connect(la).connect(swell.gain); lfo.start();
+      src.connect(f).connect(swell).connect(g); g.connect(this.dry); g.connect(this.verbIn); src.start(); this.sea = g;
+    }
+    if (this.sea) this.sea.gain.setTargetAtTime(id === 'coast' ? .16 : 0, t, 1.5);
+    clearTimeout(this.gullT); if (id === 'coast') this._gulls();
+  }
+  _gulls() {
+    if (this.live) {
+      const ctx = this.ctx, t0 = ctx.currentTime + .1, pan = Math.random() * 1.6 - .8, n = 1 + (Math.random() * 3 | 0);
+      for (let i = 0; i < n; i++) {
+        const t = t0 + i * (.32 + Math.random() * .1), o = ctx.createOscillator(), g = ctx.createGain(), f = ctx.createBiquadFilter(); o.type = 'sawtooth'; f.type = 'bandpass'; f.frequency.value = 1800; f.Q.value = 2.5;
+        o.frequency.setValueAtTime(1500, t); o.frequency.exponentialRampToValueAtTime(2300, t + .06); o.frequency.exponentialRampToValueAtTime(1100, t + .26);
+        g.gain.setValueAtTime(.0001, t); g.gain.exponentialRampToValueAtTime(.022, t + .03); g.gain.exponentialRampToValueAtTime(.0001, t + .3);
+        o.connect(f).connect(g); this._out(g, pan); o.start(t); o.stop(t + .32);
+      }
+    }
+    this.gullT = setTimeout(() => this._gulls(), 4000 + Math.random() * 8000);
   }
   // first-person foley: sitting down, handling paper
   sit() {

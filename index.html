@@ -29,6 +29,7 @@
 <link rel="modulepreload" href="/hub/eventride.js">
 <link rel="modulepreload" href="/hub/ridetrain.js">
 <link rel="modulepreload" href="/hub/toy.js">
+<link rel="modulepreload" href="/hub/biomes.js">
 <link rel="modulepreload" href="/vendor/jsm/loaders/GLTFLoader.js">
 <link rel="modulepreload" href="/vendor/jsm/utils/SkeletonUtils.js">
 <link rel="modulepreload" href="/vendor/jsm/utils/BufferGeometryUtils.js">
@@ -155,7 +156,7 @@ body.entered .replay{display:flex}
 .crew-back{position:absolute;left:50%;white-space:nowrap;bottom:calc(28px + env(safe-area-inset-bottom));transform:translate(-50%,12px);opacity:0;pointer-events:none;display:inline-flex;align-items:center;gap:10px;padding:11px 18px 11px 16px;border-radius:var(--r);background:#fff;color:var(--ink);font-family:var(--display);font-size:12.5px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;box-shadow:var(--lift);transition:opacity .5s ease,transform .6s var(--ease),background-color .2s}
 .crew-back:hover{background:#f1ece2}
 .back::before{content:"";width:7px;height:7px;margin-right:1px;border-left:2px solid currentColor;border-bottom:2px solid currentColor;transform:rotate(45deg)}
-body.visiting .crew-back:not(.board-back){opacity:1;transform:translate(-50%,0);pointer-events:auto}
+body.visiting .crew-back:not(.board-back):not(.drive-back){opacity:1;transform:translate(-50%,0);pointer-events:auto}
 /* the photo gallery, over the inside of car 1: the evening sky, frosted, with the car behind it */
 #gallery{position:fixed;inset:0;z-index:31;color:#fff;background:linear-gradient(180deg,rgba(16,21,50,.9) 0%,rgba(34,32,70,.87) 60%,rgba(84,52,66,.85) 100%);-webkit-backdrop-filter:blur(16px) saturate(1.1);backdrop-filter:blur(16px) saturate(1.1);opacity:0;transition:opacity .6s ease}
 #gallery.open{opacity:1}
@@ -193,6 +194,30 @@ body.visiting .sc-bar{opacity:1;transform:translate(-50%,0);pointer-events:auto}
 .cop-tag::after{content:"";position:absolute;left:50%;bottom:-6px;margin-left:-6px;border:6px solid transparent;border-bottom:0;border-top-color:var(--navy);transition:border-color .2s}
 .cop-tag svg{width:14px;height:14px;flex:none;color:var(--amber)}
 .cop-tag:hover{background:var(--navy-2)}.cop-tag:hover::after{border-top-color:var(--navy-2)}
+/* driving: the "Drive" plate over the front of the train (Spirit red), the labels over the desk's buttons in the cab,
+   the "Next stop" sign while the train runs, and the fade (into the seat, and out of the tunnel) */
+.drive-tag{background:var(--red)}.drive-tag::after{border-top-color:var(--red)}
+.drive-tag svg{color:#fff}
+.drive-tag:hover{background:var(--red-dark)}.drive-tag:hover::after{border-top-color:var(--red-dark)}
+#drive{position:fixed;inset:0;z-index:30;pointer-events:none}
+#drive .dest{position:absolute;left:0;top:0;display:flex;flex-direction:column;align-items:center;gap:1px;padding:7px 13px 8px 13px;border-radius:4px;background:rgba(255,255,255,.97);color:var(--ink);box-shadow:var(--lift);white-space:nowrap;opacity:0;pointer-events:none;transition:opacity .4s ease,background-color .2s;will-change:transform;cursor:pointer}
+#drive .dest::after{content:"";position:absolute;left:50%;bottom:-6px;margin-left:-6px;border:6px solid transparent;border-bottom:0;border-top-color:rgba(255,255,255,.96)}
+#drive .dest i{position:absolute;left:0;right:0;top:0;height:3px;border-radius:4px 4px 0 0}
+#drive .dest b{font-family:var(--display);font-size:13px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;line-height:1.1}
+#drive .dest span{font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+#drive .dest:hover,#drive .dest.hot{background:#f1ece2}
+#drive .dest[aria-current]{cursor:default}
+#drive .dest[aria-current] span::before{content:"";display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--red);margin-right:6px;vertical-align:1px}
+#drive.on .dest{opacity:1;pointer-events:auto}
+#drive.on .drive-back{opacity:1;transform:translate(-50%,0);pointer-events:auto}
+.drive-next{position:fixed;left:50%;top:calc(18px + env(safe-area-inset-top,0px));z-index:31;display:flex;align-items:baseline;gap:12px;padding:9px 16px 10px;border-radius:var(--r);background:linear-gradient(180deg,#1f2026,#15161a);box-shadow:0 0 0 1px #050506,var(--lift);transform:translate(-50%,-10px);opacity:0;pointer-events:none;transition:opacity .5s ease,transform .7s var(--ease);white-space:nowrap}
+.drive-next.on{opacity:1;transform:translate(-50%,0)}
+.drive-next span{font-family:var(--display);font-size:10.5px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:#a9a49a}
+.drive-next b{font-family:"DotGothic16",monospace;font-weight:400;font-size:19px;letter-spacing:.06em;color:var(--amber);text-transform:uppercase}
+#drive-fade{position:fixed;inset:0;z-index:44;pointer-events:none;opacity:0}
+#drive-fade.warm{background:radial-gradient(circle at 50% 50%,#fffaf0 0%,#ffe2b8 45%,#ffb07a 100%)}
+#drive-fade.white{background:radial-gradient(circle at 50% 50%,#ffffff 0%,#fff8ec 60%,#ffeed6 100%)}
+@media (max-width:560px){#drive .dest{padding:5px 9px 6px}#drive .dest b{font-size:11.5px}#drive .dest span{font-size:9px}.drive-next b{font-size:16px}}
 .talk{position:fixed;left:50%;bottom:calc(28px + env(safe-area-inset-bottom,0px));z-index:32;display:flex;gap:10px;justify-content:center;width:max-content;max-width:calc(100% - 28px);transform:translate(-50%,14px);opacity:0;transition:opacity .45s ease,transform .6s var(--ease)}
 .talk[hidden]{display:none}
 .talk:not(.open){pointer-events:none} /* faded out, it mustn't catch clicks meant for what's underneath */
@@ -402,6 +427,10 @@ body.static .board{position:relative;left:auto;bottom:auto;opacity:1;transform:n
 </div>
 <div id="scene-ui" hidden><div class="sc-bar"><div class="sc-nav" id="sc-nav"><button class="sc-arrow" id="sc-prev" type="button" aria-label="Previous"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg></button><span class="sc-count" id="sc-count"></span><button class="sc-arrow" id="sc-next" type="button" aria-label="Next"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></button></div><button class="crew-back sc-back back" id="sc-back" type="button">Back to the platform</button></div><div class="sr-only" id="sc-text" aria-live="polite"></div></div>
 <div id="crew" hidden><div id="crew-tags" aria-live="polite"></div><button class="crew-back back" id="crew-back" type="button">Back to the platform</button></div>
+<button class="cop-tag drive-tag" id="drive-tag" type="button" aria-label="Drive the train: choose where it goes"><svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M8 1.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13Zm0 2a4.5 4.5 0 0 1 4.3 3.2H3.7A4.5 4.5 0 0 1 8 3.5Zm-4.4 5.2 2.9.6.6 2.9a4.5 4.5 0 0 1-3.5-3.5Zm5.3 3.5.6-2.9 2.9-.6a4.5 4.5 0 0 1-3.5 3.5ZM8 7.4a1 1 0 1 1 0 2 1 1 0 0 1 0-2Z"/></svg><b>Drive</b></button>
+<div id="drive" aria-label="Choose where the train goes"><div id="dest"></div><button class="crew-back back drive-back" id="drive-back" type="button" tabindex="-1">Back to the platform</button></div>
+<div class="drive-next" id="drive-next" aria-live="polite"><span>Next stop</span><b id="drive-next-name"></b></div>
+<div id="drive-fade" aria-hidden="true"></div>
 <button class="cop-tag" id="cop-tag" type="button" aria-label="Leaderboard: ask the officer for the standings"><svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M2 9h3v5H2zM6.5 5h3v9h-3zM11 2h3v12h-3z"/></svg><b>Leaderboard</b></button>
 <div class="talk" id="talk" hidden role="group" aria-label="The officer's sign"><p class="sr-only" id="talk-text" aria-live="polite"></p>
   <a class="talk-btn primary" id="talk-full" href="/points/">Full leaderboard</a><button class="talk-btn back" id="talk-back" type="button">Back to the platform</button>

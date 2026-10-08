@@ -13,6 +13,7 @@ export const SCALE = 1.7;            // model units to metres: about 1.2 m tall,
 export const HIP_SIT = .026;         // seated hip joint height above the model's origin (model units)
 const BONES = ['root', 'leg-left', 'leg-right', 'torso', 'arm-left', 'arm-right', 'head'];
 let LIB = null;
+export const PEOPLE = []; // every animated copy made, so they can be dressed for where the train has taken them (biomes.js)
 
 export async function loadPeople() {
   if (LIB) return LIB;
@@ -77,7 +78,7 @@ const POSES = {
 const _q = new THREE.Quaternion(), _e = new THREE.Euler(), _s = new THREE.Vector3(), _t = new THREE.Vector3(), _u = new THREE.Vector3(), _qa = new THREE.Quaternion(), _qb = new THREE.Quaternion(), _qc = new THREE.Quaternion();
 export class Person {
   constructor(kind = 0) {
-    this.kind = kind;
+    this.kind = kind; PEOPLE.push(this);
     this.model = SkeletonUtils.clone(LIB.models[kind % LIB.models.length]);
     this.model.rotation.y = Math.PI; // the models face +z; ours face -z at yaw 0
     this.root = new THREE.Group(); this.root.add(this.model); this.root.scale.setScalar(SCALE);

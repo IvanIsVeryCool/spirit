@@ -1,6 +1,7 @@
 import { DOORS, SITE, CABINET, EVENTS, NEWSLETTER } from './doors.js';
 import { StationAudio } from './audio.js';
 import { flap, pad, blank } from './flap.js';
+import { THEMES } from './biomes.js';
 import { CONFIG, ranked, fetchScores } from '/points/js/data.js';
 
 window.__hubBooted = true;
@@ -296,6 +297,67 @@ function placeCopTag() {
   if (show !== copShown) { copShown = show; tag.classList.toggle('on', show); }
   if (show) { const w = widthOf(tag), x = Math.min(innerWidth - w / 2 - 10, Math.max(w / 2 + 10, p.x)); tag.style.transform = `translate(${x.toFixed(1)}px, ${p.y.toFixed(1)}px) translate(-50%, -100%)`; } // kept on screen
 }
+/* driving: the "Drive" plate over the front of the train takes you into the driver's seat; the desk there has a button for
+   each place the train can go (biomes.js), and choosing one runs the train there (station.drive / depart) */
+let driving = false, rideSnd = null, driveShown = null;
+function startDrive() {
+  if (!station || boarding || !entered || introPlaying || !doorsOpen || !$('notice').hidden) return;
+  boarding = true; driving = true; document.body.classList.add('boarding', 'driving'); audio.beep(); setHover(-1);
+  const box = $('dest');
+  if (!box.children.length) box.innerHTML = THEMES.map(t => `<button class="dest" type="button" tabindex="-1" data-id="${t.id}"><i style="background:${t.swatch}"></i><b>${t.name}</b><span>${t.place}</span></button>`).join('');
+  [...box.children].forEach(b => widths.delete(b));
+  station.drive({
+    seated: () => showDest(true),
+    horn: () => audio.depart(),
+    tunnel: () => audio.tunnel(),
+    swap: id => { audio.ambience(id); audio.arrive(6.5, { bells: false }); },
+    arrive: () => { if (rideSnd) { rideSnd.stop(); rideSnd = null; } audio.chime(); setTimeout(() => audio.doors(DOORS.length), 700); $('drive-next').classList.remove('on'); } // (the buttons' labels come back with seated, once the view is back on the desk)
+  });
+}
+function showDest(on) {
+  const d = $('drive'); d.classList.toggle('on', on);
+  [...$('dest').children].forEach(b => { const here = station && b.dataset.id === station.theme; if (here) b.setAttribute('aria-current', 'location'); else b.removeAttribute('aria-current'); b.tabIndex = on ? 0 : -1; });
+  $('drive-back').tabIndex = on ? 0 : -1;
+  if (on) softFocus($('dest').querySelector('.dest:not([aria-current])'));
+}
+function driveTo(id) {
+  if (!driving || !station) return;
+  if (id === station.theme) { audio.tick(); return; }
+  if (!station.depart(id)) return;
+  audio.beep(); showDest(false); audio.doors(DOORS.length);
+  const th = THEMES.find(t => t.id === id); $('drive-next-name').textContent = th.place; $('drive-next').classList.add('on');
+  if (rideSnd) rideSnd.stop(); rideSnd = audio.ride();
+}
+function leaveDrive() {
+  if (!driving || !station) return; const s = station.driveState(); if (s && s.phase !== 'seat') return; // (not while it's running)
+  driving = false; audio.tick(); showDest(false); $('flash').classList.add('on');
+  setTimeout(() => { station.endVisit(); $('flash').classList.remove('on'); document.body.classList.remove('boarding', 'driving'); boarding = false; }, 550);
+}
+$('drive-tag').addEventListener('click', startDrive);
+$('drive-back').addEventListener('click', leaveDrive);
+$('dest').addEventListener('click', e => { const b = e.target.closest('.dest'); if (b) driveTo(b.dataset.id); });
+$('dest').addEventListener('pointerover', e => { const b = e.target.closest('.dest'); if (b && station) station.hoverButton(b.dataset.id); });
+$('dest').addEventListener('pointerleave', () => { if (station) station.hoverButton(null); });
+function placeDrive() {
+  if (!station || !station.driveTag) return;
+  const tag = $('drive-tag'), p = station.driveTag(), show = p.on && entered && doorsOpen && !boarding && !introPlaying && document.body.classList.contains('entered');
+  if (show !== driveShown) { driveShown = show; tag.classList.toggle('on', show); }
+  if (show) { const w = widthOf(tag), x = Math.min(innerWidth - w / 2 - 10, Math.max(w / 2 + 10, p.x)); tag.style.transform = `translate(${x.toFixed(1)}px, ${p.y.toFixed(1)}px) translate(-50%, -100%)`; }
+  const s = station.driveState(), fade = $('drive-fade'), f = s ? s.fade : 0;
+  if (fade.dataset.f !== f.toFixed(3)) { fade.dataset.f = f.toFixed(3); fade.style.opacity = f.toFixed(3); }
+  if (s && fade.className !== s.col) fade.className = s.col;
+  if (!s) return;
+  if (rideSnd) rideSnd.set(Math.min(1, s.speed / 30));
+  if (!$('drive').classList.contains('on')) return;
+  // the labels over the desk's buttons (kept on screen; on a narrow screen every other one sits a row higher)
+  const pos = station.driveButtons(), tags = [...$('dest').children], w = tags.map(widthOf);
+  const crowded = pos.some((q, k) => k && Math.abs(q.x - pos[k - 1].x) < (w[k] + w[k - 1]) / 2 + 6);
+  pos.forEach((q, k) => {
+    const t = tags[k]; if (!t) return;
+    const x = Math.min(innerWidth - w[k] / 2 - 8, Math.max(w[k] / 2 + 8, q.x)), y = q.y - (crowded && k % 2 ? t.offsetHeight + 10 : 0);
+    t.style.transform = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px) translate(-50%, -100%)`; t.style.visibility = q.on ? '' : 'hidden';
+  });
+}
 // the sound button rides just above the headphone listener's head while he's in view; otherwise it's back in its corner
 let soundFloat = false;
 function placeSound() {
@@ -314,7 +376,7 @@ addEventListener('keydown', e => {
   if (e.key === 'Escape') {
     if (lightboxUp) return; // a photo is open: Escape closes that first (gallery.js)
     if (onBoard && !$('detail').hidden) { lb && lb.then(m => m && m.closeDetail()); return; } // an event's breakdown, then the board
-    closeNotice(); leaveCabinet(); leaveCop();
+    closeNotice(); leaveCabinet(); leaveCop(); leaveDrive();
   }
   if ((e.key === 'ArrowRight' || e.key === 'ArrowLeft') && sceneStep(e.key === 'ArrowRight' ? 1 : -1)) { e.preventDefault(); return; }
   if (!doorsOpen || boarding || !$('notice').hidden || !station) return;
@@ -327,6 +389,7 @@ const ndc = (x, y) => [(x / innerWidth) * 2 - 1, -(y / innerHeight) * 2 + 1];
 addEventListener('pointermove', e => { mx = e.clientX; my = e.clientY; overUI = e.target !== $('station'); if (station) station.setPointer(...ndc(mx, my)); }, { passive: true });
 $('station').addEventListener('pointerdown', e => { downX = e.clientX; });
 $('station').addEventListener('pointerup', e => {
+  if (driving) { downX = null; const id = station && station.pickButton(...ndc(e.clientX, e.clientY)); if (id) driveTo(id); return; } // a button on the desk
   if (visiting && sceneKind && sceneKind !== 'cabinet') { // in the newsletter or at the screen: a tap or a swipe left goes on, a swipe right goes back
     const dx = downX === null ? 0 : e.clientX - downX; downX = null; sceneStep(dx > 40 ? -1 : 1); return;
   }
@@ -393,7 +456,8 @@ function skipArrival() { if (doorsOpen || !station) return; station.park(); arri
 function loop() {
   if (station && !galleryStill) {
     if (doorsOpen && !mobile && !boarding && $('notice').hidden && !overUI) setHover(station.pick(...ndc(mx, my)));
-    station.render(); placeTags(); placeCopTag(); placeSound(); syncScene(); placeBillboard();
+    if (driving && !mobile && !overUI) station.hoverButton(station.pickButton(...ndc(mx, my)));
+    station.render(); placeTags(); placeCopTag(); placeDrive(); placeSound(); syncScene(); placeBillboard();
   }
   requestAnimationFrame(loop);
 }
