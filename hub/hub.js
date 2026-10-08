@@ -349,13 +349,21 @@ function setSound(on, remember) {
 }
 // After a reload, browsers keep audio paused until the first click, tap or key press on the page.
 // Until then the button says so; the first press anywhere (the button included) starts the sound.
-const held = () => audio.enabled && (!audio.ctx || audio.ctx.state !== 'running');
+// (only before any press: after one, a context that is still starting up (turning sound back on, a tab coming back)
+// is about to run, and saying "Tap for sound" for that moment flashed the wrong words)
+let pressed = false;
+const held = () => audio.enabled && !pressed && (!audio.ctx || audio.ctx.state !== 'running');
+let heldSince = 0, heard = null;
 function soundLabel() {
-  const l = $('sound-label'), text = !audio.enabled ? 'Sound off' : held() ? 'Tap for sound' : 'Sound on';
+  if (audio.ctx && heard !== audio.ctx) { heard = audio.ctx; heard.addEventListener('statechange', soundLabel); } // follow it as it starts or stops
+  // a context only just asked to start is given a moment before the button says the browser is holding it
+  const h = held(), now = performance.now(); if (!h) heldSince = 0; else if (!heldSince) { heldSince = now; setTimeout(soundLabel, 450); }
+  const l = $('sound-label'), text = !audio.enabled ? 'Sound off' : h && now - heldSince >= 400 ? 'Tap for sound' : 'Sound on';
   if (l.textContent !== text) { l.textContent = text; widths.delete($('sound-btn')); } // its width changes with the words
 }
 let wokeAt = 0;
 const unlockAudio = () => {
+  pressed = true;
   if (!audio.enabled || !audio.ctx || audio.ctx.state === 'running') return;
   wokeAt = performance.now(); audio.ctx.resume().then(() => { audio.setEnabled(true); soundLabel(); });
 };
