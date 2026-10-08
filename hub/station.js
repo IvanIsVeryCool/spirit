@@ -391,8 +391,8 @@ export class Station {
         M.doorGlass = M.doorGlass || new THREE.MeshStandardMaterial({ color: 0x232a3a, roughness: .25, metalness: 0, envMapIntensity: .6 }); // solid dark glass (see-through, the red leaf showed behind it)
         const w = new THREE.Mesh(softBox(lw - .2, .98, .012, .04), M.doorGlass); w.position.set(0, .3, .046); leaf.add(w);
         const stripe = new THREE.Mesh(softBox(lw - .008, .05, .066, .015), M.door); stripe.position.set(0, -.36, 0); leaf.add(stripe);
-        const btn = new THREE.Mesh(new THREE.CylinderGeometry(.05, .05, .03, 12), glow(0x5dff8f, .2)); btn.rotation.x = Math.PI / 2; btn.position.set(-sd * (lw / 2 - .11), -.16, .036); leaf.add(btn);
-        const ring = new THREE.Mesh(softBox(.13, .13, .02, .03), M.dark); ring.position.set(-sd * (lw / 2 - .11), -.16, .03); leaf.add(ring);
+        const btn = new THREE.Mesh(new THREE.CylinderGeometry(.05, .05, .03, 12), glow(0x5dff8f, .2)); btn.rotation.x = Math.PI / 2; btn.position.set(-sd * (lw / 2 - .11), -.5, .036); leaf.add(btn); // (below the window and the stripe, clear of both)
+        const ring = new THREE.Mesh(softBox(.13, .13, .02, .03), M.dark); ring.position.set(-sd * (lw / 2 - .11), -.5, .03); leaf.add(ring);
         leaf.position.set(sd * DOOR_W / 4, FLOOR + DOOR_H / 2, z + .03); leaf.userData.keep = true; leaf.userData.sd = sd; leaf.userData.btn = btn; car.add(leaf); return leaf;
       }
       const leaf = new THREE.Group();
