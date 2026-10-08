@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { CAR_L, W, H, FLOOR, DOOR_W, DOOR_H, bodyGeometry, capGeometry, noseGeometry, paintBody, paintNose, windowTexture, windowSlots } from './train.js';
+import { TOY, CAR_L, W, H, FLOOR, DOOR_W, DOOR_H, bodyGeometry, capGeometry, noseGeometry, paintBody, paintNose, windowTexture, windowSlots } from './train.js';
 import { mergeStatic } from './scenery.js';
 
 // The Spirit Line seen from a distance (the Spirit Points ride, and the ride on the Events car's screen): the same body,
@@ -16,7 +16,8 @@ export function drawLED(ctx, lines) {
 
 // `count` cars (groups, each centred on its car, nose toward -x on the first), the destination on the front's LED sign
 export function rideTrain(logo, { count = 4, led = ['SPIRIT LINE', 'EXPRESS'] } = {}) {
-  const paint = paintBody(logo), body = new THREE.MeshPhysicalMaterial({ map: paint.map, roughnessMap: paint.mr, metalnessMap: paint.mr, roughness: 1, metalness: 1, clearcoat: .35, clearcoatRoughness: .25 });
+  const paint = paintBody(logo), body = TOY ? new THREE.MeshStandardMaterial({ map: paint.map, roughness: .8, metalness: 0, envMapIntensity: .45 }) // the toy look, matte like the platform's train
+    : new THREE.MeshPhysicalMaterial({ map: paint.map, roughnessMap: paint.mr, metalnessMap: paint.mr, roughness: 1, metalness: 1, clearcoat: .35, clearcoatRoughness: .25 });
   const capM = new THREE.MeshStandardMaterial({ color: 0xaeb3bb, metalness: .7, roughness: .4 }), roofM = new THREE.MeshStandardMaterial({ color: 0x8f949c, metalness: .6, roughness: .5 }), under = new THREE.MeshStandardMaterial({ color: 0x24272e, metalness: .5, roughness: .7 });
   const winT = windowTexture(), winM = new THREE.MeshPhysicalMaterial({ map: winT, emissiveMap: winT, emissive: 0xffffff, emissiveIntensity: .45, roughness: .12, clearcoat: .6, alphaTest: .5 });
   const shell = bodyGeometry(), cap = capGeometry(), cars = [];

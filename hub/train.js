@@ -1,9 +1,9 @@
 import * as THREE from 'three';
 
 // Shared dimensions for the train (metres-ish).
-// The toy look (flat paint, matte, chunky running gear, as the Mini Characters are made): waiting for the owner's OK,
-// so it's off on the live site; ?toytrain in the address turns it on to preview
-const TOY_DEFAULT = false;
+// The toy look (flat paint, matte, chunky running gear, as the Mini Characters are made): the train's look, approved
+// by the owner. TOY_DEFAULT false brings back the stainless train
+const TOY_DEFAULT = true; // approved by the owner; ?toytrain no longer needed
 export const TOY = TOY_DEFAULT || (typeof location !== 'undefined' && /[?&]toytrain\b/.test(location.search));
 export const CAR_L = 8, GAP = .36, W = 2.9, H = 4.05, BASE = .3, FLOOR = .55, DOOR_W = 1.3, DOOR_H = 2.1, NOSE_L = 2.6;
 const HW = W / 2, YC = (H + BASE) / 2, HH = (H - BASE) / 2, N_EXP = 8, M = 112;
