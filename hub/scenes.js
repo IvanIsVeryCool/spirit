@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { limbGeometry, aimBasis, library } from './people.js';
 import { READ_SEAT, SCREEN } from './interior.js';
 import { EVENTS, NEWSLETTER, CABINET, DOORS } from './doors.js';
+import { EventRide } from './eventride.js';
 
 // Two of the cars are visits inside the train, like Meet the Cabinet:
 // - Weekly Newsletter: you walk down to the lower deck, sit down, and pull out the newsletter, a newspaper
@@ -483,34 +484,64 @@ export function dueIn(date, now = new Date()) {
   const n = Math.round((d - today) / 864e5);
   return n < 0 || n > 60 ? '' : n === 0 ? 'Today' : n === 1 ? 'Tomorrow' : `In ${n} days`;
 }
-// The screen over the step down, like the passenger displays in a real train: the line's bar and the time across
-// the top, the stop you're looking at big on the left (when and where underneath), and the stops in order on the right
+// The screen over the step down, like the passenger displays in a real train: the line's bar and the time across the
+// top, the stops in order down the right, and the rest of it a live view of the train running the line (EventRide), one
+// station per event, with the stop it's heading for (or standing at) on a card over the view. It moves on by itself.
+const SCREEN_VS = `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.); }`;
+const SCREEN_FS = `uniform sampler2D ui, view; uniform vec4 rect; uniform float gain; varying vec2 vUv;
+  void main(){ vec4 u = texture2D(ui, vUv); vec2 r = (vUv - rect.xy) / (rect.zw - rect.xy); vec3 base = vec3(0.);
+    if (r.x >= 0. && r.x <= 1. && r.y >= 0. && r.y <= 1.) base = min(texture2D(view, r).rgb, vec3(1.)); // (the sun and highlights capped: with the gain, nothing reaches the bloom)
+    gl_FragColor = vec4(mix(base, u.rgb, u.a) * gain, 1.); }`;
 export class NextStops {
   constructor(st) {
-    this.st = st; this.events = EVENTS; this.k = 0; this.from = 0; this.t0 = -9; this.live = false; this.key = '';
+    this.st = st; this.events = EVENTS; this.k = 0; this.from = 0; this.t0 = -9; this.live = false; this.key = ''; this.arrived = 0;
+    const m = this.mobile = !!(st && st.mobile);
+    this.Z = m ? { tb: 104, logo: 62, line: 36, time: 44, px: 800, lab: 30, name: 80, nmin: 52, det: 36, note: 32, cardW: 720, slab: 28, show: 4, sname: 42, gap: 128, y0: 236 }
+      : { tb: 84, logo: 50, line: 27, time: 32, px: 880, lab: 20, name: 66, nmin: 40, det: 27, note: 24, cardW: 600, slab: 18, show: 6, sname: 28, gap: 104, y0: 204 };
     const c = this.canvas = document.createElement('canvas'); c.width = 1280; c.height = 720; this.x = c.getContext('2d');
     this.tex = tex(c, 8);
-    this.mat = new THREE.MeshBasicMaterial({ map: this.tex, color: new THREE.Color(.8, .8, .8) }); this.mat.toneMapped = false; // just under the bloom threshold: crisp type, no glow
-    this.mark = st.logo ? tinted(st.logo, '#ffffff', 128) : null;
-    this.draw(1);
+    const Z = this.Z, vw = Z.px, vh = 720 - Z.tb;
+    if (this.events.length && st && st.renderer) {
+      this.ride = new EventRide({ logo: st.logo, mobile: m, names: this.events.map(e => e.name) }); this.ride.setAspect(vw / vh);
+      const rw = m ? 640 : 1024; this.rt = new THREE.WebGLRenderTarget(rw, Math.round(rw * vh / vw), { type: THREE.HalfFloatType, samples: m ? 0 : 4 });
+      this.ride.onArrive = () => { this.arrived = performance.now() / 1000; this.onArrive && this.onArrive(this.k); };
+    }
+    this.mat = new THREE.ShaderMaterial({
+      uniforms: { ui: { value: this.tex }, view: { value: this.rt ? this.rt.texture : null }, rect: { value: new THREE.Vector4(0, 0, this.rt ? vw / 1280 : 0, this.rt ? vh / 720 : 0) }, gain: { value: .8 } }, // (just under the bloom threshold: crisp type, no glow)
+      vertexShader: SCREEN_VS, fragmentShader: SCREEN_FS
+    });
+    this.mark = st && st.logo ? tinted(st.logo, '#ffffff', 128) : null;
+    this.last = performance.now() / 1000;
+    this.draw();
   }
-  go(k) { const n = this.events.length; if (!n) return; k = ((k % n) + n) % n; if (k === this.k) return; this.from = this.k; this.k = k; this.t0 = performance.now() / 1000; }
-  // per frame while you're looking at it: it moves on by itself, like the real ones; a change of stop cross-fades
-  update() {
-    const now = performance.now() / 1000; if (now - this.t0 > 6.5 && this.events.length > 1) { this.go(this.k + 1); this.onAuto && this.onAuto(); }
-    const p = clamp01((now - this.t0) / .4), key = p < 1 ? 'slide' + p.toFixed(2) : 'still' + Math.floor(now / 20); // (the clock ticks over)
+  // to stop k: the train runs there (forward, or back for dir -1), the card fades over to it
+  go(k, dir = 1) {
+    const n = this.events.length; if (n < 2) return; k = ((k % n) + n) % n; if (k === this.k && !(this.ride && this.ride.running)) return;
+    this.from = this.k; this.k = k; this.t0 = performance.now() / 1000; if (this.ride) this.ride.goTo(k, dir);
+  }
+  // back to the first stop, the train standing there
+  reset() { this.k = this.from = 0; this.t0 = -9; this.arrived = performance.now() / 1000; if (this.ride) this.ride.reset(0); this.key = ''; this.draw(); }
+  // per frame during the Events visit: the ride runs and is drawn into the screen's view; the display is redrawn when
+  // what it shows changes (the card's fade, the train's marker on the stop list while it runs, the clock)
+  update(renderer, env) {
+    const now = performance.now() / 1000, dt = Math.min(.1, now - this.last); this.last = now;
+    const R = this.ride;
+    if (this.live && this.events.length > 1 && !(R && R.running) && now - Math.max(this.arrived, this.t0) > 6.5) { this.go(this.k + 1); this.onAuto && this.onAuto(); }
+    if (R) { R.update(dt); R.render(renderer, this.rt, env); }
+    const p = clamp01((now - this.t0) / .4), run = R && R.running ? Math.floor(R.progress() * 40) : -1;
+    const key = (p < 1 ? 'fade' + p.toFixed(2) : 'still') + '|' + run + '|' + Math.floor(now / 20);
     if (key !== this.key) { this.key = key; this.draw(p); }
   }
-  // (on a phone the screen is about a third of its pixels across, so it uses bigger type and shows fewer stops at once)
+  // drawn once while the station warms up, so nothing compiles when you first look at the screen
+  warm(renderer, env) { if (!this.ride) return; this.ride.scene.traverse(o => { o.frustumCulled = false; }); this.ride.render(renderer, this.rt, env); this.ride.scene.traverse(o => { o.frustumCulled = true; }); }
+  redrawSigns() { if (this.ride) this.ride.redrawSigns(); this.key = ''; this.draw(); }
   draw(p = 1) {
-    const x = this.x, W = 1280, H = 720, ev = this.events, n = ev.length, k = this.k, m = !!(this.st && this.st.mobile);
-    const Z = m ? { tb: 104, logo: 62, line: 36, time: 44, lab: 34, name: 150, nmin: 76, dlab: 28, dval: 52, dsm: 44, dgap: 70, note: 44, slab: 28, show: 4, sname: 42, gap: 128, y0: 236 }
-      : { tb: 84, logo: 50, line: 27, time: 32, lab: 22, name: 112, nmin: 56, dlab: 18, dval: 34, dsm: 30, dgap: 48, note: 30, slab: 18, show: 6, sname: 28, gap: 104, y0: 204 };
-    const PAPER = '#f5f3ef', PANEL = '#e8e5df', LINE = '#c9c4bb', SPIRIT = '#c3242a', GREY = '#77727a';
+    const x = this.x, W = 1280, H = 720, ev = this.events, n = ev.length, k = this.k, Z = this.Z, m = this.mobile, R = this.ride;
+    const PAPER = '#f5f3ef', PANEL = '#e8e5df', SPIRIT = '#c3242a', GREY = '#77727a';
     x.textBaseline = 'alphabetic'; x.textAlign = 'left';
-    x.fillStyle = PAPER; x.fillRect(0, 0, W, H);
+    x.clearRect(0, 0, W, H);
     // the top bar: the line in its red, the time
-    const TB = Z.tb; x.fillStyle = SPIRIT; x.fillRect(0, 0, W, TB);
+    const TB = Z.tb, PX = Z.px; x.fillStyle = SPIRIT; x.fillRect(0, 0, W, TB);
     if (this.mark) x.drawImage(this.mark, 34, (TB - Z.logo) / 2, Z.logo, Z.logo);
     const tx = 50 + Z.logo, mid = TB / 2 + Z.line * .36;
     x.fillStyle = '#fff'; x.font = `800 ${Z.line}px ${SANS}`; const nw = spaced(x, 'SPIRIT LINE', tx, mid, Z.line * .13);
@@ -518,38 +549,34 @@ export class NextStops {
     x.fillStyle = 'rgba(255,255,255,.8)'; x.font = `500 ${Z.line}px ${TEXT}`; x.fillText('Events', tx + nw + 46, mid);
     const tm = new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
     x.fillStyle = '#fff'; x.font = `700 ${Z.time}px ${SANS}`; x.textAlign = 'right'; x.fillText(tm, W - 40, TB / 2 + Z.time * .36); x.textAlign = 'left';
-    const PX = 820; // the stops panel
-    if (!n) { x.font = `700 ${Z.name * .5}px ${SANS}`; x.fillStyle = INK; x.fillText('No events yet', 64, 330); this.tex.needsUpdate = true; return; }
-    // the stop: which one, its name, then when and where in labelled columns
+    if (!n) { x.fillStyle = PAPER; x.fillRect(0, TB, W, H - TB); x.font = `700 ${Z.name * .7}px ${SANS}`; x.fillStyle = INK; x.fillText('No events yet', 64, 400); this.tex.needsUpdate = true; return; }
+    if (!R) { x.fillStyle = '#2a2f45'; x.fillRect(0, TB, PX, H - TB); }
+    // the card over the view: which stop, its name, when and where
+    const running = R && R.running;
     const card = (i, alpha) => {
-      if (alpha <= 0) return; const e = ev[i]; x.save(); x.globalAlpha = alpha;
-      const L = 64, R = PX - 56, due = dueIn(e.date);
-      let fs = Z.name; x.font = `800 ${fs}px ${SANS}`; let lines = wrap(x, e.name, () => R - L);
-      while ((lines.length > 2 || lines.some(l => l.w > R - L)) && fs > Z.nmin) { fs -= 4; x.font = `800 ${fs}px ${SANS}`; lines = wrap(x, e.name, () => R - L); }
-      if (lines.length > 2) { lines = lines.slice(0, 2); lines[1].words = [...lines[1].words]; while (lines[1].words.length > 1 && x.measureText(lines[1].words.join(' ') + '…').width > R - L) lines[1].words.pop(); lines[1].words[lines[1].words.length - 1] += '…'; }
-      const cols = [['DATE', e.date || 'To be announced'], ['TIME', e.time], ['PLACE', e.place]].filter(c => c[1]);
-      // the block (label, name, rule, details, note) centred in the space under the bar
-      const hName = lines.length * fs * 1.02, hBlock = Z.lab + 14 + hName + 30 + Z.dgap + Z.dlab + Z.dval * 1.4 + (e.note ? Z.note * 3 : 0);
-      let y = TB + Math.max(30, (H - TB - hBlock) / 2) + Z.lab;
-      x.font = `800 ${Z.lab}px ${SANS}`; x.fillStyle = SPIRIT; const lw = spaced(x, i === 0 ? 'NEXT STOP' : `STOP ${i + 1}`, L, y, Z.lab * .18);
-      if (due) { x.font = `700 ${Z.lab}px ${SANS}`; x.fillStyle = GREY; spaced(x, '·  ' + due.toUpperCase(), L + lw + 16, y, Z.lab * .14); }
-      x.font = `800 ${fs}px ${SANS}`; x.fillStyle = INK; y += 14;
-      lines.forEach(l => { y += fs * 1.02; x.fillText(l.words.join(' '), L - 4, y - fs * .2); });
-      y += 30; x.fillStyle = LINE; x.fillRect(L, y, R - L, 2); y += Z.dgap + Z.dlab * .5;
-      let cx = L; const cwid = (R - L) / (m ? Math.min(2, cols.length) : Math.max(2, cols.length));
-      cols.slice(0, m ? 2 : 3).forEach(([lab, val], j) => {
-        x.font = `700 ${Z.dlab}px ${SANS}`; x.fillStyle = GREY; spaced(x, lab, cx, y, Z.dlab * .16);
-        x.font = `600 ${val.length > 16 ? Z.dsm : Z.dval}px ${TEXT}`; x.fillStyle = e.date || j ? INK : GREY;
-        let v = val; while (x.measureText(v).width > cwid - 20 && v.length > 4) v = v.slice(0, -2).trimEnd() + '…';
-        x.fillText(v, cx, y + Z.dval * 1.4); cx += cwid;
-      });
-      if (e.note) { const ny = y + Z.dval * 1.4 + Z.note * 2.2; x.fillStyle = SPIRIT; x.fillRect(L, ny - Z.note, 5, Z.note * 1.4); x.font = `600 ${Z.note}px ${TEXT}`; x.fillStyle = INK; x.fillText(e.note, L + 24, ny); }
+      if (alpha <= 0) return; const e = ev[i], due = dueIn(e.date), CW = Math.min(Z.cardW, PX - 64), L = 32, pad = m ? 30 : 24, inner = CW - pad * 2 - 8;
+      let fs = Z.name; x.font = `800 ${fs}px ${SANS}`; let lines = wrap(x, e.name, () => inner);
+      while ((lines.length > 2 || lines.some(l => l.w > inner)) && fs > Z.nmin) { fs -= 2; x.font = `800 ${fs}px ${SANS}`; lines = wrap(x, e.name, () => inner); }
+      if (lines.length > 2) { lines = lines.slice(0, 2); lines[1].words = [...lines[1].words]; while (lines[1].words.length > 1 && x.measureText(lines[1].words.join(' ') + '…').width > inner) lines[1].words.pop(); lines[1].words[lines[1].words.length - 1] += '…'; }
+      x.font = `600 ${Z.det}px ${TEXT}`; let det = [e.date || 'Date to be announced', e.time, e.place].filter(Boolean).join('  ·  ');
+      while (x.measureText(det).width > inner && det.length > 6) det = det.slice(0, -2).trimEnd() + '…';
+      const h = pad + Z.lab + 14 + lines.length * fs * 1.04 + 12 + Z.det * 1.2 + (e.note ? Z.note * 1.9 : 0) + pad, top = H - (m ? 34 : 28) - h;
+      x.save(); x.globalAlpha = alpha;
+      x.shadowColor = 'rgba(10,8,24,.35)'; x.shadowBlur = 24; x.shadowOffsetY = 8; x.fillStyle = 'rgba(245,243,239,.97)'; x.fillRect(L, top, CW, h); x.shadowColor = 'transparent';
+      x.fillStyle = SPIRIT; x.fillRect(L, top, 8, h);
+      let y = top + pad + Z.lab * .8, lx = L + 8 + pad;
+      x.font = `800 ${Z.lab}px ${SANS}`; x.fillStyle = SPIRIT; const lw = spaced(x, running ? 'NEXT STOP' : `STOP ${i + 1} OF ${n}`, lx, y, Z.lab * .18);
+      if (due) { x.font = `700 ${Z.lab}px ${SANS}`; x.fillStyle = GREY; spaced(x, '·  ' + due.toUpperCase(), lx + lw + 14, y, Z.lab * .14); }
+      y += 14; x.font = `800 ${fs}px ${SANS}`; x.fillStyle = INK;
+      lines.forEach(l => { y += fs * 1.04; x.fillText(l.words.join(' '), lx - 2, y - fs * .2); });
+      y += 12 + Z.det; x.font = `600 ${Z.det}px ${TEXT}`; x.fillStyle = e.date ? '#3a3740' : GREY; x.fillText(det, lx, y - Z.det * .1);
+      if (e.note) { y += Z.note * 1.7; x.font = `600 ${Z.note}px ${TEXT}`; x.fillStyle = SPIRIT; x.fillText(e.note, lx, y); }
       x.restore();
     };
     const sp = ease(p), fade = p < 1 && this.from !== k;
     if (fade) card(this.from, 1 - Math.min(1, sp * 2)); // the old stop fades out, then the new one in
     card(k, fade ? Math.max(0, sp * 2 - 1) : 1);
-    // the stops, in order down a vertical line; the one shown is marked, a window of them if there are more
+    // the stops, in order down a vertical line; the one ahead is marked, a window of them if there are more
     x.fillStyle = PANEL; x.fillRect(PX, TB, W - PX, H - TB);
     x.font = `800 ${Z.slab}px ${SANS}`; x.fillStyle = GREY; spaced(x, 'STOPS', PX + 48, TB + Z.slab * 2.2, Z.slab * .22);
     const show = Math.min(n, Z.show), first = Math.max(0, Math.min(k - 1, n - show)), y0 = Z.y0, gap = show > 1 ? Math.min(Z.gap, (H - 76 - y0) / (show - 1)) : 0, lx = PX + 62;
@@ -565,6 +592,14 @@ export class NextStops {
       while (x.measureText(nm).width > W - lx - 72 && nm.length > 4) nm = nm.slice(0, -2).trimEnd() + '…';
       x.fillText(nm, lx + 34, cy + (sub ? -3 : Z.sname * .36));
       if (sub) { x.font = `600 19px ${TEXT}`; x.fillStyle = GREY; x.fillText(e.date, lx + 34, cy + 25); }
+    }
+    // while the train runs between two stops in the window, a marker travels down (or up) the line between them
+    if (running && Math.abs(k - this.from) === 1) {
+      const yOf = i => i >= first && i < first + show ? y0 + gap * (i - first) : null, a = yOf(this.from), b = yOf(k);
+      if (a !== null && b !== null) {
+        const yy = a + (b - a) * ease(R.progress()); x.fillStyle = INK; x.beginPath(); x.roundRect(lx - 9, yy - 14, 18, 28, 5); x.fill();
+        x.fillStyle = '#ffd27a'; x.fillRect(lx - 5, yy + (b > a ? 6 : -10), 10, 4);
+      }
     }
     this.tex.needsUpdate = true;
   }
@@ -636,19 +671,19 @@ export function eventsVisit(st, i, cb) {
   const d = T.walk.getPointAt(1).distanceTo(T.target);
   T.resize = () => { T.fovIn = THREE.MathUtils.radToDeg(2 * Math.atan(Math.max((S.h / 2 + .05) / (d * .72), (S.w / 2) / (d * .86 * st.camera.aspect)))); };
   T.resize();
-  scr.go(0); scr.from = 0;
+  scr.reset();
   T.frame = (t, dt) => {
     const e = t - T.t0, c = st.camera;
     if (e < 1.9) flyIn(st, T, e);
     else if (e < 3.7) { const u = ease((e - 1.9) / 1.8); c.position.copy(T.walk.getPointAt(u)); c.position.y += Math.sin(u * Math.PI * 2) * .008 * Math.sin(Math.PI * u); st.look.lerpVectors(T.l1, T.target, ease(seg(e, 1.95, 3.4))); }
     else { c.position.copy(T.walk.getPointAt(1)); c.position.y += Math.sin(t * 1.3) * .003; st.look.copy(T.target); }
     setFov(st, T.fov + (T.fovIn - T.fov) * ease(seg(e, 2.3, 3.7)));
-    fire(T, e, 'arrive', 3.75, () => { scr.live = true; scr.t0 = performance.now() / 1000; scr.from = 0; cb.arrive && cb.arrive(); });
-    if (scr.live) scr.update();
+    fire(T, e, 'arrive', 3.75, () => { scr.live = true; scr.arrived = performance.now() / 1000; cb.arrive && cb.arrive(); });
+    scr.update(st.renderer, st.scene.environment); // the ride on the screen runs while you're in the car
   };
-  T.step = d => { const n = scr.events.length; if (!n) return false; scr.go(scr.k + d); return true; };
+  T.step = d => { const n = scr.events.length; if (!n) return false; scr.go(scr.k + d, d); return true; };
   T.label = () => ({ at: scr.k, count: scr.events.length });
-  T.end = () => { scr.live = false; scr.go(0); scr.k = 0; scr.draw(1); };
+  T.end = () => { scr.live = false; scr.reset(); };
   return T;
 }
 

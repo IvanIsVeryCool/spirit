@@ -18,10 +18,8 @@ export const DOORS = [
    these are stand-ins until each member's own model is made).
    ===================================================================== */
 export const CABINET = [
-  { name: 'President', role: '', kind: 3 },
-  { name: 'Vice President', role: '', kind: 6 },
-  { name: 'Secretary', role: '', kind: 8 },
-  { name: 'Treasurer', role: '', kind: 10 }
+  { name: 'Christina', role: 'Spirit Co-Lead', kind: 3 },
+  { name: 'Eliya', role: 'Spirit Co-Lead', kind: 8 }
 ];
 
 export const SITE = {

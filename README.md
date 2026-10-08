@@ -44,6 +44,22 @@ or are licensed to put on a public website; keep the file under 25 MB.
 `album` puts photos under a filter button at the top (any name); `caption` and `date` are optional.
 The gallery starts with a few pictures of the Spirit Line itself; delete their lines (and files) once you have your own.
 
+## Photos sent in from the school
+Anyone can press **Submit a photo** in the gallery. Their photo waits for review and only
+appears once a cabinet member approves it, so nothing goes up without a look first.
+
+1. **Once:** set the review password. In Cloudflare, open Workers & Pages → **spirit** →
+   Settings → Variables and Secrets → Add, type **Secret**, name `REVIEW_PASSWORD`, and a
+   password only the cabinet knows. Deploy when it asks.
+2. To review, go to **/review/** on the site (for example
+   https://spirit.ivancui211.workers.dev/review/) and sign in with that password.
+   Approve or Reject each photo; approved ones show in the gallery within a minute.
+   "Remove from gallery" takes one down again.
+
+The photos are kept in Cloudflare (Workers KV, made automatically on the first deploy).
+To keep one for good, with its own caption and album, download it from the review page
+and add it the normal way (above), then remove the submitted copy.
+
 ## The weekly newsletter
 Edit `NEWSLETTER` in `hub/doors.js` each week: the `issue` number, the `week`, and the
 `stories` (a `kicker` label, a `head`line and the `body` paragraphs; the first story leads
@@ -59,12 +75,13 @@ Edit `EVENTS` in `hub/doors.js`, in order, soonest first. Each one shows up as a
 { name: 'Homecoming', date: 'Fri, Oct 16', time: '6 pm', place: 'Main field', note: 'Wear red' },
 ```
 
-Leave out `date` and the screen says "Date to be announced". Write the date like `Fri, Oct 16` and the screen also counts down ("In 9 days").
+Each event is a station on the little train line on the screen, with its name on the station sign. Leave out `date` and the screen says "Date to be announced". Write the date like `Fri, Oct 16` and the screen also counts down ("In 9 days").
 
 ## Meet the Cabinet
-The cabinet stand in the cab at the back of the train. To change who's there, edit
-`CABINET` in `hub/doors.js`: one line per person, with their `name` (shown above them),
-their `role` (under the name), and `kind`, which picks the 3D model.
+The cabinet stand in the cab at the back of the train: right now Christina and Eliya, the
+Spirit Co-Leads. To change who's there, edit `CABINET` in `hub/doors.js`: one line per person,
+with their `name` (shown above them), their `role` (under the name), and `kind`, which picks
+the 3D model (0–11; try a few to find the right look for each person).
 
 ## Updating spirit points
 Add one row per event to the "Spirit Points Scores" Google Sheet:

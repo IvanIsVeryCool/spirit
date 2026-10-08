@@ -191,7 +191,7 @@ function visitScene(i) {
       softFocus($('sc-back'));
     }
   }, { standings });
-  if (station.stops) station.stops.onAuto = () => syncScene();
+  if (station.stops) { station.stops.onAuto = () => syncScene(); station.stops.onArrive = () => { if (visiting && sceneKind === 'events') audio.chime(); }; } // a chime as the screen's train pulls in
 }
 // the page count between the arrows, and (for the events) the stop read out to screen readers
 function syncScene() {
@@ -214,7 +214,7 @@ $('sc-next').addEventListener('click', () => sceneStep(1));
 $('sc-back').addEventListener('click', leaveCabinet);
 // Photo Gallery: it opens over the inside of car 1, no new page (the gallery itself is /gallery/js/gallery.js, shared with /gallery/)
 let gallery = null, lightboxUp = false, galleryStill = false, stillT = 0; // galleryStill: the 3D pauses behind the open gallery (it's blurred out anyway, and that blur over a live canvas is costly)
-addEventListener('keydown', e => { lightboxUp = !!(e.key === 'Escape' && $('lb') && $('lb').classList.contains('open')); }, { capture: true }); // read before the lightbox closes itself
+addEventListener('keydown', e => { lightboxUp = !!(e.key === 'Escape' && (($('lb') && $('lb').classList.contains('open')) || ($('sub') && $('sub').classList.contains('open')))); }, { capture: true }); // read before the lightbox (or the photo form) closes itself
 const loadGallery = () => gallery || (gallery = import('/gallery/js/gallery.js').catch(e => { console.warn(e); return null; }));
 function openGallery() {
   const g = $('gallery'); g.hidden = false; $('gal-scroll').scrollTop = 0; document.body.classList.add('visiting');
@@ -314,6 +314,7 @@ $('rows').addEventListener('click', e => { const b = e.target.closest('.row'); i
 $('rows').addEventListener('pointerover', e => { const b = e.target.closest('.row'); if (b && !mobile) setHover(Number(b.dataset.i)); });
 $('rows').addEventListener('pointerleave', () => { if (!mobile) setHover(-1); });
 addEventListener('keydown', e => {
+  if (e.key !== 'Escape' && e.target.closest && e.target.closest('input,textarea,select')) return; // typing in the photo form
   if (e.key === 'Escape') {
     if (lightboxUp) return; // a photo is open: Escape closes that first (gallery.js)
     if (onBoard && !$('detail').hidden) { lb && lb.then(m => m && m.closeDetail()); return; } // an event's breakdown, then the board

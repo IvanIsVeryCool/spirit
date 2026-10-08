@@ -7,3 +7,7 @@ CLAUDE.md
 README.md
 netlify.toml
 wrangler.jsonc
+worker
+*.log
+node_modules
+.wrangler

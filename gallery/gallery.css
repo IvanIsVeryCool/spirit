@@ -42,3 +42,45 @@
   .lb-foot{flex-direction:column;align-items:center;gap:4px}
 }
 @media (prefers-reduced-motion:reduce){.ph,.ph img,.lb,.lb-img{transition:none!important}}
+
+/* the heading row: the title, "Submit a photo" on the right, the album chips under them */
+.gal-head,header.top{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:14px 20px}
+.gal-head .albums,header.top .albums{flex-basis:100%;margin-top:4px}
+.gal-submit{display:inline-flex;align-items:center;gap:9px;padding:10px 15px;border-radius:var(--r,6px);background:#fff;color:var(--ink,#16181f);font-family:var(--display,inherit);font-size:12.5px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;white-space:nowrap;box-shadow:0 8px 22px -12px rgba(10,8,30,.7);transition:background-color .2s}
+.gal-submit:hover{background:#f1ece2}
+.gal-submit svg{width:15px;height:15px}
+
+/* the submission form */
+.sub{position:fixed;inset:0;z-index:45;display:grid;place-items:center;padding:16px;background:rgba(9,8,22,.66);opacity:0;visibility:hidden;transition:opacity .3s ease,visibility 0s linear .3s}
+.sub.open{opacity:1;visibility:visible;transition:opacity .3s ease}
+.sub-card{width:min(480px,100%);max-height:calc(100dvh - 32px);overflow-y:auto;background:#fff;color:var(--ink,#16181f);border-radius:var(--r,6px);box-shadow:0 30px 70px -30px rgba(0,0,0,.8),inset 0 4px 0 var(--red,#c9272c);padding:26px 24px 22px;text-align:left;transform:translateY(12px);transition:transform .45s var(--ease,cubic-bezier(.16,1,.3,1))}
+.sub.open .sub-card{transform:none}
+.sub h2{margin:0;font-family:var(--display,inherit);font-size:22px;font-weight:800;letter-spacing:-.01em}
+.sub-note{margin:6px 0 18px;font-size:14px;line-height:1.45;color:#5b5e68}
+.sub-drop{position:relative;display:grid;place-items:center;min-height:150px;margin-bottom:16px;border:1.5px dashed #c9c3b8;border-radius:4px;background:#faf7f2;cursor:pointer;overflow:hidden;transition:border-color .2s,background-color .2s}
+.sub-drop:hover{border-color:#a49d90;background:#f5f1ea}
+.sub-drop input{position:absolute;inset:0;opacity:0;cursor:pointer}
+.sub-pick{display:inline-flex;align-items:center;gap:9px;font-family:var(--display,inherit);font-size:12.5px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#3a3d46;pointer-events:none}
+.sub-pick svg{width:18px;height:18px}
+.sub-drop img{display:none;max-width:100%;max-height:240px;pointer-events:none}
+.sub-drop.has{border-style:solid;border-color:#e2ddd3;background:#1b1a22}
+.sub-drop.has .sub-pick{display:none}.sub-drop.has img{display:block}
+.sub-drop:focus-within{outline:2px solid var(--amber,#ffad1f);outline-offset:2px}
+.sub-field{display:block;margin-bottom:12px}
+.sub-field>span{display:block;margin-bottom:5px;font-family:var(--display,inherit);font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:#5b5e68}
+.sub-field i{font-style:normal;font-weight:600;letter-spacing:.06em;text-transform:none;color:#8b8d95;margin-left:4px}
+.sub-field input{width:100%;box-sizing:border-box;padding:10px 11px;border:1px solid #d6d0c4;border-radius:4px;background:#fff;color:inherit;font:inherit;font-size:15px;transition:border-color .2s}
+.sub-field input:focus{outline:none;border-color:#16181f}
+.sub-row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.sub-check{display:flex;gap:10px;align-items:flex-start;margin:4px 0 6px;font-size:13px;line-height:1.45;color:#3a3d46;cursor:pointer}
+.sub-check input{flex:none;width:17px;height:17px;margin:1px 0 0;accent-color:var(--red,#c9272c)}
+.sub-msg{min-height:20px;margin:8px 0 0;font-size:13.5px;font-weight:600;color:#b3252a}
+.sub-btns{display:flex;justify-content:flex-end;gap:10px;margin-top:10px}
+.sub-btn{padding:11px 18px;border-radius:var(--r,6px);background:#fff;color:var(--ink,#16181f);box-shadow:inset 0 0 0 1px #d6d0c4;font-family:var(--display,inherit);font-size:12.5px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;transition:background-color .2s,opacity .2s}
+.sub-btn:hover{background:#f4f0e8}
+.sub-btn.primary{background:var(--red,#c9272c);color:#fff;box-shadow:none}.sub-btn.primary:hover{background:#a81f24}
+.sub.busy .sub-btn.primary{opacity:.6;pointer-events:none}
+.sub-done{display:none}
+.sub.sent .sub-body{display:none}.sub.sent .sub-done{display:block}
+@media (max-width:480px){.sub-row{grid-template-columns:1fr;gap:0}.sub-card{padding:22px 18px 18px}}
+@media (prefers-reduced-motion:reduce){.sub,.sub-card{transition:none!important}}

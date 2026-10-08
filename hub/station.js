@@ -425,7 +425,7 @@ export class Station {
     // whole group fits the cab's view from the doorway, the windshield behind them
     // (a phone's view is too narrow for a row: there they stand like a group photo, the outer ones a step further back)
     this.crew = CABINET.map((m, i) => {
-      const spread = Math.min(this.mobile ? .9 : 1.6, .52 * (n - 1)), z = n > 1 ? (i / (n - 1) - .5) * spread : 0, p = new Person(m.kind);
+      const spread = Math.min(this.mobile ? .9 : 1.6, (n < 3 ? .78 : .52) * (n - 1)), z = n > 1 ? (i / (n - 1) - .5) * spread : 0, p = new Person(m.kind);
       p.mesh.material = mat; p.pose('idle', { fade: 0, phase: i * .37 }); p.root.scale.multiplyScalar(this.mobile ? .6 : .72);
       p.root.position.set(this.mobile ? CAR_L / 2 + 1.32 + Math.abs(z) * .56 : CAR_L / 2 + 1.62 - z * z * .3, FLOOR - .12, z); p.root.rotation.y = -Math.PI / 2; // facing the windshield until you come in
       p.root.visible = false; car.add(p.root); p.info = m; p.turn = 0;
@@ -481,7 +481,7 @@ export class Station {
     this.doors.forEach((d, i) => this.drawSign(i));
     if (this.noseMesh) this._paintNose();
     if (this.flyer) this._paintBanner();
-    if (this.stops) this.stops.draw(1);
+    if (this.stops) this.stops.redrawSigns(); // the screen, and the station signs in its ride
     if (this.copSign) this.drawCopSign(this.copRows || []);
   }
   // A small plane towing a "NUEVA SPIRIT" banner across the sky behind the train, every half minute or so
@@ -1016,8 +1016,8 @@ export class Station {
       p.bones.head.getWorldPosition(v); const d = cam.clone().sub(v); p.root.getWorldQuaternion(q); d.applyQuaternion(q.invert());
       const w = tt, yaw = Math.max(-.8, Math.min(.8, Math.atan2(-d.x, -d.z))) * w, pitch = -Math.max(-.5, Math.min(.5, Math.atan2(d.y, Math.hypot(d.x, d.z)))) * w;
       p.look.yaw += (yaw - p.look.yaw) * Math.min(1, dt * 5); p.look.pitch += (pitch - p.look.pitch) * Math.min(1, dt * 5);
-      // a wave (the first and third), for a couple of seconds after you come in
-      const wv = (k === 0 || k === 2) ? Math.max(0, Math.min(1, (e - 6.3 - k * .25) / .3)) * Math.max(0, Math.min(1, (9.4 - e) / .4)) : 0;
+      // a wave (every other one, and the last), for a couple of seconds after you come in
+      const wv = (k % 2 === 0 || k === this.crew.length - 1) ? Math.max(0, Math.min(1, (e - 6.3 - k * .25) / .3)) * Math.max(0, Math.min(1, (9.4 - e) / .4)) : 0;
       if (wv > 0) {
         const sh = p.bones['arm-left']; sh.getWorldPosition(v); const head = p.bones.head.getWorldPosition(new THREE.Vector3()), out = v.clone().sub(head).setY(0).normalize();
         const side = new THREE.Vector3(0, 1, 0).cross(out).normalize(), tgt = v.clone().addScaledVector(out, .22 * wv).add(new THREE.Vector3(0, .55 * wv, 0)).addScaledVector(side, Math.sin(t * 9) * .1 * wv);
@@ -1124,6 +1124,7 @@ export class Station {
     this.reader.g.visible = true; this.reader.frame(this.camera); this.reader.state.up = 1; this.reader.state.open = 1; this.reader.update(this.camera, 0); // and the newspaper
     try { if (this.renderer.compileAsync) { this.introGroup.visible = true; await this.renderer.compileAsync(this.scene, this.camera); } } catch (e) {}
     this.doors.forEach(d => d.led.pages.forEach(p => this.renderer.initTexture(p.tex))); // both pages of every door sign, not just the one showing
+    if (this.stops) this.stops.warm(this.renderer, this.scene.environment); // the Events screen's ride
     const culled = []; this.scene.traverse(o => { if (o.frustumCulled) { culled.push(o); o.frustumCulled = false; } });
     const x = this.train.position.x, cam = this.camera.position.clone(), q = this.camera.quaternion.clone();
     this.introGroup.visible = true;

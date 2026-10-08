@@ -26,6 +26,8 @@
 <link rel="modulepreload" href="/hub/crowd.js">
 <link rel="modulepreload" href="/hub/surfaces.js">
 <link rel="modulepreload" href="/hub/scenes.js">
+<link rel="modulepreload" href="/hub/eventride.js">
+<link rel="modulepreload" href="/hub/ridetrain.js">
 <link rel="modulepreload" href="/vendor/jsm/loaders/GLTFLoader.js">
 <link rel="modulepreload" href="/vendor/jsm/utils/SkeletonUtils.js">
 <link rel="modulepreload" href="/vendor/jsm/utils/BufferGeometryUtils.js">
@@ -384,7 +386,7 @@ body.static .board{position:relative;left:auto;bottom:auto;opacity:1;transform:n
 </div>
 
 <section id="gallery" hidden aria-label="Photo Gallery"><div class="gal-scroll" id="gal-scroll">
-  <header class="gal-head"><h2>Photo Gallery</h2><div class="albums" id="albums" role="group" aria-label="Albums" hidden></div></header>
+  <header class="gal-head"><h2>Photo Gallery</h2><button class="gal-submit" id="gal-submit" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 16V4M7 9l5-5 5 5M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"/></svg>Submit a photo</button><div class="albums" id="albums" role="group" aria-label="Albums" hidden></div></header>
   <div class="grid" id="grid"></div><p class="empty" id="empty" hidden>No photos yet.</p>
 </div><button class="crew-back gal-back back" id="gal-back" type="button">Back to the platform</button>
 </section>

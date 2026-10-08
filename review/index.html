@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Photo review · Nueva Spirit</title>
+<meta name="robots" content="noindex, nofollow">
+<meta name="theme-color" content="#1c2a66">
+<link rel="icon" type="image/png" href="/favicon-64.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..900&family=Public+Sans:wght@400;500;600;700&display=swap">
+<style>
+/* The Spirit Cabinet's review page for photos sent in from the gallery: approve them onto the gallery, or reject them.
+   Asks for the review password (the REVIEW_PASSWORD secret on the Worker); nothing here is public without it. */
+:root{
+  --paper:#f6f3ee; --ink:#16181f; --muted:#5b5e68; --line:#ddd7cc; --red:#c9272c; --red-dark:#a81f24; --navy:#132047; --amber:#ffad1f;
+  --display:'Archivo','Arial Narrow',system-ui,sans-serif; --body:'Public Sans',ui-sans-serif,system-ui,-apple-system,'Segoe UI',sans-serif;
+  --r:6px; --lift:0 8px 22px -12px rgba(10,8,30,.45); --logo:url("/assets/logo.png"); --gut:clamp(16px,3vw,36px);
+  color-scheme:light;
+}
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;background:var(--paper);color:var(--ink);font-family:var(--body);font-size:15px;line-height:1.5;-webkit-font-smoothing:antialiased}
+h1,h2,p{margin:0}
+button,input{font:inherit;color:inherit}
+button{background:none;border:0;padding:0;cursor:pointer}
+:focus-visible{outline:2px solid var(--amber);outline-offset:2px}
+.logo-img{display:block;background:currentColor;-webkit-mask:var(--logo) center/contain no-repeat;mask:var(--logo) center/contain no-repeat}
+.bar{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:calc(14px + env(safe-area-inset-top,0px)) var(--gut) 14px;background:var(--navy);color:#fff}
+.sign{display:flex;align-items:center;gap:12px;color:#fff;text-decoration:none}
+.sign .logo-img{width:26px;height:26px}
+.sign b{font-family:var(--display);font-weight:800;font-size:14px;letter-spacing:.3em;text-transform:uppercase}
+.btn{text-decoration:none;display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:10px 16px;border-radius:var(--r);background:#fff;color:var(--ink);box-shadow:inset 0 0 0 1px var(--line);font-family:var(--display);font-size:12.5px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;white-space:nowrap;transition:background-color .2s,opacity .2s}
+.btn:hover{background:#f1ece2}
+.btn.primary{background:var(--red);color:#fff;box-shadow:none}.btn.primary:hover{background:var(--red-dark)}
+.btn.ghost{background:transparent;color:#fff;box-shadow:inset 0 0 0 1px rgba(255,255,255,.4)}.btn.ghost:hover{background:rgba(255,255,255,.1)}
+.btn[disabled]{opacity:.5;pointer-events:none}
+main{max-width:1180px;margin:0 auto;padding:34px var(--gut) 60px}
+h1{font-family:var(--display);font-weight:800;font-size:clamp(28px,4vw,40px);letter-spacing:-.015em;line-height:1.05}
+.lead{margin-top:6px;color:var(--muted)}
+/* signing in */
+.login{max-width:420px;margin-top:28px;padding:24px;background:#fff;border-radius:var(--r);box-shadow:var(--lift),inset 0 4px 0 var(--red)}
+.login label{display:block;margin-bottom:6px;font-family:var(--display);font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+.login .row{display:flex;gap:10px}
+.login input{flex:1;min-width:0;padding:10px 11px;border:1px solid var(--line);border-radius:4px;font-size:15px}
+.login input:focus{outline:none;border-color:var(--ink)}
+.msg{margin-top:12px;font-size:14px;font-weight:600;color:#b3252a;min-height:21px}
+.msg.info{color:var(--muted);font-weight:500}
+/* the photos */
+section{margin-top:36px}
+.sec-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px;padding-bottom:10px;margin-bottom:18px;border-bottom:1px solid var(--line)}
+h2{font-family:var(--display);font-size:13px;font-weight:800;letter-spacing:.14em;text-transform:uppercase}
+h2 i{font-style:normal;color:var(--muted);margin-left:6px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:18px}
+.card{display:flex;flex-direction:column;background:#fff;border-radius:var(--r);box-shadow:var(--lift);overflow:hidden;transition:opacity .3s}
+.card.gone{opacity:0}
+.card .pic{position:relative;aspect-ratio:4/3;background:#1b1a22}
+.card img{position:absolute;inset:0;display:block;width:100%;height:100%;object-fit:contain}
+.card .info{padding:12px 14px 4px;flex:1}
+.card .cap{font-weight:600;line-height:1.4}
+.card .cap:empty::before{content:"No caption";color:var(--muted);font-weight:500}
+.card .meta{margin-top:4px;font-size:12.5px;color:var(--muted)}
+.card .acts{display:flex;gap:8px;padding:12px 14px 14px}
+.card .acts .btn{flex:1}
+.empty{padding:26px 0;color:var(--muted)}
+[hidden]{display:none!important}
+</style>
+</head>
+<body>
+<header class="bar"><a class="sign" href="/"><span class="logo-img" aria-hidden="true"></span><b>Nueva</b></a><button class="btn ghost" id="out" type="button" hidden>Sign out</button></header>
+<main>
+  <h1>Photo review</h1>
+  <p class="lead">Photos sent in from the gallery wait here. Approved ones appear in the gallery.</p>
+  <form class="login" id="login">
+    <label for="pw">Review password</label>
+    <div class="row"><input id="pw" type="password" autocomplete="current-password" required><button class="btn primary" type="submit">Sign in</button></div>
+    <p class="msg" id="login-msg" role="status"></p>
+  </form>
+  <div id="lists" hidden>
+    <section><div class="sec-head"><h2>Waiting<i id="n-wait"></i></h2><button class="btn" id="refresh" type="button">Refresh</button></div><div class="grid" id="wait"></div><p class="empty" id="wait-empty" hidden>Nothing waiting for review.</p></section>
+    <section><div class="sec-head"><h2>In the gallery<i id="n-live"></i></h2></div><div class="grid" id="live"></div><p class="empty" id="live-empty" hidden>No approved photos yet.</p></section>
+  </div>
+</main>
+<script type="module">
+const $ = id => document.getElementById(id), KEY = 'spirit-review';
+let pw = ''; try { pw = sessionStorage.getItem(KEY) || ''; } catch (e) {}
+const blobs = [];
+const fmt = d => { const t = new Date(d + 'T12:00:00'); return isNaN(t) ? '' : t.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }); };
+const MSG = {
+  'no-password': 'Reviewing isn’t set up yet: add a secret called REVIEW_PASSWORD to the spirit Worker in Cloudflare (Settings → Variables and Secrets), then sign in with it.',
+  'wrong-password': 'That password isn’t right.', 'too-many': 'Too many wrong tries. Wait an hour and try again.', 'not-set-up': 'Photo storage isn’t ready yet. It’s created on the next deploy.'
+};
+async function call(path, opts = {}) {
+  const r = await fetch(path, { ...opts, headers: { ...(opts.headers || {}), authorization: 'Bearer ' + pw } });
+  let j = null; try { j = await r.json(); } catch (e) {}
+  if (!r.ok) throw Object.assign(new Error((j && j.error) || 'http ' + r.status), { code: (j && j.error) || (r.status === 404 ? 'not-set-up' : 'server') });
+  return j;
+}
+function signedIn(on) { $('login').hidden = on; $('lists').hidden = !on; $('out').hidden = !on; }
+async function load() {
+  let data;
+  try { data = await call('/api/review'); }
+  catch (e) { signedIn(false); $('login-msg').textContent = MSG[e.code] || 'Couldn’t load the photos. Try again.'; if (e.code === 'wrong-password') { pw = ''; try { sessionStorage.removeItem(KEY); } catch (er) {} } return; }
+  try { sessionStorage.setItem(KEY, pw); } catch (e) {}
+  signedIn(true); blobs.forEach(u => URL.revokeObjectURL(u)); blobs.length = 0;
+  render($('wait'), data.waiting, true); render($('live'), data.approved, false);
+  $('n-wait').textContent = data.waiting.length; $('n-live').textContent = data.approved.length;
+  $('wait-empty').hidden = data.waiting.length > 0; $('live-empty').hidden = data.approved.length > 0;
+}
+function render(box, list, waiting) {
+  box.innerHTML = '';
+  list.forEach(p => {
+    const c = document.createElement('article'); c.className = 'card';
+    c.innerHTML = `<div class="pic"><img alt=""></div><div class="info"><p class="cap"></p><p class="meta"></p></div><div class="acts"></div>`;
+    c.querySelector('.cap').textContent = p.caption;
+    c.querySelector('.meta').textContent = [p.album, p.by && 'by ' + p.by, fmt(p.date)].filter(Boolean).join('  ·  ');
+    const img = c.querySelector('img'); img.alt = p.caption || 'Submitted photo';
+    fetch('/api/photos/' + p.id, { headers: { authorization: 'Bearer ' + pw } }).then(r => r.ok ? r.blob() : null).then(b => { if (b) { const u = URL.createObjectURL(b); blobs.push(u); img.src = u; if (c.dl) c.dl.href = u; } });
+    const acts = c.querySelector('.acts'), btn = (label, action, primary) => { const b = document.createElement('button'); b.type = 'button'; b.className = 'btn' + (primary ? ' primary' : ''); b.textContent = label; b.addEventListener('click', () => act(c, p.id, action)); acts.appendChild(b); };
+    if (waiting) { btn('Reject', 'reject'); btn('Approve', 'approve', true); }
+    else { const d = document.createElement('a'); d.className = 'btn'; d.textContent = 'Download'; d.download = (p.album || 'photo').replace(/[^\w-]+/g, '-').toLowerCase() + '-' + p.id.slice(0, 6) + '.jpg'; c.dl = d; acts.appendChild(d); btn('Remove', 'remove'); }
+    box.appendChild(c);
+  });
+}
+async function act(card, id, action) {
+  if (action === 'remove' && !confirm('Take this photo off the gallery? It will be deleted.')) return;
+  card.querySelectorAll('button').forEach(b => { b.disabled = true; });
+  try { await call('/api/review/' + id, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action }) }); card.classList.add('gone'); setTimeout(load, 300); }
+  catch (e) { card.querySelectorAll('button').forEach(b => { b.disabled = false; }); alert(MSG[e.code] || 'That didn’t work. Try again.'); }
+}
+$('login').addEventListener('submit', e => { e.preventDefault(); pw = $('pw').value; $('login-msg').textContent = ''; load(); });
+$('refresh').addEventListener('click', load);
+$('out').addEventListener('click', () => { pw = ''; try { sessionStorage.removeItem(KEY); } catch (e) {} signedIn(false); $('pw').value = ''; });
+if (pw) load(); else $('pw').focus();
+</script>
+</body>
+</html>

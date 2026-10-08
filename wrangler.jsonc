@@ -1,9 +1,17 @@
-// Cloudflare Workers: this repo is a plain static site, served as-is (no build step)
+// Cloudflare Workers: the repo is the static site, served as-is (no build step), with a small Worker in front of it
+// (worker/index.js) that handles /api/: the Photo Gallery's submissions and their review. Everything else is the files.
 {
   "name": "spirit",
+  "main": "worker/index.js",
   "compatibility_date": "2026-09-01",
   "assets": {
     "directory": "./",
+    "binding": "ASSETS",
     "not_found_handling": "none"
-  }
+  },
+  // the submitted photos: no id, so Cloudflare creates the namespace on the first deploy and keeps using it after
+  "kv_namespaces": [
+    { "binding": "PHOTOS" }
+  ]
+  // the review page's password is a secret, REVIEW_PASSWORD: Workers & Pages → spirit → Settings → Variables and Secrets
 }
