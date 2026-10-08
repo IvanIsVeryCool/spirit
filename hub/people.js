@@ -109,12 +109,16 @@ export class Person {
   // a hand's position in world space
   hand(side, out = new THREE.Vector3()) { return this.tip(side === 'left' ? 'arm-left' : 'arm-right', out); }
   tip(bone, out = new THREE.Vector3()) { const b = this.bones[bone]; b.updateWorldMatrix(true, false); return out.copy(LIB.hand[bone]).applyMatrix4(b.matrixWorld); }
-  // swing a limb (arm or leg bone) so its hand or foot points at a world position; call after update()
-  aim(bone, target) {
+  // swing a limb (arm or leg bone) so its hand or foot points at a world position; call after update(). w blends from
+  // the animated pose (0) to fully aimed (1), so a gesture can ease in and out instead of snapping
+  aim(bone, target, w = 1) {
+    if (w <= 0) return;
     const b = this.bones[bone]; b.updateWorldMatrix(true, false);
     _s.setFromMatrixPosition(b.matrixWorld); this.tip(bone, _t).sub(_s).normalize(); _u.copy(target).sub(_s).normalize();
     _qa.setFromUnitVectors(_t, _u); b.getWorldQuaternion(_qb); b.parent.getWorldQuaternion(_qc);
-    b.quaternion.copy(_qc.invert().multiply(_qa.multiply(_qb))); b.updateWorldMatrix(false, false);
+    const aimed = _qc.invert().multiply(_qa.multiply(_qb));
+    if (w >= 1) b.quaternion.copy(aimed); else b.quaternion.slerp(aimed, w);
+    b.updateWorldMatrix(false, false);
   }
 }
 

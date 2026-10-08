@@ -63,6 +63,16 @@ function softBox(w, h, d, r) {
   }
   g.computeVertexNormals(); return g;
 }
+// a few flat colours on a tiny palette texture of their own, drawn with a clone of the Mini Characters' material (the
+// same shading as the people), so our own models look like they came in the same box. paint(geo, hex) colours a part
+function toyMaterial(cols, glow = 0) {
+  const c = document.createElement('canvas'); c.width = cols.length; c.height = 1; const x = c.getContext('2d');
+  cols.forEach((h, i) => { x.fillStyle = h; x.fillRect(i, 0, 1, 1); });
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.flipY = false; t.magFilter = t.minFilter = THREE.NearestFilter; t.generateMipmaps = false;
+  const mat = library().material.clone(); mat.map = t; mat.emissiveMap = glow ? t : null; mat.emissive = new THREE.Color(glow, glow, glow); // (the people's own material may carry a glow; ours is set here)
+  const paint = (geo, hex) => { const uv = geo.attributes.uv, u = (cols.indexOf(hex) + .5) / cols.length; for (let i = 0; i < uv.count; i++) uv.setXY(i, u, .5); return geo; };
+  return { mat, paint };
+}
 export class Station {
   constructor(canvas, { mobile, doors, logo }) {
     this.mobile = mobile; this.data = doors; this.count = doors.length; this.logo = logo;
@@ -497,27 +507,41 @@ export class Station {
     if (this.copSign) this.drawCopSign(this.copRows || []);
   }
   // A small plane towing a "NUEVA SPIRIT" banner across the sky behind the train, every half minute or so
-  // (not during the opening). Our own plane: white, a red stripe, a spinning propeller. The banner ripples as it's towed.
+  // (not during the opening). Our own plane, made like the cassette player and Kenney's Mini Characters: chunky blocks
+  // with bevelled edges in a few flat colours, the people's shading. A white low-wing towplane with a red cowl, wingtips,
+  // fin and stripe, a dark canopy, fat wheels and a spinning two-blade propeller. The banner ripples as it's towed.
   _flyer() {
     const g = new THREE.Group(), plane = new THREE.Group(); g.add(plane); this.scene.add(g);
-    const white = new THREE.MeshStandardMaterial({ color: 0xd9d6cf, roughness: .6, metalness: .05, envMapIntensity: .5 }), red = new THREE.MeshStandardMaterial({ color: 0xc9272c, roughness: .5 });
-    const dark = new THREE.MeshStandardMaterial({ color: 0x1c2233, roughness: .2, metalness: .3 }), grey = new THREE.MeshStandardMaterial({ color: 0x6b707a, roughness: .5, metalness: .5 });
-    const part = (geo, m, x, y, z, rz = 0) => { const o = new THREE.Mesh(geo, m); o.position.set(x, y, z); o.rotation.z = rz; plane.add(o); return o; };
-    // the plane flies toward +x: fuselage along x, nose at +x
-    part(new THREE.CylinderGeometry(.42, .2, 6.4, 12), white, 0, 0, 0, Math.PI / 2);                 // fuselage, tapering to the tail
-    part(new THREE.SphereGeometry(.44, 12, 8), white, 3.2, 0, 0).scale.set(1.2, 1, 1);               // nose
-    part(new THREE.BoxGeometry(5.2, .05, .16), red, -.2, -.06, .42);                                  // the red stripe, both sides
-    part(new THREE.BoxGeometry(5.2, .05, .16), red, -.2, -.06, -.42);
-    part(new THREE.BoxGeometry(1.3, .42, .74), dark, 1.6, .38, 0);                                    // canopy
-    part(new THREE.BoxGeometry(1.5, .1, 10.4), white, 1.2, .3, 0);                                    // wing
-    [-1, 1].forEach(sd => part(new THREE.BoxGeometry(1.52, .11, .7), red, 1.2, .3, sd * 4.9));       // red wingtips
-    part(new THREE.BoxGeometry(.9, .07, 3.4), white, -2.9, .1, 0);                                    // tailplane
-    part(new THREE.BoxGeometry(1.1, 1.3, .08), red, -2.95, .7, 0).rotation.z = .25;                   // fin
-    [-1, 1].forEach(sd => { part(new THREE.CylinderGeometry(.04, .04, .9, 6), grey, 1.6, -.7, sd * .7); part(new THREE.CylinderGeometry(.2, .2, .1, 12), dark, 1.6, -1.12, sd * .7).rotation.x = Math.PI / 2; });
-    const prop = new THREE.Group(); prop.position.set(3.75, 0, 0); plane.add(prop);
-    [0, Math.PI / 2].forEach(r => { const b = new THREE.Mesh(new THREE.BoxGeometry(.05, 2.1, .14), dark); b.rotation.x = r; prop.add(b); });
-    const disc = new THREE.Mesh(new THREE.CircleGeometry(1.05, 24), new THREE.MeshBasicMaterial({ color: 0x9aa0aa, transparent: true, opacity: .16, depthWrite: false, side: THREE.DoubleSide }));
+    const COLS = ['#ddd8ce', '#c9272c', '#2a2a31', '#3d4c6b', '#8a8f99'], [WHITE, RED, DARK, GLASS, GREY] = COLS, { mat, paint } = toyMaterial(COLS);
+    // (seen from below, so little of the environment's reflection: it's brightest straight down and turned the wings' undersides white)
+    mat.envMapIntensity = .1;
+    const parts = [], put = (geo, hex, x, y, z, rx = 0, ry = 0, rz = 0) => { geo.rotateX(rx); geo.rotateY(ry); geo.rotateZ(rz); geo.translate(x, y, z); parts.push(paint(geo.index ? geo.toNonIndexed() : geo, hex)); return geo; };
+    // shape a block: f(x, y, z) returns the vertex's new position (tapers and slants)
+    const shape = (geo, f) => { const p = geo.attributes.position; for (let i = 0; i < p.count; i++) p.setXYZ(i, ...f(p.getX(i), p.getY(i), p.getZ(i))); geo.computeVertexNormals(); return geo; };
+    // the plane flies toward +x: fuselage along x, nose at +x; behind the cabin it tapers and rises into the tail
+    put(shape(softBox(5.6, 1, 1, .2), (x, y, z) => { const k = Math.max(0, Math.min(1, (-.6 - x) / 2.2)), s = 1 - k * .55; return [x, y * s + k * .22, z * s]; }), WHITE, 0, 0, 0);
+    put(shape(softBox(3.3, .16, 1.06, .06), (x, y, z) => [x, y, z * (x < -1.2 ? .9 : 1)]), RED, .95, -.06, 0);       // the red stripe along both sides
+    put(softBox(.75, .96, .96, .22), RED, 3.1, 0, 0);                                                                 // the cowl
+    put(shape(softBox(1.5, .5, .82, .14), (x, y, z) => [y > 0 && x > 0 ? x - .32 : x, y, z]), GLASS, .85, .62, 0); // the canopy, its windscreen raked back
+    put(softBox(1.7, .18, 9.4, .07), WHITE, .9, -.3, 0);                                                              // the wing
+    [-1, 1].forEach(sd => put(softBox(1.72, .2, .9, .07), RED, .9, -.3, sd * 4.3));                                  // red wingtips
+    put(softBox(1.05, .13, 3.3, .05), WHITE, -2.55, .28, 0);                                                          // the tailplane
+    put(shape(softBox(1.2, 1.25, .14, .05), (x, y, z) => [y > 0 ? x - .4 : x, y, z]), RED, -2.5, .95, 0);           // the fin, swept back
+    // the landing gear: legs out to fat wheels with white hubs
+    [-1, 1].forEach(sd => {
+      put(softBox(.13, .78, .13, .04), DARK, 1.55, -.78, sd * .72, sd * .35);
+      put(new THREE.CylinderGeometry(.32, .32, .24, 10), DARK, 1.55, -1.18, sd * .86, Math.PI / 2);
+      put(new THREE.CylinderGeometry(.13, .13, .26, 8), WHITE, 1.55, -1.18, sd * .86, Math.PI / 2);
+    });
+    put(new THREE.CylinderGeometry(.04, .04, .7, 5), GREY, -3.05, -.12, 0, 0, 0, .9);                                 // the tow hook
+    const body = new THREE.Mesh(mergeGeometries(parts), mat); plane.add(body);
+    // the propeller: a white spinner and two blades, spinning (with a faint disc for the blur)
+    const prop = new THREE.Group(); prop.position.set(3.55, 0, 0); plane.add(prop);
+    const pp = [paint(new THREE.ConeGeometry(.26, .55, 8).rotateZ(-Math.PI / 2).translate(.22, 0, 0).toNonIndexed(), WHITE), paint(softBox(.08, 2.1, .2, .03).toNonIndexed(), DARK), paint(softBox(.08, .2, 2.1, .03).toNonIndexed(), DARK)];
+    prop.add(new THREE.Mesh(mergeGeometries(pp), mat));
+    const disc = new THREE.Mesh(new THREE.CircleGeometry(1.05, 24), new THREE.MeshBasicMaterial({ color: 0x9aa0aa, transparent: true, opacity: .14, depthWrite: false, side: THREE.DoubleSide }));
     disc.rotation.y = Math.PI / 2; prop.add(disc); prop.userData.keep = true;
+    const grey = new THREE.MeshStandardMaterial({ color: 0x6b707a, roughness: .5, metalness: .5 });
     // the tow line and the banner behind it (its leading edge on a weighted pole)
     const L = 15, BH = 2.7, lead = -3.4 - 9;
     const line = new THREE.Mesh(new THREE.CylinderGeometry(.025, .025, 9.2, 4), grey); line.rotation.z = Math.PI / 2 + .09; line.position.set(-3.4 - 4.6, -.45, 0); g.add(line);
@@ -617,13 +641,10 @@ export class Station {
   // reels with white hexagonal hubs), piano keys along the top (play in red), a volume wheel, the headphone cable up.
   _player(g, armMat, z0) {
     const P = new THREE.Group(), S = 1.8, B = new THREE.Group(); g.add(P); B.scale.setScalar(S); P.add(B); // B: the player, in toy proportion to your fists
-    // its own little palette, painted with the characters' material (the same shading as your arms): their palette
-    // has no true Spirit red or cream, and its nearest swatches read as brick and skin
-    const COLS = ['#c9272c', '#efe7d6', '#2a2a31', '#d2d4da', '#f6f6f6', '#4a3226', '#f3ebd9'], pc = document.createElement('canvas'); pc.width = COLS.length; pc.height = 1;
-    const px = pc.getContext('2d'); COLS.forEach((c, i) => { px.fillStyle = c; px.fillRect(i, 0, 1, 1); });
-    const pt = new THREE.CanvasTexture(pc); pt.colorSpace = THREE.SRGBColorSpace; pt.flipY = false; pt.magFilter = pt.minFilter = THREE.NearestFilter; pt.generateMipmaps = false;
-    const mat = armMat.clone(); mat.map = mat.emissiveMap = pt;
-    const paint = (geo, hex) => { const uv = geo.attributes.uv, u = (COLS.indexOf(hex) + .5) / COLS.length; for (let i = 0; i < uv.count; i++) uv.setXY(i, u, .5); return geo; };
+    // its own little palette (the characters' has no true Spirit red or cream: its nearest swatches read as brick and
+    // skin), lit like your arms
+    const COLS = ['#c9272c', '#efe7d6', '#2a2a31', '#d2d4da', '#f6f6f6', '#4a3226', '#f3ebd9'], { mat: m0, paint } = toyMaterial(COLS);
+    const mat = armMat.clone(); mat.map = mat.emissiveMap = m0.map;
     const [RED, CREAM, DARK, LIGHT, WHITE, TAPE, LABEL] = COLS;
     const place = (geo, x, y, z, rx = 0, ry = 0, rz = 0) => { geo.rotateX(rx); geo.rotateY(ry); geo.rotateZ(rz); geo.translate(x, y, z); return geo; };
     const parts = [], mesh = (geo, parent = B) => { const m = new THREE.Mesh(geo, mat); parent.add(m); return m; };
@@ -909,8 +930,10 @@ export class Station {
     p.look.yaw += (yaw - p.look.yaw) * Math.min(1, dt * 3); p.look.pitch += (pitch - p.look.pitch) * Math.min(1, dt * 4);
     // the sign: up from low in front of him as you arrive, held at his chest with both hands, down again as you leave
     const e = T ? t - T.t0 : 0, B = T && T.board, eb = B ? t - B.t0 : 0, want = T && e > 1.05 && !B ? 1 : 0;
-    C.sign += (want - C.sign) * Math.min(1, dt * (want ? 5.5 : 7));
-    const S = this.copSign, k = easeInOut(Math.min(1, C.sign)); S.g.visible = C.sign > .02;
+    // a steady ramp (0.85 s up, 0.6 s down) eased once: the arms follow the same curve, so nothing hurries in the middle
+    C.sign += Math.sign(want - C.sign) * Math.min(Math.abs(want - C.sign), dt / (want ? .85 : .6));
+    const S = this.copSign, k = .5 - Math.cos(Math.PI * Math.min(1, C.sign)) / 2; // (a sine ease: no hurried middle) S.g.visible = C.sign > .02;
+    if (!S.g.visible) C.lr = undefined;
     if (S.g.visible) {
       const f = new THREE.Vector3(-Math.sin(p.root.rotation.y), 0, -Math.cos(p.root.rotation.y)), side = new THREE.Vector3(f.z, 0, -f.x), up = new THREE.Vector3(0, 1, 0);
       const low = v.clone().addScaledVector(up, -.5).addScaledVector(f, .2), high = v.clone().addScaledVector(up, -.19).addScaledVector(f, .46);
@@ -919,17 +942,22 @@ export class Station {
       S.g.updateMatrixWorld(true);
       // both arms out to it, the hands behind the board
       const grip = sd => new THREE.Vector3(sd * (S.w / 2 - .1), -.04, -.05).applyMatrix4(S.g.matrixWorld); // his hands behind it (his toy fists would cover the names)
-      const gl = grip(-1), gr = grip(1), sh = p.bones['arm-left'].getWorldPosition(new THREE.Vector3());
-      const leftNearer = sh.distanceTo(gl) < sh.distanceTo(gr);
-      p.aim('arm-left', leftNearer ? gl : gr); p.aim('arm-right', leftNearer ? gr : gl);
+      const gl = grip(-1), gr = grip(1);
+      // which hand takes which side is settled once as the sign comes up (decided every frame, it could flip as the
+      // sign tilts, swapping his arms in one frame)
+      if (C.lr === undefined) { const sh = p.bones['arm-left'].getWorldPosition(new THREE.Vector3()); C.lr = sh.distanceTo(gl) < sh.distanceTo(gr); }
+      const leftNearer = C.lr;
+      const w = k; // the arms come up with the sign, not before it
+      p.aim('arm-left', leftNearer ? gl : gr, w); p.aim('arm-right', leftNearer ? gr : gl, w);
     }
     // pointing to the billboard: his head turns to it and the arm on that side comes up, for as long as you're near him
     if (B) {
-      const bc = this.bill.position.clone().setY(FLOOR + this.billDim.lift + this.billDim.H / 2), pt = Math.max(0, Math.min(1, (eb - .1) / .4)) * Math.max(0, Math.min(1, (3.9 - eb) / .6));
+      // (up over .55 s, held, down over .7 s; blended from his idle pose, so it never snaps; the arm is chosen once)
+      const bc = this.bill.position.clone().setY(FLOOR + this.billDim.lift + this.billDim.H / 2), pt = Math.max(0, Math.min(1, (eb - .1) / .55)) * Math.max(0, Math.min(1, (3.9 - eb) / .7));
       if (pt > 0) {
-        const L = p.bones['arm-left'].getWorldPosition(new THREE.Vector3()), R = p.bones['arm-right'].getWorldPosition(new THREE.Vector3()), arm = L.distanceTo(bc) < R.distanceTo(bc) ? 'arm-left' : 'arm-right';
-        const sh = arm === 'arm-left' ? L : R, dir = bc.clone().sub(sh).normalize(), rest = sh.clone().add(new THREE.Vector3(0, -.5, 0));
-        p.aim(arm, rest.lerp(sh.clone().addScaledVector(dir, .6), easeInOut(pt)));
+        if (!B.arm) { const L = p.bones['arm-left'].getWorldPosition(new THREE.Vector3()), R = p.bones['arm-right'].getWorldPosition(new THREE.Vector3()); B.arm = L.distanceTo(bc) < R.distanceTo(bc) ? 'arm-left' : 'arm-right'; }
+        const arm = B.arm, sh = p.bones[arm].getWorldPosition(new THREE.Vector3()), dir = bc.clone().sub(sh).normalize();
+        p.aim(arm, sh.clone().addScaledVector(dir, .6).add(new THREE.Vector3(0, Math.sin(t * 1.6) * .015, 0)), .5 - Math.cos(Math.PI * pt) / 2);
         const d2 = bc.clone().sub(v).applyQuaternion(p.root.getWorldQuaternion(new THREE.Quaternion()).invert());
         p.look.yaw += (Math.max(-.9, Math.min(.9, Math.atan2(-d2.x, -d2.z))) - p.look.yaw) * Math.min(1, dt * 4) * pt;
       }
@@ -1030,19 +1058,21 @@ export class Station {
     // the crew turn round as the door opens, then watch you; a couple of them wave
     const cam = c.position, v = new THREE.Vector3(), q = new THREE.Quaternion();
     this.crew.forEach((p, k) => {
-      const tt = Math.max(0, Math.min(1, (e - 4.75 - k * .14) / .75)); p.root.rotation.y = -Math.PI / 2 + easeInOut(tt) * Math.PI;
+      const tt = Math.max(0, Math.min(1, (e - 4.75 - k * .14) / 1.05)); // (turning round over about a second) p.root.rotation.y = -Math.PI / 2 + easeInOut(tt) * Math.PI;
       if (tt > 0 && tt < 1 && p.poseName !== 'walk') p.pose('walk', { fade: .2, speed: .6 }); else if (tt >= 1 && p.poseName !== 'idle') p.pose('idle', { fade: .4 });
       p.update(dt); p.root.updateMatrixWorld(true);
       // head: toward you once they've turned
       p.bones.head.getWorldPosition(v); const d = cam.clone().sub(v); p.root.getWorldQuaternion(q); d.applyQuaternion(q.invert());
       const w = tt, yaw = Math.max(-.8, Math.min(.8, Math.atan2(-d.x, -d.z))) * w, pitch = -Math.max(-.5, Math.min(.5, Math.atan2(d.y, Math.hypot(d.x, d.z)))) * w;
       p.look.yaw += (yaw - p.look.yaw) * Math.min(1, dt * 5); p.look.pitch += (pitch - p.look.pitch) * Math.min(1, dt * 5);
-      // a wave (every other one, and the last), for a couple of seconds after you come in
-      const wv = (k % 2 === 0 || k === this.crew.length - 1) ? Math.max(0, Math.min(1, (e - 6.3 - k * .25) / .3)) * Math.max(0, Math.min(1, (9.4 - e) / .4)) : 0;
+      // a wave (every other one, and the last), for a couple of seconds after you come in: the arm eases up beside the
+      // head, the hand swings gently side to side about once a second, and it eases down again (blended from the idle
+      // pose, so it never snaps; the swing fades in with it)
+      const wr = (k % 2 === 0 || k === this.crew.length - 1) ? Math.max(0, Math.min(1, (e - 6.3 - k * .25) / .8)) * Math.max(0, Math.min(1, (9.8 - e) / .8)) : 0, wv = .5 - Math.cos(Math.PI * wr) / 2;
       if (wv > 0) {
         const sh = p.bones['arm-left']; sh.getWorldPosition(v); const head = p.bones.head.getWorldPosition(new THREE.Vector3()), out = v.clone().sub(head).setY(0).normalize();
-        const side = new THREE.Vector3(0, 1, 0).cross(out).normalize(), tgt = v.clone().addScaledVector(out, .22 * wv).add(new THREE.Vector3(0, .55 * wv, 0)).addScaledVector(side, Math.sin(t * 9) * .1 * wv);
-        p.aim('arm-left', tgt);
+        const side = new THREE.Vector3(0, 1, 0).cross(out).normalize(), sway = Math.sin((e - 6.3 - k * .25) * 6.3) * .13 * wv;
+        p.aim('arm-left', v.clone().addScaledVector(out, .24).add(new THREE.Vector3(0, .55, 0)).addScaledVector(side, sway), wv);
       }
     });
     fire('arrive', 6.95, T.cb.arrive);
