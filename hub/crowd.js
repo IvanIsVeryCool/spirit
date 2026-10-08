@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { Person, KINDS, SCALE, HIP_SIT, seatAt, sitters } from './people.js';
+import { softBox } from './toy.js';
 
 // Everyone on and around the platform who isn't you: people waiting on the benches and by the yellow line,
 // people walking past (some with a phone, a suitcase or a dog), cyclists, an e-bike and an e-scooter on the
@@ -49,9 +50,13 @@ function geometries() {
     book: bake([BOX(.26, .19, .03, T(), 0xb8402e), BOX(.24, .175, .032, T(0, .006), 0xf3eee2)]),
     // a wheeled suitcase, its origin on the ground under the wheels, handle extended
     suitcase: bake([BOX(.4, .54, .23, T(0, .33, 0)), BOX(.36, .02, .2, T(0, .45, 0), 0x777777), ...[-1, 1].flatMap(sd => [BOX(.014, .5, .014, T(sd * .08, .84, .1), dark), [new THREE.CylinderGeometry(.035, .035, .03, 12), T(sd * .15, .035, .09, 0, 0, Math.PI / 2), dark]]), BOX(.19, .028, .032, T(0, 1.09, .1), dark)]),
-    dogBody: bake([[cap(.11, .4, 10), T(0, 0, 0, Math.PI / 2)], [cap(.075, .14), T(0, .1, -.26, .7)]]),
-    dogHead: bake([[sph(.1), T(0, 0, 0, 0, 0, 0, 1, .95, 1.1)], [cap(.055, .07), T(0, -.03, -.1, Math.PI / 2)], [sph(.024, 8, 6), T(0, -.015, -.175), 0x111111], ...[-1, 1].map(sd => BOX(.05, .1, .02, T(sd * .07, .03, .02, .2, 0, sd * .35), 0x8a6a50))]),
-    dogLeg: hang(.034, .27), dogTail: bake([[cap(.024, .18), T(0, .09, 0)]]),
+    // the dog, made like the Mini Characters (bevelled blocks), tinted per dog by the instance colour: a blocky body and
+    // neck, a square head with a muzzle, dark nose and eyes and floppy ears (darker), block legs with paws, a stubby tail
+    dogBody: bake([[softBox(.21, .2, .5, .06), T()], [softBox(.14, .17, .14, .045), T(0, .1, -.24, .5)]]),
+    dogHead: bake([[softBox(.18, .17, .18, .055), T()], [softBox(.1, .085, .11, .03), T(0, -.035, -.115)], [softBox(.045, .035, .03, .012), T(0, -.01, -.175), 0x111111],
+      ...[-1, 1].flatMap(sd => [[softBox(.026, .026, .012, .006), T(sd * .045, .025, -.092), 0x111111], [softBox(.055, .1, .03, .012), T(sd * .088, .025, .02, 0, 0, sd * .25), 0x8a6a50]])]),
+    dogLeg: bake([[softBox(.065, .25, .065, .02), T(0, -.125, 0)], [softBox(.075, .045, .09, .016), T(0, -.255, -.01)]]),
+    dogTail: bake([[softBox(.045, .17, .045, .016), T(0, .085, 0)]]),
     leash: bake([[new THREE.CylinderGeometry(.007, .007, 1, 5), T(0, .5)]]),
     wheel: bake([[new THREE.TorusGeometry(.33, .028, 8, 32), T(0, 0, 0, 0, Math.PI / 2), 0x1b1c20], [new THREE.TorusGeometry(.3, .01, 6, 32), T(0, 0, 0, 0, Math.PI / 2), grey], [new THREE.CylinderGeometry(.025, .025, .09, 10), T(0, 0, 0, 0, 0, Math.PI / 2), grey],
       ...Array.from({ length: 8 }, (_, k) => BOX(.004, .58, .004, T(0, 0, 0, k * Math.PI / 8), 0xc8ccd2))]),
@@ -87,7 +92,7 @@ export class Crowd {
     this.st = st; const G = geometries(), s = st.scene, mobile = st.mobile, P = (k, n, o) => new Pool(s, G[k], n, o);
     this.p = {
       phone: P('phone', 8, { rough: .3 }), screen: P('screen', 8, { glow: true, cast: false }), book: P('book', 2),
-      suitcase: P('suitcase', 3, { rough: .5 }), dogBody: P('dogBody', 2), dogHead: P('dogHead', 2), dogLeg: P('dogLeg', 8), dogTail: P('dogTail', 2), leash: P('leash', 2, { cast: false }),
+      suitcase: P('suitcase', 3, { rough: .5 }), dogBody: P('dogBody', 2, { rough: .85 }), dogHead: P('dogHead', 2, { rough: .85 }), dogLeg: P('dogLeg', 8, { rough: .85 }), dogTail: P('dogTail', 2, { rough: .85 }), leash: P('leash', 2, { cast: false }),
       wheel: P('wheel', 8, { rough: .5 }), bike: P('bike', 3, { rough: .35 }), ebike: P('ebike', 2, { rough: .35 }), scooter: P('scooter', 2, { rough: .4 }), crank: P('crank', 4, { rough: .4 })
     };
     this.root = new THREE.Matrix4();

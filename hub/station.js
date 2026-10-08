@@ -5,6 +5,7 @@ import { RenderPass } from '/vendor/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from '/vendor/jsm/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from '/vendor/jsm/postprocessing/OutputPass.js';
 import { mergeGeometries } from '/vendor/jsm/utils/BufferGeometryUtils.js';
+import { softBox, toyMaterial } from './toy.js';
 import { mergeStatic, addPeople, updatePeople, addPlatformProps, addBackground, updateBackground } from './scenery.js';
 import { TOY, CAR_L, GAP, W, H, BASE, FLOOR, DOOR_W, DOOR_H, NOSE_L, bodyGeometry, capGeometry, noseGeometry, noseLiningGeometry, nosePoint, paintBody, paintNose, windowSlots } from './train.js';
 import { buildInterior, CAB_DOOR } from './interior.js';
@@ -52,27 +53,6 @@ function grilleTex() {
   return canvasTex(64, 64, (x, w, h) => { x.fillStyle = '#7c838d'; x.fillRect(0, 0, w, h); x.fillStyle = '#4c525b'; for (let i = 2; i < h; i += 6) x.fillRect(4, i, w - 8, 3); });
 }
 
-// a box with bevelled edges, like the Kenney models: each edge cut by one chamfer facet of radius r
-function softBox(w, h, d, r) {
-  const g = new THREE.BoxGeometry(1, 1, 1, 4, 4, 4), p = g.attributes.position, half = [w / 2, h / 2, d / 2], v = new THREE.Vector3(), inner = new THREE.Vector3();
-  for (let i = 0; i < p.count; i++) {
-    const c = [p.getX(i), p.getY(i), p.getZ(i)].map((t, k) => { const a = Math.min(1, Math.abs(t) * 2), m = a <= .5 ? a / .5 * (half[k] - r) : half[k] - r + (a - .5) / .5 * r; return Math.sign(t) * m; });
-    v.set(...c); inner.set(...c.map((x, k) => Math.max(-(half[k] - r), Math.min(half[k] - r, x))));
-    const dv = v.clone().sub(inner); if (dv.lengthSq() > 1e-12) v.copy(inner).addScaledVector(dv.normalize(), r);
-    p.setXYZ(i, v.x, v.y, v.z);
-  }
-  g.computeVertexNormals(); return g;
-}
-// a few flat colours on a tiny palette texture of their own, drawn with a clone of the Mini Characters' material (the
-// same shading as the people), so our own models look like they came in the same box. paint(geo, hex) colours a part
-function toyMaterial(cols, glow = 0) {
-  const c = document.createElement('canvas'); c.width = cols.length; c.height = 1; const x = c.getContext('2d');
-  cols.forEach((h, i) => { x.fillStyle = h; x.fillRect(i, 0, 1, 1); });
-  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.flipY = false; t.magFilter = t.minFilter = THREE.NearestFilter; t.generateMipmaps = false;
-  const mat = library().material.clone(); mat.map = t; mat.emissiveMap = glow ? t : null; mat.emissive = new THREE.Color(glow, glow, glow); // (the people's own material may carry a glow; ours is set here)
-  const paint = (geo, hex) => { const uv = geo.attributes.uv, u = (cols.indexOf(hex) + .5) / cols.length; for (let i = 0; i < uv.count; i++) uv.setXY(i, u, .5); return geo; };
-  return { mat, paint };
-}
 export class Station {
   constructor(canvas, { mobile, doors, logo }) {
     this.mobile = mobile; this.data = doors; this.count = doors.length; this.logo = logo;
@@ -112,7 +92,10 @@ export class Station {
     // frame-time watch: drop the resolution a notch on slower machines instead of stuttering
     this.prMax = Math.min(devicePixelRatio || 1, mobile ? 1.5 : 1.75); this.pr = this.prMax; this.ft = { last: 0, avg: 16, check: 0, calm: 0 };
 
-    this.composer = new EffectComposer(r);
+    // the scene is drawn into offscreen buffers (for the bloom), which the renderer's own antialiasing doesn't reach:
+    // without multisampling there, thin high-contrast edges (the cars' red stripes, rails, wires) crawled and flickered
+    // as the camera moved
+    this.composer = new EffectComposer(r, new THREE.WebGLRenderTarget(innerWidth, innerHeight, { type: THREE.HalfFloatType, samples: mobile ? 2 : 4 }));
     this.composer.addPass(new RenderPass(s, this.camera));
     if (!mobile) { this.bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), .4, .45, .84); this.composer.addPass(this.bloom); }
     this.composer.addPass(new OutputPass());
