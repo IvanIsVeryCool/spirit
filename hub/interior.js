@@ -239,16 +239,16 @@ export function buildInterior(car, { ledMat, plateMat, idx = 0, cab = false, fre
   box(A, [-XV, XV], [.36, VEST], [-ZIN, ZIN], (p, n) => n.y > .5 ? P.floor : P.riser, floorOpt); // vestibule
   box(A, [XV, END], [.36, LOWER], [-1.27, 1.27], P.floor, floorOpt);                      // lower deck
   box(A, [-END, XTOP], [LTOP, UPPER], [-1.36, 1.36], (p, n) => n.y < -.5 ? P.ceil : P.floor, floorOpt); // upper deck, top of the stairs
-  box(A, [XTOP, -XV], [LTOP, UPPER], [ZW, 1.36], (p, n) => n.y < -.5 ? P.ceil : P.floor, floorOpt);       // ...and on beside the stair well
+  box(A, [XTOP, -XV - .05], [LTOP, UPPER], [ZW, 1.36], (p, n) => n.y < -.5 ? P.ceil : P.floor, floorOpt); // ...and on beside the stair well, up to the partition (ending on its face, the two fought: black over the red line)
   box(A, [-END, -XV], [.36, LOWER], [ZW, 1.27], P.floor, floorOpt);                      // lower saloon, left
   box(A, [-END, XTOP], [LOWER, LTOP], [ZW - .05, ZW], P.part);                          // its far wall, under the upper deck
-  box(A, [XV + .05, END], [LCEIL + .1, UPR], [-1.38, 1.38], P.floor, floorOpt);          // upper deck floor, right
+  box(A, [XV + .05, END], [UPR - .012, UPR], [-1.38, 1.38], P.floor, floorOpt);          // upper deck floor, right (a skin on the ceiling's slab, not on its top face)
   box(A, [-.65, .65], [VEST - .02, VEST + .003], [ZIN - .1, 1.47], P.riser, { uvs: 4 }); // threshold plate
   box(A, [-.65, .65], [VEST, VEST + .012], [1.38, 1.43], P.yellow);
   box(A, [-.66, .66], [VEST, VEST + .012], [-ZIN, -ZIN + .06], P.yellow);              // far door threshold
   box(A, [XV - .06, XV + .006], [VEST, VEST + .012], [-ZIN, ZW], P.yellow);                    // the step down
   box(A, [-XV, XV], [CEIL, CEIL + .06], [-1.38, 1.38], P.ceil);                         // vestibule ceiling
-  box(A, [XV + .05, END], [LCEIL, LCEIL + .1], [-1.38, 1.38], P.ceil);                        // lower deck ceiling
+  box(A, [XV + .05, END], [LCEIL, UPR - .012], [-1.38, 1.38], P.ceil);                        // lower deck ceiling
 
   /* ---- stairs up (far side, left) ---- */
   for (let k = 1; k < STEPS; k++) {
@@ -259,11 +259,11 @@ export function buildInterior(car, { ledMat, plateMat, idx = 0, cab = false, fre
   box(A, [XTOP - .05, XTOP + .008], [UPPER, UPPER + .012], [-1.34, ZW - .03], P.yellow);
   // the stair well's inner wall, its end wall at the top, and the partition facing the vestibule
   const partPaint = p => p.y < localFloor(p) + .22 ? P.kick : P.part;
-  box(A, [XTOP, -XV], [VEST, ROOF], [ZW - .05, ZW], partPaint);
+  box(A, [XTOP, -XV - .05], [VEST, ROOF], [ZW - .05, ZW], partPaint); // (meets the partition below, rather than overlapping it)
   [-1, 1].forEach(sd => {
     const x0 = sd > 0 ? XV : -XV - .05, x1 = x0 + .05;
     box(A, [x0, x1], [sd > 0 ? LOWER : VEST, ROOF], [ZW - .05, ZIN], partPaint); // up to the roof: it closes off the decks either side
-    box(A, [x0, x1], [sd > 0 ? LCEIL : CEIL, ROOF], [-1.38, ZW], P.part); // header over each opening
+    box(A, [x0, x1], [sd > 0 ? LCEIL : CEIL, ROOF], [-1.38, ZW - .05], P.part); // header over each opening (from where the partition ends)
     box(A, [x0 - .012, x1 + .012], [1.96, 2.02], [ZW - .062, ZIN - .02], P.red); // red accent line, wrapped round the partition (flush with it, faces flickered)
     pole(sd * (XV - .03), ZW - .03, VEST, CEIL); // pole at the corner of each opening
     // car number on the partition
