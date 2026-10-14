@@ -341,7 +341,7 @@ function leaveDrive() {
 }
 $('drive-tag').addEventListener('click', startDrive);
 $('drive-skip').addEventListener('click', () => { if (driving && station && station.skipTrip()) audio.tick(); });
-// walking the train: WASD (or the arrow keys: up and down walk, left and right turn), Shift to hurry; a drag turns your head;
+// walking the train: WASD (or the arrow keys: up and down walk, left and right turn), Shift to hurry; the view follows the mouse (a drag turns it on a touch screen);
 // on a touch screen, the stick at the bottom left walks
 const keys = new Set(), joyVec = { f: 0, s: 0 }, WALK_KEYS = ['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'ShiftLeft', 'ShiftRight'];
 addEventListener('keydown', e => { if (!driving || (e.target.closest && e.target.closest('input,textarea,select'))) return; if (WALK_KEYS.includes(e.code)) { keys.add(e.code); e.preventDefault(); } });
@@ -353,7 +353,7 @@ function walkInput() {
   station.setInput({ f: keyOn('KeyW') + keyOn('ArrowUp') - keyOn('KeyS') - keyOn('ArrowDown') + joyVec.f, s: keyOn('KeyD') - keyOn('KeyA') + joyVec.s, turn: keyOn('ArrowRight') - keyOn('ArrowLeft'), run: !!(keyOn('ShiftLeft') || keyOn('ShiftRight')) });
 }
 let drag = null;
-$('station').addEventListener('pointerdown', e => { if (driving) drag = { x: e.clientX, y: e.clientY, moved: 0, id: e.pointerId }; });
+$('station').addEventListener('pointerdown', e => { if (station) station.cursorLook = e.pointerType === 'mouse'; if (driving && e.pointerType !== 'mouse') drag = { x: e.clientX, y: e.clientY, moved: 0, id: e.pointerId }; }); // (with a mouse the view follows the cursor instead)
 addEventListener('pointermove', e => { if (!drag || e.pointerId !== drag.id || !station) return; const dx = e.clientX - drag.x, dy = e.clientY - drag.y; drag.moved += Math.abs(dx) + Math.abs(dy); drag.x = e.clientX; drag.y = e.clientY; station.lookBy(dx, dy); }, { passive: true });
 addEventListener('pointerup', e => { if (drag && e.pointerId === drag.id) setTimeout(() => { drag = null; }, 0); });
 { // the touch stick
@@ -423,7 +423,8 @@ addEventListener('keydown', e => {
 /* pointer on the 3D scene: hover doors, click to board, swipe between cars on phones */
 let mx = innerWidth / 2, my = innerHeight / 2, downX = null, overUI = false;
 const ndc = (x, y) => [(x / innerWidth) * 2 - 1, -(y / innerHeight) * 2 + 1];
-addEventListener('pointermove', e => { mx = e.clientX; my = e.clientY; overUI = e.target !== $('station'); if (station) station.setPointer(...ndc(mx, my)); }, { passive: true });
+addEventListener('pointermove', e => { mx = e.clientX; my = e.clientY; overUI = e.target !== $('station'); if (station) { station.setPointer(...ndc(mx, my)); station.cursorLook = e.pointerType === 'mouse'; } }, { passive: true });
+document.documentElement.addEventListener('mouseleave', () => { if (station) station.setPointer(0, 0); }); // (off the window: the view settles, rather than turning on at the edge)
 $('station').addEventListener('pointerdown', e => { downX = e.clientX; });
 $('station').addEventListener('pointerup', e => {
   if (driving) { downX = null; if (drag && drag.moved > 8) return; const id = station && station.pickButton(...ndc(e.clientX, e.clientY)); if (id) driveTo(id); return; } // a button on the desk (a click, not the end of a look round)

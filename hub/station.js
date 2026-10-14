@@ -29,7 +29,7 @@ const INTRO_D = 2.3; // the opening's cassette-player moment, before the ticket:
 const SEAT = { x: -CAR_L / 2 - .5, y: 2.7, z: 0 }, DESK_LOOK = { x: -CAR_L / 2 - 4.36, y: 1.66, z: 0 }, AHEAD_Y = .1; // (looking about 15 degrees down at the desk, 4 down the line)
 // (on a phone, further back in the cab: its narrow view only takes in all four buttons from there)
 const SEAT_M = { x: -CAR_L / 2 - .34, y: 2.7, z: 0 }, DESK_LOOK_M = { x: -CAR_L / 2 - 3.2, y: 1.45, z: 0 };
-const EYE = 1.1; // walking the train: your eyes above the floor (the people are toy-sized)
+const EYE = 1.1, LOOK_X = .7, LOOK_Y = .5; // (walking: eye height; how far the view turns toward the cursor at the screen's edge, across and up) // walking the train: your eyes above the floor (the people are toy-sized)
 const easeInOut = t => t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
 const glow = (hex, k) => { const m = new THREE.MeshBasicMaterial({ color: new THREE.Color(hex).multiplyScalar(k) }); m.toneMapped = false; return m; };
 const RAY = new THREE.Raycaster(), _ndc = new THREE.Vector2();
@@ -1381,7 +1381,7 @@ export class Station {
     // the cabinet are in the cab at the back, facing into the train, if you walk all the way down
     this.crew.forEach(p => { p.root.visible = true; p.root.rotation.y = Math.PI / 2; p.pose('idle', { fade: 0 }); p.look.yaw = p.look.pitch = 0; });
   }
-  // a drag (or the arrow keys) turns your head
+  // on a touch screen, a drag turns your head (with a mouse the view follows the cursor: _walkFrame)
   lookBy(dx, dy) {
     const T = this.trip; if (!T || !T.drive || T.phase === 'in') return;
     if (!T.walked) this._startWalk();
@@ -1389,8 +1389,16 @@ export class Station {
   }
   setInput(v) { if (this.input) Object.assign(this.input, v); }
   _walkFrame(t, dt, mv) {
-    const W = this.trip.walk, I = this.input, c = this.camera, tp = this.train.position;
-    W.yaw += (I.turn || 0) * dt * 1.9;
+    const W = this.trip.walk, I = this.input, c = this.camera, tp = this.train.position, turn = (I.turn || 0) * dt * 1.9;
+    if (this.cursorLook) {
+      // with a mouse the view follows the cursor: it looks toward it (eased, so it glides), and keeps turning while the
+      // cursor is near the left or right edge, so you can turn all the way round; the arrow keys turn too
+      const m = this.mouse;
+      if (W.mode !== 'cursor') { W.mode = 'cursor'; W.cx = m.x; W.cy = m.y; W.base = W.yaw - m.x * LOOK_X; W.pOff = W.pitch - m.y * LOOK_Y; } // (from wherever you were looking)
+      const k = Math.min(1, dt * 4.5); W.cx += (m.x - W.cx) * k; W.cy += (m.y - W.cy) * k; W.pOff *= Math.exp(-dt * 3);
+      const e = Math.max(0, Math.abs(W.cx) - .6) / .4; W.base += turn + Math.sign(W.cx) * e * e * 2.2 * dt;
+      W.yaw = W.base + W.cx * LOOK_X; W.pitch = Math.max(-1.25, Math.min(1.25, W.cy * LOOK_Y + W.pOff));
+    } else { W.mode = 'drag'; W.yaw += turn; }
     const speed = I.run ? 3 : 1.6, fx = Math.cos(W.yaw), fz = Math.sin(W.yaw);
     let mx = fx * (I.f || 0) - fz * (I.s || 0), mz = fz * (I.f || 0) + fx * (I.s || 0); const l = Math.hypot(mx, mz); if (l > 1) { mx /= l; mz /= l; }
     W.vx += (mx * speed - W.vx) * Math.min(1, dt * 9); W.vz += (mz * speed - W.vz) * Math.min(1, dt * 9);
