@@ -146,11 +146,34 @@ const liningPaint = p => p.y > 3.6 || (p.x > -XV && p.x < XV && p.y > CEIL - .1)
 // Returns the per-car materials so the station can brighten them as the doors open and on hover.
 // The door at the lower deck's +x end into the cab, on a car with a cab behind it (the last car): in line with the aisle.
 export const CAB_DOOR = { z0: -.6, z1: -.06, y0: LOWER, y1: LCEIL - .06, x: END };
+// Every car has a sliding door at each end, both on the lower level, so you can walk the whole train (the drive, station.js):
+// the right one is CAB_DOOR's (in line with the lower deck's aisle), the left one opens into the lower saloon's aisle.
+export const LEFT_DOOR = { z0: -.24, z1: .26, y0: LOWER, y1: LTOP - .06, x: -END };
+// the doorway from the vestibule into the lower saloon, through the left partition (a step down)
+const DOORWAY = { z0: ZW, z1: .3, y1: LTOP - .02 };
+// Where you can walk in a car (car-local): [x0, x1, z0, z1, floor], the floor a height or (x, z) => height. Kept clear of the
+// seats, walls and poles; station.js keeps you inside them, matching each to the floor you're on (so the decks over and
+// under each other don't mix).
+export function walkRegions({ bikes = false } = {}) {
+  const stairs = x => VEST + Math.min(STEPS - 1, Math.max(0, Math.ceil((-XV - x) / RUN - 1e-6))) * RISE;
+  return [
+    [-XV + .1, XV - .1, -1.2, 1.24, VEST],                                        // the vestibule
+    [-XV - .14, -XV + .12, ZW + .06, DOORWAY.z1 - .04, x => x < -XV ? LOWER : VEST], // the doorway into the lower saloon, a step down
+    [-END + .04, -XV - .02, ZW + .06, LEFT_DOOR.z1 - .02, LOWER],                // the lower saloon's aisle
+    [-3.1, -2.4, ZW + .06, 1.15, LOWER],                                           // and the bay between its seats
+    [XTOP + .02, -XV + .1, -1.26, ZW - .1, stairs],                                // the stairs (far side)
+    [-3.1, XTOP + .02, -1.26, 1.26, UPPER],                                        // the upper deck at the top of the stairs
+    [XTOP - .1, -2.38, ZW + .06, 1.26, UPPER], [-1.72, -XV - .1, ZW + .06, 1.26, UPPER], [-2.4, -1.7, ZW + .06, -.1, UPPER], // beside the stair well
+    [XV - .1, XV + .14, -1.24, ZW - .1, x => x > XV ? LOWER : VEST],              // the step down to the lower deck
+    [XV + .08, 1.72, -1.22, 1.22, LOWER], [XV + .08, END + .04, CAB_DOOR.z0 + .06, CAB_DOOR.z1 - .04, LOWER], [2.4, 3.1, -1.2, bikes ? -.1 : 1.2, LOWER],
+    [-END - .04, -END + .1, LEFT_DOOR.z0 + .04, LEFT_DOOR.z1 - .04, LOWER]          // the left end door
+  ];
+}
 // The Newsletter car: the aisle seat on the lower deck you sit in to read (kept free of passengers), facing +x.
 export const READ_SEAT = { x: 2.05, y: LOWER + .47, z: .275, aisle: -.32 };
 // The Events car: the next-stops screen on the vestibule's partition beside the step down, facing the vestibule (-x).
 export const SCREEN = { x: XV - .035, y: 1.76, z: .5, w: .96, h: .54 };
-export function buildInterior(car, { ledMat, plateMat, idx = 0, cab = false, free = false, screen = null }) {
+export function buildInterior(car, { ledMat, plateMat, idx = 0, cab = false, free = false, screen = null, bikes = false }) {
   const steel = steelMat();
   const T = textures();
   const mats = {
@@ -211,25 +234,24 @@ export function buildInterior(car, { ledMat, plateMat, idx = 0, cab = false, fre
   // end walls
   [-1, 1].forEach(sd => {
     const sh = new THREE.Shape(); keep.slice(0, -1).forEach((j, k) => k ? sh.lineTo(ring[j].z, ring[j].y) : sh.moveTo(ring[j].z, ring[j].y));
-    if (cab && sd > 0) { const D = CAB_DOOR, h = new THREE.Path(); h.moveTo(D.z0, D.y0); h.lineTo(D.z1, D.y0); h.lineTo(D.z1, D.y1); h.lineTo(D.z0, D.y1); h.closePath(); sh.holes.push(h); }
+    { const D = sd > 0 ? CAB_DOOR : LEFT_DOOR, h = new THREE.Path(); h.moveTo(D.z0, D.y0); h.lineTo(D.z1, D.y0); h.lineTo(D.z1, D.y1); h.lineTo(D.z0, D.y1); h.closePath(); sh.holes.push(h); } // (the door at each end)
     const g = new THREE.ShapeGeometry(sh, 2);
     A.add(g, new THREE.Matrix4().makeRotationY(sd > 0 ? -Math.PI / 2 : Math.PI / 2).premultiply(M4.makeTranslation(sd * END, 0, 0)).multiply(sd > 0 ? I4 : new THREE.Matrix4().makeScale(-1, 1, 1)), P.wall.clone().multiplyScalar(.5), { lit: false });
   });
-  // gangway doors in the end walls, one on each deck you can see
-  if (cab) { // the cab door: a frame round the opening, and a leaf of its own that slides open (station.js)
-    const D = CAB_DOOR;
-    box(A, [END - .04, END + .02], [D.y1, D.y1 + .05], [D.z0 - .05, D.z1 + .05], P.gasket, { lit: false });
-    [D.z0 - .05, D.z1].forEach(z => box(A, [END - .04, END + .02], [D.y0, D.y1], [z, z + .05], P.gasket, { lit: false }));
-    const leaf = put(new THREE.BoxGeometry(.03, D.y1 - D.y0, D.z1 - D.z0), new THREE.MeshBasicMaterial({ color: P.leaf.clone().multiplyScalar(.82) }), END + .035, (D.y0 + D.y1) / 2, (D.z0 + D.z1) / 2);
-    const win = new THREE.Mesh(new THREE.PlaneGeometry(.26, .5), new THREE.MeshBasicMaterial({ color: 0x2a2f3a })); win.position.set(-.017, .32, 0); win.rotation.y = -Math.PI / 2; leaf.add(win);
-    leaf.userData.keep = true; mats.cabDoor = leaf;
-  }
-  [[END, LOWER, LCEIL - .06], [-END, UPPER, ROOF - .25]].forEach(([x, y0, y1]) => {
-    if (cab && x > 0) return;
-    const sd = Math.sign(x);
-    box(A, sd > 0 ? [x - .03, x] : [x, x + .03], [y0, y1], [-.42, .42], P.leaf, { uvs: 0 });
-    box(A, sd > 0 ? [x - .04, x - .03] : [x + .03, x + .04], [y0 + .9, y1 - .2], [-.2, .2], P.gasket, { lit: false });
+  // the end doors (and, on the last car, the one into the cab): a frame round each opening, and a leaf of its own that slides
+  // aside into the wall as you come up to it (station.js); a window in it, both sides
+  const leafMat = new THREE.MeshBasicMaterial({ color: P.leaf.clone().multiplyScalar(.82) }), winMat = new THREE.MeshBasicMaterial({ color: 0x2a2f3a });
+  mats.endDoors = [1, -1].map(sd => {
+    const D = sd > 0 ? CAB_DOOR : LEFT_DOOR, x = sd * END;
+    const fx = sd > 0 ? [x - .04, x + .02] : [x - .02, x + .04]; // (the frame stands a little proud of the wall, inside)
+    box(A, fx, [D.y1, D.y1 + .05], [D.z0 - .05, D.z1 + .05], P.gasket, { lit: false });
+    [D.z0 - .05, D.z1].forEach(z => box(A, fx, [D.y0, D.y1], [z, z + .05], P.gasket, { lit: false }));
+    const leaf = put(new THREE.BoxGeometry(.03, D.y1 - D.y0, D.z1 - D.z0), leafMat, x + sd * .035, (D.y0 + D.y1) / 2, (D.z0 + D.z1) / 2);
+    [-1, 1].forEach(f => { const win = new THREE.Mesh(new THREE.PlaneGeometry(.26, .5), winMat); win.position.set(f * .017, .32, 0); win.rotation.y = f * Math.PI / 2; leaf.add(win); });
+    leaf.userData.keep = true;
+    return { leaf, sd, D, z: (D.z0 + D.z1) / 2, slide: -sd * (D.z1 - D.z0 + .06), open: 0 }; // (the right one slides toward the far side, the left toward the near)
   });
+  if (cab) mats.cabDoor = mats.endDoors[0].leaf;
 
   // glass in the far-side windows
   windowSlots().forEach(w => put(new THREE.PlaneGeometry(w.w, w.h), glassMat(), w.x, w.y, -(1.45 - IN * .6)));
@@ -262,7 +284,12 @@ export function buildInterior(car, { ledMat, plateMat, idx = 0, cab = false, fre
   box(A, [XTOP, -XV - .05], [VEST, ROOF], [ZW - .05, ZW], partPaint); // (meets the partition below, rather than overlapping it)
   [-1, 1].forEach(sd => {
     const x0 = sd > 0 ? XV : -XV - .05, x1 = x0 + .05;
-    box(A, [x0, x1], [sd > 0 ? LOWER : VEST, ROOF], [ZW - .05, ZIN], partPaint); // up to the roof: it closes off the decks either side
+    if (sd > 0) box(A, [x0, x1], [LOWER, ROOF], [ZW - .05, ZIN], partPaint); // up to the roof: it closes off the decks either side
+    else { // (on the left, with the doorway down into the lower saloon)
+      box(A, [x0, x1], [VEST, ROOF], [ZW - .05, DOORWAY.z0], partPaint); box(A, [x0, x1], [VEST, ROOF], [DOORWAY.z1, ZIN], partPaint);
+      box(A, [x0, x1], [DOORWAY.y1, ROOF], [DOORWAY.z0, DOORWAY.z1], partPaint);
+      box(A, [-XV - .006, -XV + .06], [VEST, VEST + .012], [DOORWAY.z0 + .01, DOORWAY.z1 - .01], P.yellow); // the step's edge
+    }
     box(A, [x0, x1], [sd > 0 ? LCEIL : CEIL, ROOF], [-1.38, ZW - .05], P.part); // header over each opening (from where the partition ends)
     box(A, [x0 - .012, x1 + .012], [1.96, 2.02], [ZW - .062, ZIN - .02], P.red); // red accent line, wrapped round the partition (flush with it, faces flickered)
     pole(sd * (XV - .03), ZW - .03, VEST, CEIL); // pole at the corner of each opening
@@ -329,11 +356,11 @@ export function buildInterior(car, { ledMat, plateMat, idx = 0, cab = false, fre
     S.add(boxGeo(.11, .7, z1 - z0 - .04), sub(.35, -face * .01, (z0 + z1) / 2), P.white, { uvs: 4 });
     for (let k = 0; k < n; k++) A.add(boxGeo(.125, .16, w * .66), sub(.6, face * .005, z0 + w * (k + .5)), P.head);
     A.add(boxGeo(.05, .72, z1 - z0 - .02), sub(.34, -face * .07, (z0 + z1) / 2), P.shell, { uvs: 0 }); // moulded seat-back shell
-    for (let k = 0; k < n; k++) seats.push({ cx, fy, z: z0 + w * (k + .5), face });
+    for (let k = 0; k < n; k++) seats.push({ cx, fy, z: z0 + w * (k + .5), face, z0, z1, first: k === 0 });
   };
   const seats = [];
   // lower deck: a facing bay, its seats on boxes over the bogie's wheels (x = 2.05 and 3.45)
-  bench(2.05, LOWER, -.04, 1.22, 1, true); bench(3.45, LOWER, -.04, 1.22, -1, true);
+  if (!bikes) { bench(2.05, LOWER, -.04, 1.22, 1, true); bench(3.45, LOWER, -.04, 1.22, -1, true); }
   bench(2.05, LOWER, -1.24, -.6, 1, true); bench(3.45, LOWER, -1.24, -.6, -1, true);
   // upper deck, at the top of the stairs
   bench(-END + .36, UPPER, -.04, 1.2, 1); bench(-END + .36, UPPER, -1.24, -.66, 1);
@@ -342,8 +369,55 @@ export function buildInterior(car, { ledMat, plateMat, idx = 0, cab = false, fre
   // beside the stair well, facing the seats at the top of the stairs
   bench(-2.05, UPPER, -.04, 1.2, -1);
   // the lower saloon on the left, over the other bogie
-  bench(-2.05, LOWER, -.04, 1.22, -1, true); bench(-3.45, LOWER, -.04, 1.22, 1, true);
+  bench(-2.05, LOWER, .32, 1.22, -1, true); bench(-3.45, LOWER, .32, 1.22, 1, true); // (an aisle beside them, from the end door to the doorway)
   // grab handles on the aisle corners
+
+  /* ---- the things a real commuter car has ---- */
+  // where the lining is at a height (its near side, z > 0): for things fixed to the walls
+  const wallZ = y => { let best = 0, d = 1e9; ring.forEach(q => { if (q.z > 0 && Math.abs(q.y - y) < d) { d = Math.abs(q.y - y); best = q.z; } }); return best; };
+  // luggage racks over the window seats on both upper decks, both sides: a shelf on brackets, a lip along its edge
+  [[-END + .1, XTOP - .05, UPPER], [XV + .12, END - .1, UPR]].forEach(([x0, x1, fl]) => {
+    const y = fl + 1.32, zw = wallZ(y + .05) - .02;
+    [1, -1].forEach(sd => {
+      const z = [sd * (zw - .26), sd * zw].sort((a, b) => a - b);
+      box(A, [x0, x1], [y, y + .025], z, P.frame, { uvs: 0 });
+      box(A, [x0, x1], [y + .025, y + .07], sd > 0 ? [z[0], z[0] + .02] : [z[1] - .02, z[1]], P.frame, { uvs: 0 });
+      for (let x = x0 + .15; x < x1; x += .9) box(A, [x - .015, x + .015], [y - .14, y], sd > 0 ? [zw - .05, zw] : [-zw, -zw + .05], P.seatFrame);
+    });
+  });
+  // tables between the facing seats in the bays (not where you sit to read the newsletter)
+  const table = (x0, x1, fl, z0, z1) => { box(A, [x0, x1], [fl + .7, fl + .74], [z0, z1], P.frame, { uvs: 0 }); box(A, [(x0 + x1) / 2 - .03, (x0 + x1) / 2 + .03], [fl, fl + .7], [z1 - .12, z1 - .06], P.seatFrame); };
+  if (!bikes && !free) table(2.46, 3.04, LOWER, .5, 1.2);
+  table(2.46, 3.04, LOWER, -1.22, -.78); table(2.46, 3.04, UPR, .5, 1.2); table(2.46, 3.04, UPR, -1.22, -.78);
+  // the bike car (Car 3): bikes stood in a row along the near side of the lower deck, against a padded rail, strapped in;
+  // a bike sign on the partition
+  if (bikes) {
+    const zr = wallZ(LOWER + 1) - .05;
+    box(A, [1.75, 3.7], [LOWER + .82, LOWER + .94], [zr - .1, zr], P.dark); box(A, [1.75, 3.7], [LOWER + .28, LOWER + .36], [zr - .08, zr], P.dark);
+    const tyre = new THREE.TorusGeometry(.27, .03, 6, 18), cols = [0xc9272c, 0x2c5a8a, 0xe8b923, 0x2f6b4a, 0xe8e4da, 0x1d1f26], frame = (a, b, r = .022) => { const v = new THREE.Vector3().subVectors(b, a), m = new THREE.Matrix4().compose(a.clone().addScaledVector(v, .5), new THREE.Quaternion().setFromUnitVectors(V(0, 1, 0), v.clone().normalize()), V(1, 1, 1)); return [new THREE.CylinderGeometry(r, r, v.length(), 6), m]; };
+    for (let i = 0; i < 5; i++) {
+      const bx = 1.95 + i * .42, lean = (i % 2 ? 1 : -1) * .04, col = C(cols[i]), base = new THREE.Matrix4().compose(V(bx, LOWER, 0), new THREE.Quaternion().setFromEuler(new THREE.Euler(0, 0, lean)), V(1, 1, 1));
+      const z0 = .12, z1 = zr - .3, y = .3, bb = V(0, y, (z0 + z1) / 2 + .02), seat = V(0, .82, (z0 + z1) / 2 + .14), ht = V(0, .84, z0 + .2);
+      [z0, z1].forEach(z => A.add(tyre, new THREE.Matrix4().multiplyMatrices(base, new THREE.Matrix4().compose(V(0, y, z), new THREE.Quaternion().setFromAxisAngle(V(0, 1, 0), Math.PI / 2), V(1, 1, 1))), P.gasket));
+      [[bb, seat], [seat, ht], [bb, ht], [bb, V(0, y, z1)], [seat, V(0, y, z1)], [ht, V(0, y, z0)]].forEach(([a, b]) => { const [g, m] = frame(a, b); A.add(g, new THREE.Matrix4().multiplyMatrices(base, m), col); });
+      const [hg, hm] = frame(ht.clone().add(V(-.22, .1, 0)), ht.clone().add(V(.22, .1, 0)), .014); A.add(hg, new THREE.Matrix4().multiplyMatrices(base, hm), P.gasket);
+      box(A, [bx - .07, bx + .07], [LOWER + .86, LOWER + .9], [zr - .3, zr - .08], P.yellow); // its strap
+    }
+    if (plateMat) { // a blue bike sign on the partition, facing the lower deck
+      const c = document.createElement('canvas'); c.width = c.height = 128; const x = c.getContext('2d'); x.fillStyle = '#2a5aa0'; x.beginPath(); x.roundRect(4, 4, 120, 120, 14); x.fill();
+      x.strokeStyle = '#fff'; x.lineWidth = 7; x.lineCap = x.lineJoin = 'round'; [[38, 78], [92, 78]].forEach(([cx, cy]) => { x.beginPath(); x.arc(cx, cy, 20, 0, 7); x.stroke(); });
+      x.beginPath(); x.moveTo(38, 78); x.lineTo(56, 48); x.lineTo(80, 48); x.lineTo(92, 78); x.moveTo(56, 48); x.lineTo(66, 78); x.lineTo(80, 48); x.moveTo(50, 40); x.lineTo(62, 40); x.moveTo(78, 48); x.lineTo(82, 36); x.lineTo(90, 36); x.stroke();
+      const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
+      put(new THREE.PlaneGeometry(.3, .3), new THREE.MeshBasicMaterial({ map: t }), XV + .056, 1.35, .7, m => { m.rotation.y = Math.PI / 2; });
+    }
+  }
+  // a grab bar along the top of every seat back, and, in the vestibule, the intercom and the emergency handle by the doorway
+  seats.forEach(st => { if (!st.first) return; rail(V(st.cx - st.face * .3, st.fy + 1.2, st.z0 + .04), V(st.cx - st.face * .3, st.fy + 1.2, st.z1 - .04), .011); });
+  [-1, 1].forEach(sd => { const x = sd * (DOOR_W / 2 + .2), zw = wallZ(1.5) - .02;
+    box(A, [x - .07, x + .07], [1.38, 1.6], [zw - .04, zw], sd > 0 ? P.yellow : P.red); box(A, [x - .045, x + .045], [1.44, 1.54], [zw - .05, zw - .04], P.dark); });
+  // a display hung at the top of the stairs (the car's own destination sign), facing you as you come up
+  if (ledMat) { box(A, [XTOP - .19, XTOP - .17], [ROOF - .3, ROOF - .02], [-.78, -.72], P.dark); box(A, [XTOP - .2, XTOP - .15], [ROOF - .46, ROOF - .3], [-1.05, -.45], P.dark);
+    put(new THREE.PlaneGeometry(.56, .112), ledMat, XTOP - .145, ROOF - .38, -.75, m => { m.rotation.y = Math.PI / 2; m.userData.noShadow = false; }); }
 
   /* ---- passengers, baked in with the rest: Mini Characters posed seated, mostly by the platform-side windows ---- */
   let seed = 7 + idx * 131; const r = () => (seed = (seed * 16807) % 2147483647) / 2147483647;

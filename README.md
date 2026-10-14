@@ -14,6 +14,9 @@
   the train pulls out, runs through the tunnel past the end of the platform, and comes into the station there: a new
   world behind the fence, its own sky and weather, and everyone dressed for it (scarves and beanies in the snow, hats
   and bandanas in the canyon, sunglasses and straw hats by the sea). Reloading the page brings you back to Golden Hour.
+  **Skip** jumps straight to the new station. You can also get up from the driver's seat and walk the whole train:
+  **W A S D** to walk (Shift to hurry), drag to look round, or the stick at the bottom left on a phone. Walk through every
+  car (the third one is the bike car) to the cabinet waiting in the cab at the back.
 - `/points/` is the same standings as a page of its own (it opens with a ride up a map of the Peninsula). Visiting `/points/` directly rides the train up a map of the Peninsula to a big billboard (scores from the Google Sheet).
 
 ## Adding or opening a train car

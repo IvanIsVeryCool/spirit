@@ -93,8 +93,11 @@ export function bodyGeometry({ windows = false } = {}) {
     return (Math.abs(xm) < DOOR_W / 2 && j >= jb && j < jt) || holes.some(h => xm > h[0] && xm < h[1] && j >= h[2] && j < h[3]);
   });
 }
-export function capGeometry() {
+// the plate over a car's end (outside the saloon's end wall), with an opening (hole: [z0, z1, y0, y1], in the shape's
+// own z) for the passage through the gangway
+export function capGeometry(hole) {
   const sh = new THREE.Shape(); arcRing(180).forEach(([z, y], j) => j ? sh.lineTo(z, y) : sh.moveTo(z, y));
+  if (hole) { const [z0, z1, y0, y1] = hole, h = new THREE.Path(); h.moveTo(z0, y0); h.lineTo(z0, y1); h.lineTo(z1, y1); h.lineTo(z1, y0); h.closePath(); sh.holes.push(h); }
   return new THREE.ShapeGeometry(sh, 4);
 }
 

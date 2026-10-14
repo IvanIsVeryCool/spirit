@@ -146,16 +146,20 @@ function choose(i) {
 let visiting = false;
 function visitCabinet(i) {
   boarding = true; visiting = true; audio.beep(); audio.board(); document.body.classList.add('boarding');
-  const tags = $('crew-tags'); [...tags.children].forEach(t => widths.delete(t)); tags.innerHTML = '';
-  CABINET.forEach(m => { const t = document.createElement('div'); t.className = 'tag'; t.innerHTML = `<b></b><span></span>`; t.querySelector('b').textContent = m.name; t.querySelector('span').textContent = m.role || ''; tags.appendChild(t); });
-  $('crew').hidden = false;
+  const tags = crewTags();
   station.visit(i, {
     door: () => audio.cabDoor(),
     arrive: () => { document.body.classList.add('visiting'); [...tags.children].forEach((t, k) => setTimeout(() => t.classList.add('on'), 250 + k * 120)); softFocus($('crew-back')); }
   });
 }
+// the cabinet's name tags (the cab visit, and walking down to them when you drive)
+function crewTags() {
+  const tags = $('crew-tags'); [...tags.children].forEach(t => widths.delete(t)); tags.innerHTML = '';
+  CABINET.forEach(m => { const t = document.createElement('div'); t.className = 'tag'; t.innerHTML = `<b></b><span></span>`; t.querySelector('b').textContent = m.name; t.querySelector('span').textContent = m.role || ''; tags.appendChild(t); });
+  $('crew').hidden = false; return tags;
+}
 function placeTags() {
-  if (!visiting || !station) return;
+  if (!(visiting || crewShown) || !station) return;
   const pos = station.crewTags(), tags = $('crew-tags').children;
   // kept on screen; where neighbours would overlap (a narrow phone), every other one sits a row higher
   const w = [...tags].map(widthOf), crowded = pos.some((p, k) => k && Math.abs(p.x - pos[k - 1].x) < (w[k] + w[k - 1]) / 2 + 6);
@@ -299,7 +303,7 @@ function placeCopTag() {
 }
 /* driving: the "Drive" plate over the front of the train takes you into the driver's seat; the desk there has a button for
    each place the train can go (biomes.js), and choosing one runs the train there (station.drive / depart) */
-let driving = false, rideSnd = null, driveShown = null;
+let driving = false, rideSnd = null, driveShown = null, crewShown = false;
 function startDrive() {
   if (!station || boarding || !entered || introPlaying || !doorsOpen || !$('notice').hidden) return;
   boarding = true; driving = true; document.body.classList.add('boarding', 'driving'); audio.beep(); setHover(-1);
@@ -310,30 +314,57 @@ function startDrive() {
     seated: () => showDest(true),
     horn: () => audio.depart(),
     tunnel: () => audio.tunnel(),
-    swap: id => { audio.ambience(id); audio.arrive(6.5, { bells: false }); },
-    arrive: () => { if (rideSnd) { rideSnd.stop(); rideSnd = null; } audio.chime(); setTimeout(() => audio.doors(DOORS.length), 700); $('drive-next').classList.remove('on'); } // (the buttons' labels come back with seated, once the view is back on the desk)
+    swap: (id, skipped) => { audio.ambience(id); if (!skipped) audio.arrive(6.5, { bells: false }); },
+    arrive: (id, skipped) => { if (rideSnd) { rideSnd.stop(); rideSnd = null; } audio.endScene(skipped ? .3 : 2.5); audio.chime(); setTimeout(() => audio.doors(DOORS.length), 700); $('drive-next').classList.remove('on'); } // (the buttons' labels come back with seated, once the view is back on the desk)
   });
 }
 function showDest(on) {
   const d = $('drive'); d.classList.toggle('on', on);
   [...$('dest').children].forEach(b => { const here = station && b.dataset.id === station.theme; if (here) b.setAttribute('aria-current', 'location'); else b.removeAttribute('aria-current'); b.tabIndex = on ? 0 : -1; });
   $('drive-back').tabIndex = on ? 0 : -1;
+  $('walk-hint').classList.toggle('on', on);
   if (on) softFocus($('dest').querySelector('.dest:not([aria-current])'));
 }
 function driveTo(id) {
   if (!driving || !station) return;
   if (id === station.theme) { audio.tick(); return; }
   if (!station.depart(id)) return;
-  audio.beep(); showDest(false); audio.doors(DOORS.length);
+  audio.beep(); showDest(false); audio.beginScene(); audio.doors(DOORS.length); // (the journey's sounds on their own bus, so Skip can cut them)
   const th = THEMES.find(t => t.id === id); $('drive-next-name').textContent = th.place; $('drive-next').classList.add('on');
   if (rideSnd) rideSnd.stop(); rideSnd = audio.ride();
 }
 function leaveDrive() {
   if (!driving || !station) return; const s = station.driveState(); if (s && s.phase !== 'seat') return; // (not while it's running)
-  driving = false; audio.tick(); showDest(false); $('flash').classList.add('on');
-  setTimeout(() => { station.endVisit(); $('flash').classList.remove('on'); document.body.classList.remove('boarding', 'driving'); boarding = false; }, 550);
+  driving = false; audio.tick(); showDest(false); $('flash').classList.add('on'); keys.clear(); joyVec.f = joyVec.s = 0;
+  if (crewShown) { crewShown = false; [...$('crew-tags').children].forEach(t => t.classList.remove('on')); }
+  setTimeout(() => { station.endVisit(); $('flash').classList.remove('on'); document.body.classList.remove('boarding', 'driving', 'walked'); boarding = false; if (!visiting) $('crew').hidden = true; }, 550);
 }
 $('drive-tag').addEventListener('click', startDrive);
+$('drive-skip').addEventListener('click', () => { if (driving && station && station.skipTrip()) audio.tick(); });
+// walking the train: WASD (or the arrow keys: up and down walk, left and right turn), Shift to hurry; a drag turns your head;
+// on a touch screen, the stick at the bottom left walks
+const keys = new Set(), joyVec = { f: 0, s: 0 }, WALK_KEYS = ['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'ShiftLeft', 'ShiftRight'];
+addEventListener('keydown', e => { if (!driving || (e.target.closest && e.target.closest('input,textarea,select'))) return; if (WALK_KEYS.includes(e.code)) { keys.add(e.code); e.preventDefault(); } });
+addEventListener('keyup', e => keys.delete(e.code));
+addEventListener('blur', () => keys.clear());
+const keyOn = c => keys.has(c) ? 1 : 0;
+function walkInput() {
+  if (!driving || !station) return;
+  station.setInput({ f: keyOn('KeyW') + keyOn('ArrowUp') - keyOn('KeyS') - keyOn('ArrowDown') + joyVec.f, s: keyOn('KeyD') - keyOn('KeyA') + joyVec.s, turn: keyOn('ArrowRight') - keyOn('ArrowLeft'), run: !!(keyOn('ShiftLeft') || keyOn('ShiftRight')) });
+}
+let drag = null;
+$('station').addEventListener('pointerdown', e => { if (driving) drag = { x: e.clientX, y: e.clientY, moved: 0, id: e.pointerId }; });
+addEventListener('pointermove', e => { if (!drag || e.pointerId !== drag.id || !station) return; const dx = e.clientX - drag.x, dy = e.clientY - drag.y; drag.moved += Math.abs(dx) + Math.abs(dy); drag.x = e.clientX; drag.y = e.clientY; station.lookBy(dx, dy); }, { passive: true });
+addEventListener('pointerup', e => { if (drag && e.pointerId === drag.id) setTimeout(() => { drag = null; }, 0); });
+{ // the touch stick
+  const joy = $('joy'), knob = joy.querySelector('i'); let id = null;
+  const set = e => { const r = joy.getBoundingClientRect(), R = r.width / 2, dx = e.clientX - (r.left + R), dy = e.clientY - (r.top + R), l = Math.min(1, Math.hypot(dx, dy) / R), a = Math.atan2(dy, dx);
+    joyVec.s = Math.cos(a) * l; joyVec.f = -Math.sin(a) * l; knob.style.transform = `translate(${(Math.cos(a) * l * R * .55).toFixed(1)}px, ${(Math.sin(a) * l * R * .55).toFixed(1)}px)`; };
+  joy.addEventListener('pointerdown', e => { id = e.pointerId; joy.setPointerCapture(id); set(e); e.stopPropagation(); });
+  joy.addEventListener('pointermove', e => { if (e.pointerId === id) set(e); });
+  const end = e => { if (e.pointerId !== id) return; id = null; joyVec.f = joyVec.s = 0; knob.style.transform = ''; };
+  joy.addEventListener('pointerup', end); joy.addEventListener('pointercancel', end);
+}
 $('drive-back').addEventListener('click', leaveDrive);
 $('dest').addEventListener('click', e => { const b = e.target.closest('.dest'); if (b) driveTo(b.dataset.id); });
 $('dest').addEventListener('pointerover', e => { const b = e.target.closest('.dest'); if (b && station) station.hoverButton(b.dataset.id); });
@@ -348,7 +379,13 @@ function placeDrive() {
   if (s && fade.className !== s.col) fade.className = s.col;
   if (!s) return;
   if (rideSnd) rideSnd.set(Math.min(1, s.speed / 30));
+  $('drive-skip').classList.toggle('on', s.phase === 'go' || s.phase === 'arrive');
+  if (s.walked !== document.body.classList.contains('walked')) document.body.classList.toggle('walked', s.walked);
+  // the cabinet's names, once you've walked down to them
+  const near = station.crewNear();
+  if (near !== crewShown) { crewShown = near; if (near) { const tags = crewTags(); [...tags.children].forEach((t, i) => setTimeout(() => t.classList.add('on'), 150 + i * 120)); } else [...$('crew-tags').children].forEach(t => t.classList.remove('on')); }
   if (!$('drive').classList.contains('on')) return;
+  const atDesk = station.atDesk(); $('dest').classList.toggle('away', !atDesk); if (!atDesk) return; // (the buttons' labels only by the desk)
   // the labels over the desk's buttons (kept on screen; on a narrow screen every other one sits a row higher)
   const pos = station.driveButtons(), tags = [...$('dest').children], w = tags.map(widthOf);
   const crowded = pos.some((q, k) => k && Math.abs(q.x - pos[k - 1].x) < (w[k] + w[k - 1]) / 2 + 6);
@@ -389,7 +426,7 @@ const ndc = (x, y) => [(x / innerWidth) * 2 - 1, -(y / innerHeight) * 2 + 1];
 addEventListener('pointermove', e => { mx = e.clientX; my = e.clientY; overUI = e.target !== $('station'); if (station) station.setPointer(...ndc(mx, my)); }, { passive: true });
 $('station').addEventListener('pointerdown', e => { downX = e.clientX; });
 $('station').addEventListener('pointerup', e => {
-  if (driving) { downX = null; const id = station && station.pickButton(...ndc(e.clientX, e.clientY)); if (id) driveTo(id); return; } // a button on the desk
+  if (driving) { downX = null; if (drag && drag.moved > 8) return; const id = station && station.pickButton(...ndc(e.clientX, e.clientY)); if (id) driveTo(id); return; } // a button on the desk (a click, not the end of a look round)
   if (visiting && sceneKind && sceneKind !== 'cabinet') { // in the newsletter or at the screen: a tap or a swipe left goes on, a swipe right goes back
     const dx = downX === null ? 0 : e.clientX - downX; downX = null; sceneStep(dx > 40 ? -1 : 1); return;
   }
@@ -456,7 +493,8 @@ function skipArrival() { if (doorsOpen || !station) return; station.park(); arri
 function loop() {
   if (station && !galleryStill) {
     if (doorsOpen && !mobile && !boarding && $('notice').hidden && !overUI) setHover(station.pick(...ndc(mx, my)));
-    if (driving && !mobile && !overUI) station.hoverButton(station.pickButton(...ndc(mx, my)));
+    if (driving && !mobile && !overUI && !drag) station.hoverButton(station.pickButton(...ndc(mx, my)));
+    walkInput();
     station.render(); placeTags(); placeCopTag(); placeDrive(); placeSound(); syncScene(); placeBillboard();
   }
   requestAnimationFrame(loop);

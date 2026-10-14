@@ -8,7 +8,7 @@ import { mergeGeometries } from '/vendor/jsm/utils/BufferGeometryUtils.js';
 import { softBox, toyMaterial } from './toy.js';
 import { mergeStatic, addPeople, updatePeople, addPlatformProps, addBackground, updateBackground } from './scenery.js';
 import { TOY, CAR_L, GAP, W, H, BASE, FLOOR, DOOR_W, DOOR_H, NOSE_L, bodyGeometry, capGeometry, noseGeometry, noseLiningGeometry, nosePoint, paintBody, paintNose, windowSlots } from './train.js';
-import { buildInterior, CAB_DOOR } from './interior.js';
+import { buildInterior, CAB_DOOR, LEFT_DOOR, walkRegions } from './interior.js';
 import { CABINET } from './doors.js';
 import { Crowd } from './crowd.js';
 import { limbGeometry, aimBasis, library, Person } from './people.js';
@@ -28,7 +28,8 @@ const INTRO_D = 2.3; // the opening's cassette-player moment, before the ticket:
 // the driver's seat in the front cab (in the first car's space), where the driver looks down at the desk, and far down the line
 const SEAT = { x: -CAR_L / 2 - .5, y: 2.7, z: 0 }, DESK_LOOK = { x: -CAR_L / 2 - 4.36, y: 1.66, z: 0 }, AHEAD_Y = .1; // (looking about 15 degrees down at the desk, 4 down the line)
 // (on a phone, further back in the cab: its narrow view only takes in all four buttons from there)
-const SEAT_M = { x: -CAR_L / 2 - .05, y: 2.75, z: 0 }, DESK_LOOK_M = { x: -CAR_L / 2 - 3.2, y: 1.45, z: 0 };
+const SEAT_M = { x: -CAR_L / 2 - .34, y: 2.7, z: 0 }, DESK_LOOK_M = { x: -CAR_L / 2 - 3.2, y: 1.45, z: 0 };
+const EYE = 1.1; // walking the train: your eyes above the floor (the people are toy-sized)
 const easeInOut = t => t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
 const glow = (hex, k) => { const m = new THREE.MeshBasicMaterial({ color: new THREE.Color(hex).multiplyScalar(k) }); m.toneMapped = false; return m; };
 const RAY = new THREE.Raycaster(), _ndc = new THREE.Vector2();
@@ -289,13 +290,14 @@ export class Station {
       });
       M.window.clearcoat = .2; M.window.roughness = .3; M.window.envMapIntensity = .4;
     }
-    const shell = bodyGeometry({ windows: true }), cap = capGeometry();
+    // (the caps are turned to face out, which mirrors z on the back end: each has the passage's opening on its own side)
+    const shell = bodyGeometry({ windows: true }), pz0 = CAB_DOOR.z0 - .04, pz1 = LEFT_DOOR.z1 + .04, caps = { [-1]: capGeometry([pz0, pz1, .432, 2.02]), 1: capGeometry([-pz1, -pz0, .432, 2.02]) };
     this.stops = new NextStops(this); // the Events car's next-stops screen
     this.cars = []; this.doors = [];
     for (let i = 0; i < this.count; i++) {
       const car = new THREE.Group(); car.position.x = (i - (this.count - 1) / 2) * (CAR_L + GAP);
       const body = new THREE.Mesh(shell, M.body); body.userData.cast = true; car.add(body);
-      [-1, 1].forEach(sd => { if ((i === 0 && sd < 0) || (i === this.count - 1 && sd > 0)) return; const c = new THREE.Mesh(cap, M.cap); c.rotation.y = sd * Math.PI / 2; c.position.x = sd * CAR_L / 2; car.add(c); });
+      [-1, 1].forEach(sd => { if ((i === 0 && sd < 0) || (i === this.count - 1 && sd > 0)) return; const c = new THREE.Mesh(caps[sd], M.cap); c.rotation.y = sd * Math.PI / 2; c.position.x = sd * CAR_L / 2; car.add(c); });
       this._roof(car); this._under(car); this._side(car, i);
       train.add(car); this.cars.push(car);
     }
@@ -420,7 +422,7 @@ export class Station {
     const plateMat = new THREE.MeshBasicMaterial({ map: this._plate(String(i + 1).padStart(2, '0')), transparent: true });
     side(new THREE.PlaneGeometry(.5, .25), plateMat, CAR_L / 2 - .55, 3.3, .005);
     // the vestibule, stairs and seats behind the door, lit by baked light
-    const scene = this.data[i].scene, inside = buildInterior(car, { ledMat, plateMat, idx: i, cab: i === this.count - 1, free: scene === 'newsletter', screen: scene === 'events' ? this.stops.mat : null });
+    const scene = this.data[i].scene, inside = buildInterior(car, { ledMat, plateMat, idx: i, cab: i === this.count - 1, free: scene === 'newsletter', screen: scene === 'events' ? this.stops.mat : null, bikes: i === 2 }); // (the third car is the bike car)
     const spill = new THREE.Mesh(new THREE.PlaneGeometry(1.7, 2.6), new THREE.MeshBasicMaterial({ color: COL.warm, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, map: this._spillTex() }));
     spill.rotation.x = -Math.PI / 2; spill.position.set(0, FLOOR + .012, z + 1.35); spill.userData.noShadow = true; spill.userData.keep = true; car.add(spill);
     let pl = null; if (!this.mobile) { pl = new THREE.PointLight(COL.warm, 0, 6, 1.6); pl.position.set(0, 1.6, z + .7); car.add(pl); }
@@ -431,9 +433,21 @@ export class Station {
   }
   _gangway(x) {
     const M = this.mats, g = new THREE.Group(); g.position.x = x;
-    const core = new THREE.Mesh(new THREE.BoxGeometry(GAP + .3, H - 1.1, W - .7), M.dark); core.position.y = BASE + (H - 1.1) / 2 + .25; g.add(core);
-    for (let k = 0; k < 5; k++) { const rib = new THREE.Mesh(new THREE.BoxGeometry(.035, H - 1, W - .6), M.under); rib.position.set(-GAP / 2 - .1 + k * (GAP + .2) / 4, BASE + (H - 1) / 2 + .22, 0); g.add(rib); }
-    const coupler = new THREE.Mesh(new THREE.BoxGeometry(GAP + .5, .14, .3), M.under); coupler.position.y = .42; g.add(coupler);
+    // the bellows (a dark core, and ribs round it), each in three parts round the passage inside (pz0..pz1, up to py1)
+    const pz0 = CAB_DOOR.z0 - .04, pz1 = LEFT_DOOR.z1 + .04, py1 = 2.02, around = (b, t, hz) => [[py1 + .02, t, -hz, hz], [b, py1 + .02, -hz, pz0 - .02], [b, py1 + .02, pz1 + .02, hz]]; // (2 cm clear of the passage's planes)
+    around(BASE + .25, BASE + .25 + H - 1.1, (W - .7) / 2).forEach(([y0, y1, z0, z1]) => { const m = new THREE.Mesh(new THREE.BoxGeometry(GAP + .3, y1 - y0, z1 - z0), M.dark); m.position.set(0, (y0 + y1) / 2, (z0 + z1) / 2); g.add(m); });
+    for (let k = 0; k < 5; k++) around(BASE + .22, BASE + .22 + H - 1, (W - .6) / 2).forEach(([y0, y1, z0, z1]) => {
+      const rib = new THREE.Mesh(new THREE.BoxGeometry(.035, y1 - y0, z1 - z0), M.under); rib.position.set(-GAP / 2 - .1 + k * (GAP + .2) / 4, (y0 + y1) / 2, (z0 + z1) / 2); g.add(rib);
+    });
+    const coupler = new THREE.Mesh(new THREE.BoxGeometry(GAP + .5, .14, .3), M.under); coupler.position.y = .33; g.add(coupler); // (under the passage's floor)
+    // inside it, the passage between the two cars' end doors (you walk through it when you drive): a floor, a ceiling and
+    // bellows walls, all facing in, from one door frame to the other (ending inside the frames: past them they showed through the end walls)
+    const L = CAR_L + GAP - 2 * (CAR_L / 2 - .22) - .02, z0 = pz0, z1 = pz1, zc = (z0 + z1) / 2, wd = z1 - z0, y0 = .432, y1 = py1;
+    const wall = new THREE.MeshBasicMaterial({ color: 0x3c3f46 }), rib = new THREE.MeshBasicMaterial({ color: 0x2a2c31 }), fl = new THREE.MeshBasicMaterial({ color: 0x50555f });
+    const pl = (w, h, mat, px, py, pz, rx, ry) => { const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), mat); m.position.set(px, py, pz); m.rotation.set(rx, ry, 0); m.userData.noShadow = true; g.add(m); };
+    pl(L, wd, fl, 0, y0, zc, -Math.PI / 2, 0); pl(L, wd, wall, 0, y1, zc, Math.PI / 2, 0);
+    pl(L, y1 - y0, wall, 0, (y0 + y1) / 2, z0, 0, 0); pl(L, y1 - y0, wall, 0, (y0 + y1) / 2, z1, 0, Math.PI);
+    for (let k = -2; k <= 2; k++) [z0 + .015, z1 - .015].forEach(z => { const r = new THREE.Mesh(new THREE.BoxGeometry(.03, y1 - y0, .03), rib); r.position.set(k * .16, (y0 + y1) / 2, z); r.userData.noShadow = true; g.add(r); });
     this.train.add(g);
   }
   _plate(text) {
@@ -506,10 +520,18 @@ export class Station {
     if (front) this.cabScreens = screens;
     const lamp = new THREE.Mesh(new THREE.BoxGeometry(.9, .03, .22), new THREE.MeshBasicMaterial({ color: new THREE.Color(1.5, 1.32, 1.05) })); lamp.material.toneMapped = false; lamp.position.set(-.75, 3.62, 0); g.add(lamp);
     if (front) {
+      // the floor is raised here (the windshield is high): three steps up from the door to the driver's platform, a chair
+      flat(1.53, 1.17, 2.1, 0x3b3f48, -1.085, 1.015, 0);
+      flat(.04, .012, 2.1, 0xe8b923, -.34, 1.607, 0);
+      for (let k = 1; k <= 3; k++) { flat(.14, k * .2925, .9, 0x50555f, .1 - (k - .5) * .14, .43 + k * .2925 / 2, 0); flat(.03, .012, .9, 0xe8b923, .1 - (k - 1) * .14 - .02, .43 + k * .2925 + .006, 0); }
+      // (the chair is hidden while you sit in it: on a phone's tall view its cushion filled the foot of the screen)
+      const chair = this.driverChair = new THREE.Group(); chair.userData.keep = true; g.add(chair);
+      flat(.12, .4, .12, 0x2a2d34, -.62, 1.8, 0, chair); flat(.5, .1, .52, 0xb5262b, -.62, 2.05, 0, chair); flat(.08, .55, .52, 0xb5262b, -.36, 2.38, 0, chair);
+      const hr = new THREE.Mesh(new THREE.CylinderGeometry(.02, .02, 2.1, 8), this.mats.steel); hr.position.set(-.05, 1.5, .52); g.add(hr);
       // a row of big toy buttons nearest the driver, one per place, each its place's colour (lit for where you are),
       // and the power handle on the right
       const hits = [], buttons = THEMES.map((th, k) => {
-        const z = ((THEMES.length - 1) / 2 - k) * .4, col = new THREE.Color(th.swatch); // (left to right as you sit)
+        const z = ((THEMES.length - 1) / 2 - k) * .34, col = new THREE.Color(th.swatch); // (left to right as you sit; close enough together for a phone's view)
         const mat = new THREE.MeshStandardMaterial({ color: col, emissive: col.clone(), emissiveIntensity: .15, roughness: .55, metalness: 0 });
         const ring = new THREE.Mesh(softBox(.2, .035, .2, .012), this.mats.dark); ring.position.set(.15, .035, z); desk.add(ring);
         const b = new THREE.Mesh(new THREE.CylinderGeometry(.068, .074, .05, 18), mat); b.position.set(.15, .07, z); desk.add(b);
@@ -1223,22 +1245,23 @@ export class Station {
   pickButton(nx, ny) { RAY.setFromCamera(_ndc.set(nx, ny), this.camera); const h = RAY.intersectObjects(this.driveDesk.hits)[0]; return h ? h.object.userData.theme : null; }
   hoverButton(id) { this.driveDesk.hoverId = id; }
   // the drive's state for the page: the fade over the screen, the speed (m/s), the phase
-  driveState() { const T = this.trip; return T && T.drive ? { fade: T.fade, col: T.fadeCol, speed: T.speed || 0, phase: T.phase, dest: T.dest } : null; }
+  driveState() { const T = this.trip; return T && T.drive ? { fade: T.fade, col: T.fadeCol, speed: T.speed || 0, phase: T.phase, dest: T.dest, walked: T.walked } : null; }
   // Take the controls: the camera goes up to the front of the train and into the driver's seat (cb.seated), looking
   // down at the desk. depart(id) then closes the doors and pulls out, through the tunnel past the end of the platform;
   // at its far end the screen goes white, the place changes, and the train comes into the station there
   // (cb.horn, cb.tunnel, cb.swap(id), cb.arrive(id)). Back on the platform: endVisit().
   drive(cb = {}) {
-    const T = this.trip = { drive: true, i: 0, t0: this.clock.elapsedTime, cb, p0: this.camera.position.clone(), l0: this.look.clone(), fov: this.camera.fov, phase: 'in', up: 0, upTo: 0, fade: 0, fadeCol: 'warm', fired: {}, speed: 0 };
+    const T = this.trip = { drive: true, i: 0, t0: this.clock.elapsedTime, cb, p0: this.camera.position.clone(), l0: this.look.clone(), fov: this.camera.fov, phase: 'in', up: 0, upTo: 0, fade: 0, fadeCol: 'warm', fired: {}, speed: 0, walked: false };
+    this.input = { f: 0, s: 0, turn: 0, run: false };
     // a wider view in the seat, so the desk's buttons and the line ahead both fit (about 72 degrees across)
     T.resize = () => { T.fovIn = Math.min(84, Math.max(T_FOV_MIN, THREE.MathUtils.radToDeg(2 * Math.atan(Math.tan(THREE.MathUtils.degToRad(36)) / this.camera.aspect)))); if (T.phase !== 'in') { this.camera.fov = T.fovIn; this.camera.updateProjectionMatrix(); } };
     T.resize();
     T.frame = (t, dt) => this._driveFrame(t, dt);
-    T.end = () => { this.driveDesk.hoverId = null; };
+    T.end = () => { this.driveDesk.hoverId = null; this.crew.forEach(p => { p.root.visible = false; }); this._endDoors(0, 0, 0, false, true); };
   }
   depart(id) {
     const T = this.trip; if (!T || !T.drive || T.phase !== 'seat' || id === this.theme) return false;
-    Object.assign(T, { phase: 'go', g0: this.clock.elapsedTime, dest: id, upTo: 1, swapped: false, fired: {} });
+    Object.assign(T, { phase: 'go', g0: this.clock.elapsedTime, dest: id, upTo: 1, swapped: false, fired: {}, flashT: undefined });
     this.doors.forEach(d => { d.target = 0; }); this.hover = -1;
     setTimeout(() => this.prepareTheme(id), 350); // (once the press has shown: building a place takes a moment)
     return true;
@@ -1255,14 +1278,15 @@ export class Station {
       else return;
     }
     if (T.phase === 'seat' && T.s0 !== undefined && t - T.s0 < .6) T.fade = 1 - (t - T.s0) / .6; else if (T.phase === 'seat') T.fade = 0;
-    if (T.phase === 'seat' && (T.s0 === undefined || t - T.s0 > .3) && T.up < .06) fire('seated', T.cb.seated); // (once the view has settled on the desk)
+    if (T.phase === 'seat' && (T.s0 === undefined || t - T.s0 > .3) && (T.walked || T.up < .06)) fire('seated', T.cb.seated); // (once the view has settled on the desk, or at once if you're up and about)
+    if (T.phase === 'seat' && T.flashT !== undefined) T.fade = Math.max(0, 1 - (t - T.flashT) / .7); // (after a skip)
     T.speed = 0;
     if (T.phase === 'go') { // doors shut, the horn, and away: faster and faster, into the tunnel, toward the light at its end
       const g = t - T.g0;
       if (g > 1.3) fire('horn', T.cb.horn);
       if (g > 1.9 && !this.leaving) this.leaving = { t0: t, a: 5, v: 30 };
       if (this.leaving) { const s2 = t - this.leaving.t0, sv = this.leaving.v / this.leaving.a; T.speed = s2 < sv ? this.leaving.a * s2 : this.leaving.v; }
-      const cx = tp.x + car.position.x + (this.mobile ? SEAT_M : SEAT).x, X = this.tunnel.X;
+      const cx = c.position.x, X = this.tunnel.X; // (wherever you are on the train)
       if (cx < X + 3) fire('tunnel', T.cb.tunnel);
       T.fade = Math.max(0, Math.min(1, (X - 48 - cx) / 22)); T.fadeCol = 'white';
       this._dim(Math.max(0, Math.min(1, (X + 2 - cx) / 14))); // dark in the tunnel (the sun and the evening haze don't reach in)
@@ -1281,11 +1305,17 @@ export class Station {
     T.up += (T.upTo - T.up) * Math.min(1, dt * 1.8);
     this.par.lerp(this.mouse, .06);
     const k = T.up * T.up * (3 - 2 * T.up), mv = Math.min(1, T.speed / 20);
-    const ST = this.mobile ? SEAT_M : SEAT, DL = this.mobile ? DESK_LOOK_M : DESK_LOOK;
-    c.position.copy(at(ST.x, ST.y + Math.sin(t * 13) * .005 * mv, ST.z + Math.sin(t * 2.1) * .012 * mv));
-    const desk = at(DL.x, DL.y, DL.z), ahead = at(-CAR_L / 2 - 40, AHEAD_Y, 0);
-    this.look.lerpVectors(desk, ahead, k);
-    if (!this.mobile) { this.look.z -= this.par.x * (.45 + k * 6); this.look.y += this.par.y * (.25 + k * 3); }
+    // up and walking (WASD, a drag to look): the camera is yours; the doors at each car's end open as you come to them
+    const I = this.input, moving = T.phase !== 'in' && (I.f || I.s || I.turn);
+    if (moving && !T.walked) this._startWalk();
+    if (T.walked) this._walkFrame(t, dt, mv);
+    else {
+      const ST = this.mobile ? SEAT_M : SEAT, DL = this.mobile ? DESK_LOOK_M : DESK_LOOK;
+      c.position.copy(at(ST.x, ST.y + Math.sin(t * 13) * .005 * mv, ST.z + Math.sin(t * 2.1) * .012 * mv));
+      const desk = at(DL.x, DL.y, DL.z), ahead = at(-CAR_L / 2 - 40, AHEAD_Y, 0);
+      this.look.lerpVectors(desk, ahead, k);
+      if (!this.mobile) { this.look.z -= this.par.x * (.45 + k * 6); this.look.y += this.par.y * (.25 + k * 3); }
+    }
     this.drawCab();
     // the buttons: the one for where you are stays lit; the one you point at glows
     this.driveDesk.buttons.forEach(b => { b.hover += ((this.driveDesk.hoverId === b.id && T.phase === 'seat' ? 1 : 0) - b.hover) * Math.min(1, dt * 8); b.mat.emissiveIntensity = (b.id === this.theme ? 1.1 : .15) + b.hover * .6; b.mesh.position.y = .07 - (T.dest === b.id && T.phase === 'go' && t - T.g0 < .4 ? .02 : 0); });
@@ -1321,6 +1351,89 @@ export class Station {
       tex.needsUpdate = true; }
   }
   _dim(k) { const B = this.lightBase, d = 1 - .9 * k; this.sunLight.intensity = B.sun * d; this.hemi.intensity = B.hemi * d; this.fill.intensity = B.fill * d; this.scene.fog.color.copy(B.fog).multiplyScalar(1 - .94 * k); }
+  /* walking the train: where you can stand (interior.js's areas in each car, the passages between them, both cabs) */
+  _walkMap() {
+    if (this.walkMap) return this.walkMap;
+    const out = [], END = CAR_L / 2 - .22, LO = CAB_DOOR.y0;
+    const add = (cx, [x0, x1, z0, z1, f]) => out.push({ x0: cx + x0, x1: cx + x1, z0, z1, f: typeof f === 'number' ? () => f : (x, z) => f(x - cx, z) });
+    this.cars.forEach((car, i) => {
+      const cx = car.position.x;
+      walkRegions({ bikes: i === 2 }).forEach(r => add(cx, r));
+      if (i < this.count - 1) add(cx, [END - .02, CAR_L + GAP - END + .02, CAB_DOOR.z0 + .06, LEFT_DOOR.z1 - .04, LO]); // the passage to the next car
+    });
+    const c0 = this.cars[0].position.x, cl = this.cars[this.count - 1].position.x, F = -CAR_L / 2;
+    add(c0, [F + .08, F + .32, LEFT_DOOR.z0 + .04, LEFT_DOOR.z1 - .04, LO]);                                                 // into the front cab,
+    add(c0, [F - .34, F + .1, -.4, .4, x => LO + Math.min(3, Math.max(1, Math.ceil((F + .1 - x) / .14 - 1e-6))) * .2925]);   // up its steps
+    add(c0, [F - 1.5, F - .3, -.95, .95, 1.6]);                                                                                // to the driver's platform
+    add(cl, [CAR_L / 2 - .3, CAR_L / 2 + .3, -.9, .9, LO]);                                                                  // and into the back cab, where the cabinet are (no further: past this you look down on them, at the nose below the windshield)
+    return (this.walkMap = out);
+  }
+  // the floor at (x, z) in the train's own space, nearest the one you're on (within a step of it)
+  _floorAt(x, z, from, reach = .47) {
+    let best = null, d = reach;
+    for (const r of this._walkMap()) if (x > r.x0 && x < r.x1 && z > r.z0 && z < r.z1) { const f = r.f(x, z), dd = Math.abs(f - from); if (dd < d) { d = dd; best = f; } }
+    return best;
+  }
+  _startWalk() {
+    const T = this.trip, c = this.camera, tp = this.train.position, x = c.position.x - tp.x, z = c.position.z, dir = this.look.clone().sub(c.position).normalize();
+    const floor = this._floorAt(x, z, c.position.y - tp.y - EYE, 9) ?? 1.6;
+    T.walked = true; T.walk = { x, z, floor, y: c.position.y - tp.y - EYE, yaw: Math.atan2(dir.z, dir.x), pitch: Math.asin(Math.max(-1, Math.min(1, dir.y))), vx: 0, vz: 0, bob: 0 };
+    // the cabinet are in the cab at the back, facing into the train, if you walk all the way down
+    this.crew.forEach(p => { p.root.visible = true; p.root.rotation.y = Math.PI / 2; p.pose('idle', { fade: 0 }); p.look.yaw = p.look.pitch = 0; });
+  }
+  // a drag (or the arrow keys) turns your head
+  lookBy(dx, dy) {
+    const T = this.trip; if (!T || !T.drive || T.phase === 'in') return;
+    if (!T.walked) this._startWalk();
+    const W = T.walk; W.yaw += dx * .0045; W.pitch = Math.max(-1.25, Math.min(1.25, W.pitch - dy * .0045));
+  }
+  setInput(v) { if (this.input) Object.assign(this.input, v); }
+  _walkFrame(t, dt, mv) {
+    const W = this.trip.walk, I = this.input, c = this.camera, tp = this.train.position;
+    W.yaw += (I.turn || 0) * dt * 1.9;
+    const speed = I.run ? 3 : 1.6, fx = Math.cos(W.yaw), fz = Math.sin(W.yaw);
+    let mx = fx * (I.f || 0) - fz * (I.s || 0), mz = fz * (I.f || 0) + fx * (I.s || 0); const l = Math.hypot(mx, mz); if (l > 1) { mx /= l; mz /= l; }
+    W.vx += (mx * speed - W.vx) * Math.min(1, dt * 9); W.vz += (mz * speed - W.vz) * Math.min(1, dt * 9);
+    const nx = W.x + W.vx * dt, nz = W.z + W.vz * dt; let f;
+    if ((f = this._floorAt(nx, nz, W.floor)) !== null) { W.x = nx; W.z = nz; }
+    else if ((f = this._floorAt(nx, W.z, W.floor)) !== null) { W.x = nx; W.vz *= .5; } // (sliding along walls and seats)
+    else if ((f = this._floorAt(W.x, nz, W.floor)) !== null) { W.z = nz; W.vx *= .5; }
+    else { W.vx = W.vz = 0; f = W.floor; }
+    W.floor = f; W.y += (f - W.y) * Math.min(1, dt * 11); // (up and down steps smoothly)
+    const sp = Math.min(1, Math.hypot(W.vx, W.vz) / 1.6); W.bob += Math.hypot(W.vx, W.vz) * dt * 5.2;
+    c.position.set(tp.x + W.x, tp.y + W.y + EYE + Math.sin(W.bob) * .016 * sp + Math.sin(t * 13) * .004 * mv, W.z);
+    const cp = Math.cos(W.pitch); this.look.set(c.position.x + Math.cos(W.yaw) * cp, c.position.y + Math.sin(W.pitch), c.position.z + Math.sin(W.yaw) * cp);
+    // the cabinet watch you once you're near them
+    const lc = this.cars[this.count - 1], v = new THREE.Vector3(), q = new THREE.Quaternion();
+    this.crew.forEach(p => {
+      p.update(dt); if (W.x < lc.position.x) return; p.root.updateMatrixWorld(true); p.bones.head.getWorldPosition(v); const d = c.position.clone().sub(v); p.root.getWorldQuaternion(q); d.applyQuaternion(q.invert());
+      const near = W.x > lc.position.x + 1.5 ? 1 : 0, yaw = Math.max(-.8, Math.min(.8, Math.atan2(-d.x, -d.z))) * near, pitch = -Math.max(-.5, Math.min(.5, Math.atan2(d.y, Math.hypot(d.x, d.z)))) * near;
+      p.look.yaw += (yaw - p.look.yaw) * Math.min(1, dt * 4); p.look.pitch += (pitch - p.look.pitch) * Math.min(1, dt * 4);
+    });
+  }
+  // the end doors slide open as you come to them (and all shut again when you leave)
+  _endDoors(dt, px, pz, walking, reset = false) {
+    const END = CAR_L / 2 - .22;
+    this.doors.forEach((d, i) => { const cx = this.cars[i].position.x; (d.inside.endDoors || []).forEach(e => {
+      if (reset) { e.open = 0; e.leaf.position.z = e.z; return; }
+      if (!walking && !e.open) return;
+      const near = walking && Math.abs(px - (cx + e.sd * END)) < 1.25 && Math.abs(pz - e.z) < 1.1;
+      e.open += ((near ? 1 : 0) - e.open) * Math.min(1, dt * 5); if (!near && e.open < .003) e.open = 0;
+      e.leaf.position.z = e.z + e.slide * easeInOut(Math.min(1, e.open));
+    }); });
+  }
+  // where you are, for the page: at the driving desk (its buttons' labels), near the cabinet (their names)
+  atDesk() { const T = this.trip; return !T || !T.walked || T.walk.x < this.cars[0].position.x - CAR_L / 2 - .25; }
+  crewNear() { const T = this.trip; return !!(T && T.drive && T.walked && T.walk.x > this.cars[this.count - 1].position.x + CAR_L / 2 - 1.2); }
+  // skip the journey: straight into the station at the new place
+  skipTrip() {
+    const T = this.trip; if (!T || !T.drive || (T.phase !== 'go' && T.phase !== 'arrive')) return false;
+    if (!T.swapped) { T.swapped = true; this.setTheme(T.dest); this._dim(0); T.cb.swap && T.cb.swap(T.dest, true); }
+    this.leaving = null; this.arrival = null; this.trainX = 0; this.sway = 1;
+    T.phase = 'seat'; T.upTo = 0; T.s0 = undefined; T.flashT = this.clock.elapsedTime; T.fadeCol = 'white'; T.fade = 1;
+    this.openDoors(); T.cb.arrive && T.cb.arrive(T.dest, true);
+    return true;
+  }
   driveSpeed() { return this.trip && this.trip.drive ? this.trip.speed : 0; }
 
   render() {
@@ -1388,6 +1501,7 @@ export class Station {
     for (let i = 0; i < pos.length; i += 3) { pos[i] -= gust * .003 * (pos[i + 2] < 4 ? 1 : .25) + breeze; pos[i + 1] += Math.sin(t * .7 + i) * .0015; if (pos[i] < -35) pos[i] += 70; }
     this.motes.geometry.attributes.position.needsUpdate = true;
     if (this.biomeNow) this.biomeNow.update(t, dt, c.position);
+    { const T = this.trip, w = T && T.drive && T.walked; this._endDoors(dt, w ? T.walk.x : 0, w ? T.walk.z : 0, w); if (this.driverChair) this.driverChair.visible = !(T && T.drive && !w); }
     updatePeople(this, t, dt); updateBackground(this, t, dt); this._flyby(t, dt); if (this.cop && !this.cop.trip) this._copFrame(t, dt); this.crowd.update(t, dt); updateCity(this.city, t, dt);
     this.sky.position.copy(c.position);
     this._adapt();
