@@ -103,9 +103,10 @@ const glassMat = () => {
 };
 // brushed stainless for poles and rails: softer than the train's outside, so it doesn't mirror the purple sky
 let STEEL = null;
-const steelMat = () => STEEL || (STEEL = new THREE.MeshStandardMaterial({ color: 0xd2d5da, metalness: .55, roughness: .32, envMapIntensity: .55 }));
+const steelMat = () => STEEL || (STEEL = new THREE.MeshStandardMaterial({ color: 0xc9ccd1, metalness: .35, roughness: .42, envMapIntensity: .3 })); // (neutral: shinier, it took on the evening sky's purple)
 
-/* shared textures: a fine speckle for rubber floors and laminate, and a seat moquette */
+/* shared textures: a barely-there grain for the laminate panels and rubber floors (clean, as on a new train: the
+   owner asked for a super clean interior; the earlier dark speckle and blotches read as dirt), and a seat moquette */
 let TEX = null;
 function textures() {
   if (TEX) return TEX;
@@ -116,18 +117,17 @@ function textures() {
   let seed = 11; const r = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
   const speckle = mk(x => {
     x.fillStyle = '#f2f2f2'; x.fillRect(0, 0, 128, 128);
-    for (let k = 0; k < 30; k++) { const cx = r() * 128, cy = r() * 128, rr = 14 + r() * 30, g = x.createRadialGradient(cx, cy, 0, cx, cy, rr); g.addColorStop(0, `rgba(${r() < .5 ? 255 : 200},${r() < .5 ? 255 : 200},${r() < .5 ? 255 : 200},.07)`); g.addColorStop(1, 'rgba(255,255,255,0)'); [-128, 0, 128].forEach(ox => [-128, 0, 128].forEach(oy => { x.save(); x.translate(ox, oy); x.fillStyle = g; x.fillRect(cx - rr, cy - rr, rr * 2, rr * 2); x.restore(); })); }
-    for (let k = 0; k < 1400; k++) { const v = r() < .5 ? 255 : 185; x.fillStyle = `rgba(${v},${v},${v},${.2 + r() * .3})`; x.fillRect(Math.floor(r() * 128), Math.floor(r() * 128), 1, 1); }
+    for (let k = 0; k < 700; k++) { const v = r() < .5 ? 255 : 234; x.fillStyle = `rgba(${v},${v},${v},${.2 + r() * .25})`; x.fillRect(Math.floor(r() * 128), Math.floor(r() * 128), 1, 1); }
     x.fillStyle = '#f2f2f2'; [[0, 0], [126, 0], [0, 126], [126, 126]].forEach(([u, v]) => x.fillRect(u, v, 2, 2)); // flat surfaces sample this corner
   });
-  // transit moquette: a deep red weave scattered with short amber, cream and charcoal dashes
+  // transit moquette: a deep red weave with a few short amber and darker dashes (kept quiet: busier read as noise)
   const moquette = mk(x => {
     x.fillStyle = '#9e1f26'; x.fillRect(0, 0, 128, 128);
-    for (let k = 0; k < 2200; k++) { x.fillStyle = r() < .5 ? 'rgba(70,8,14,.35)' : 'rgba(200,60,60,.25)'; x.fillRect(Math.floor(r() * 128), Math.floor(r() * 128), 1, 1); }
-    const cols = ['#f0b23c', '#f1e7d4', '#2a1a1e', '#d8545a'];
-    for (let k = 0; k < 70; k++) {
-      const cx = r() * 128, cy = r() * 128, a = (r() < .5 ? .6 : -.6) + (r() - .5) * .3, l = 4 + r() * 6;
-      x.strokeStyle = cols[k % cols.length]; x.lineWidth = 1.6; x.lineCap = 'round';
+    for (let k = 0; k < 1600; k++) { x.fillStyle = r() < .5 ? 'rgba(70,8,14,.22)' : 'rgba(190,60,60,.16)'; x.fillRect(Math.floor(r() * 128), Math.floor(r() * 128), 1, 1); }
+    const cols = ['rgba(226,160,64,.75)', 'rgba(110,20,28,.9)', 'rgba(214,92,96,.8)'];
+    for (let k = 0; k < 30; k++) {
+      const cx = r() * 128, cy = r() * 128, a = (r() < .5 ? .6 : -.6) + (r() - .5) * .3, l = 3 + r() * 4;
+      x.strokeStyle = cols[k % cols.length]; x.lineWidth = 1.2; x.lineCap = 'round';
       [-128, 0, 128].forEach(ox => [-128, 0, 128].forEach(oy => { x.beginPath(); x.moveTo(cx + ox, cy + oy); x.lineTo(cx + ox + Math.cos(a) * l, cy + oy + Math.sin(a) * l); x.stroke(); }));
     }
   });
@@ -136,7 +136,7 @@ function textures() {
 
 /* palette */
 const P = {
-  wall: C(0xece5d8), dado: C(0xcbc2b2), ceil: C(0xf4f0e8), floor: C(0x6a707b), tread: C(0x50555f), riser: C(0x9aa0a8),
+  wall: C(0xf1ede5), dado: C(0xd2ccc1), ceil: C(0xf8f6f1), floor: C(0x6a707b), tread: C(0x50555f), riser: C(0x9aa0a8),
   yellow: C(0xe8b923), part: C(0xe0d9cb), kick: C(0x8a9099), red: C(0xc9272c), frame: C(0xb4b9c1), leaf: C(0xc6cbd2),
   gasket: C(0x22242a), seatFrame: C(0x555a63), shell: C(0xb3b7be), head: C(0xefe9de), dark: C(0x2b2d33), white: C(0xffffff)
 };
@@ -160,12 +160,12 @@ export function walkRegions({ bikes = false } = {}) {
     [-XV + .1, XV - .1, -1.2, 1.24, VEST],                                        // the vestibule
     [-XV - .14, -XV + .12, ZW + .06, DOORWAY.z1 - .04, x => x < -XV ? LOWER : VEST], // the doorway into the lower saloon, a step down
     [-END + .04, -XV - .02, ZW + .06, LEFT_DOOR.z1 - .02, LOWER],                // the lower saloon's aisle
-    [-3.1, -2.4, ZW + .06, 1.15, LOWER],                                           // and the bay between its seats
+    [-3.05, -2.4, ZW + .06, 1.15, LOWER],                                           // and the bay between its seats
     [XTOP + .02, -XV + .1, -1.26, ZW - .1, stairs],                                // the stairs (far side)
-    [-3.1, XTOP + .02, -1.26, 1.26, UPPER],                                        // the upper deck at the top of the stairs
+    [-3.05, XTOP + .02, -1.26, 1.26, UPPER],                                        // the upper deck at the top of the stairs
     [XTOP - .1, -2.38, ZW + .06, 1.26, UPPER], [-1.72, -XV - .1, ZW + .06, 1.26, UPPER], [-2.4, -1.7, ZW + .06, -.1, UPPER], // beside the stair well
     [XV - .1, XV + .14, -1.24, ZW - .1, x => x > XV ? LOWER : VEST],              // the step down to the lower deck
-    [XV + .08, 1.72, -1.22, 1.22, LOWER], [XV + .08, END + .04, CAB_DOOR.z0 + .06, CAB_DOOR.z1 - .04, LOWER], [2.4, 3.1, -1.2, bikes ? -.1 : 1.2, LOWER],
+    [XV + .08, 1.72, -1.22, 1.22, LOWER], [XV + .08, END + .04, CAB_DOOR.z0 + .06, CAB_DOOR.z1 - .04, LOWER], [2.4, 3.05, -1.2, bikes ? -.1 : 1.2, LOWER],
     [-END - .04, -END + .1, LEFT_DOOR.z0 + .04, LEFT_DOOR.z1 - .04, LOWER]          // the left end door
   ];
 }
@@ -237,6 +237,10 @@ export function buildInterior(car, { ledMat, plateMat, idx = 0, cab = false, fre
     { const D = sd > 0 ? CAB_DOOR : LEFT_DOOR, h = new THREE.Path(); h.moveTo(D.z0, D.y0); h.lineTo(D.z1, D.y0); h.lineTo(D.z1, D.y1); h.lineTo(D.z0, D.y1); h.closePath(); sh.holes.push(h); } // (the door at each end)
     const g = new THREE.ShapeGeometry(sh, 2);
     A.add(g, new THREE.Matrix4().makeRotationY(sd > 0 ? -Math.PI / 2 : Math.PI / 2).premultiply(M4.makeTranslation(sd * END, 0, 0)).multiply(sd > 0 ? I4 : new THREE.Matrix4().makeScale(-1, 1, 1)), P.wall.clone().multiplyScalar(.5), { lit: false });
+    // and its outside, facing the passage between the cars in the passage's colour (without it you saw through the wall from
+    // there), or facing a cab (the first car's front, the last car's back) in a warm grey, the cab's back wall
+    const toCab = (sd < 0 && idx === 0) || (sd > 0 && cab);
+    A.add(g, new THREE.Matrix4().makeRotationY(sd > 0 ? Math.PI / 2 : -Math.PI / 2).premultiply(M4.makeTranslation(sd * END, 0, 0)).multiply(sd > 0 ? new THREE.Matrix4().makeScale(-1, 1, 1) : I4), toCab ? P.wall.clone().multiplyScalar(.62) : C(0x3c3f46), { lit: false, uvs: 0 });
   });
   // the end doors (and, on the last car, the one into the cab): a frame round each opening, and a leaf of its own that slides
   // aside into the wall as you come up to it (station.js); a window in it, both sides
@@ -359,17 +363,19 @@ export function buildInterior(car, { ledMat, plateMat, idx = 0, cab = false, fre
     for (let k = 0; k < n; k++) seats.push({ cx, fy, z: z0 + w * (k + .5), face, z0, z1, first: k === 0 });
   };
   const seats = [];
-  // lower deck: a facing bay, its seats on boxes over the bogie's wheels (x = 2.05 and 3.45)
-  if (!bikes) { bench(2.05, LOWER, -.04, 1.22, 1, true); bench(3.45, LOWER, -.04, 1.22, -1, true); }
-  bench(2.05, LOWER, -1.24, -.6, 1, true); bench(3.45, LOWER, -1.24, -.6, -1, true);
+  // lower deck: a facing bay, its seats on boxes over the bogie's wheels (x = 2.05 and XE); the end rows stand far enough in that
+  // their leaning backs stay inside the end walls (at 3.45 their tops poked through into the passage between the cars)
+  const XE = 3.33;
+  if (!bikes) { bench(2.05, LOWER, -.04, 1.22, 1, true); bench(XE, LOWER, -.04, 1.22, -1, true); }
+  bench(2.05, LOWER, -1.24, -.6, 1, true); bench(XE, LOWER, -1.24, -.6, -1, true);
   // upper deck, at the top of the stairs
-  bench(-END + .36, UPPER, -.04, 1.2, 1); bench(-END + .36, UPPER, -1.24, -.66, 1);
+  bench(-XE, UPPER, -.04, 1.2, 1); bench(-XE, UPPER, -1.24, -.66, 1);
   // the upper deck over the lower one (right), facing bays like the deck below
-  bench(2.05, UPR, -.04, 1.2, 1); bench(3.45, UPR, -.04, 1.2, -1); bench(2.05, UPR, -1.24, -.6, 1); bench(3.45, UPR, -1.24, -.6, -1);
+  bench(2.05, UPR, -.04, 1.2, 1); bench(XE, UPR, -.04, 1.2, -1); bench(2.05, UPR, -1.24, -.6, 1); bench(XE, UPR, -1.24, -.6, -1);
   // beside the stair well, facing the seats at the top of the stairs
   bench(-2.05, UPPER, -.04, 1.2, -1);
   // the lower saloon on the left, over the other bogie
-  bench(-2.05, LOWER, .32, 1.22, -1, true); bench(-3.45, LOWER, .32, 1.22, 1, true); // (an aisle beside them, from the end door to the doorway)
+  bench(-2.05, LOWER, .32, 1.22, -1, true); bench(-XE, LOWER, .32, 1.22, 1, true); // (an aisle beside them, from the end door to the doorway)
   // grab handles on the aisle corners
 
   /* ---- the things a real commuter car has ---- */
@@ -387,8 +393,8 @@ export function buildInterior(car, { ledMat, plateMat, idx = 0, cab = false, fre
   });
   // tables between the facing seats in the bays (not where you sit to read the newsletter)
   const table = (x0, x1, fl, z0, z1) => { box(A, [x0, x1], [fl + .7, fl + .74], [z0, z1], P.frame, { uvs: 0 }); box(A, [(x0 + x1) / 2 - .03, (x0 + x1) / 2 + .03], [fl, fl + .7], [z1 - .12, z1 - .06], P.seatFrame); };
-  if (!bikes && !free) table(2.46, 3.04, LOWER, .5, 1.2);
-  table(2.46, 3.04, LOWER, -1.22, -.78); table(2.46, 3.04, UPR, .5, 1.2); table(2.46, 3.04, UPR, -1.22, -.78);
+  if (!bikes && !free) table(2.44, 3.0, LOWER, .5, 1.2);
+  table(2.44, 3.0, LOWER, -1.22, -.78); table(2.44, 3.0, UPR, .5, 1.2); table(2.44, 3.0, UPR, -1.22, -.78);
   // the bike car (Car 3): bikes stood in a row along the near side of the lower deck, against a padded rail, strapped in;
   // a bike sign on the partition
   if (bikes) {
@@ -423,8 +429,10 @@ export function buildInterior(car, { ledMat, plateMat, idx = 0, cab = false, fre
   let seed = 7 + idx * 131; const r = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
   const slim = sitters(), k = SCALE * .88; // a little smaller, to suit the train seats
   seats.forEach(st => {
-    if (free && st.fy === LOWER && st.z > 0 && (st.cx === READ_SEAT.x ? Math.abs(st.z - READ_SEAT.z) < .1 : st.cx === 3.45)) return; // your seat, and the two facing it
+    if (free && st.fy === LOWER && st.z > 0 && (st.cx === READ_SEAT.x ? Math.abs(st.z - READ_SEAT.z) < .1 : st.cx === XE)) return; // your seat, and the two facing it
     if (r() > (st.z > .5 ? .72 : st.z > 0 ? .4 : .22)) return; // window seats fill first; a few aisle and far-side seats too
+    if (st.fy === LOWER && st.cx < -XV && st.z < .7 && r() > .2) return; // (the lower saloon's seats by its narrow aisle stay mostly free: you walk past them)
+    if (st.fy === UPPER && st.cx > XTOP - .8 && st.cx < -XV + .3 && st.z < .75) return; // (beside the stair well: a hand poked through its wall)
     const kind = slim[Math.floor(r() * slim.length)], pose = r() < .45 ? 'sit-phone' : 'sit';
     A.add(posed(kind, pose), new THREE.Matrix4().compose(V(st.cx - st.face * .06, st.fy + .47 - HIP_SIT * k + .01, st.z), new THREE.Quaternion().setFromAxisAngle(V(0, 1, 0), st.face * Math.PI / 2), V(k, k, k)), 'vertex', { uvs: 0 });
   });

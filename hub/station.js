@@ -1226,7 +1226,7 @@ export class Station {
     this.lightBase = { sun: L.sun[1], hemi: L.hemi[2], fill: L.fill[1], fog: f.color.clone() };
     this.bedMat.color.set(L.ballast); this.paverMat.color.set(L.paving);
     this.tunnel.mats.rock.color.set(L.rock); this.tunnel.mats.top.color.set(L.top);
-    this.motes.visible = !!L.motes; if (L.motes) this.motes.material.color.set(L.motes);
+    this.motesOn = !!L.motes; this.motes.visible = this.motesOn; if (L.motes) this.motes.material.color.set(L.motes);
     // reflections from the new sky (made once per place)
     this.envRT = this.envs[T.id] || (this.envs[T.id] = this.pm.fromScene(this.envScene, .02, .1, 100)); this.scene.environment = this.envRT.texture;
     dress(this, T.id);
@@ -1506,7 +1506,7 @@ export class Station {
     for (let i = 0; i < pos.length; i += 3) { pos[i] -= gust * .003 * (pos[i + 2] < 4 ? 1 : .25) + breeze; pos[i + 1] += Math.sin(t * .7 + i) * .0015; if (pos[i] < -35) pos[i] += 70; }
     this.motes.geometry.attributes.position.needsUpdate = true;
     if (this.biomeNow) this.biomeNow.update(t, dt, c.position);
-    { const T = this.trip, w = T && T.drive && T.walked; this._endDoors(dt, w ? T.walk.x : 0, w ? T.walk.z : 0, w); if (this.driverChair) this.driverChair.visible = !(T && T.drive && !w); }
+    { const T = this.trip, w = T && T.drive && T.walked; this._endDoors(dt, w ? T.walk.x : 0, w ? T.walk.z : 0, w); if (this.driverChair) this.driverChair.visible = !(T && T.drive && !w); this.motes.visible = this.motesOn !== false && !w; } // (no motes while you walk the train: inside, they read as stray specks)
     updatePeople(this, t, dt); updateBackground(this, t, dt); this._flyby(t, dt); if (this.cop && !this.cop.trip) this._copFrame(t, dt); this.crowd.update(t, dt); updateCity(this.city, t, dt);
     this.sky.position.copy(c.position);
     this._adapt();
