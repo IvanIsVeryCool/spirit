@@ -440,8 +440,8 @@ $('station').addEventListener('pointerdown', e => { downX = e.clientX; });
 $('station').addEventListener('pointerup', e => {
   if (driving) { // a button on the desk (a click, not the end of a look round; while the mouse is captured, the one under the dot)
     downX = null; if (drag && drag.moved > 8) return;
-    if (canLock && !locked() && document.body.classList.contains('walked')) { lockMouse(); return; } // (a click while walking takes the mouse back)
-    const id = station && station.pickButton(...(locked() ? [0, 0] : ndc(e.clientX, e.clientY))); if (id) driveTo(id); return;
+    const id = station && station.pickButton(...(locked() ? [0, 0] : ndc(e.clientX, e.clientY))); if (id) { driveTo(id); return; }
+    if (e.pointerType === 'mouse') lockMouse(); return; // (a click anywhere else takes the mouse, in the seat too)
   }
   if (visiting && sceneKind && sceneKind !== 'cabinet') { // in the newsletter or at the screen: a tap or a swipe left goes on, a swipe right goes back
     const dx = downX === null ? 0 : e.clientX - downX; downX = null; sceneStep(dx > 40 ? -1 : 1); return;
