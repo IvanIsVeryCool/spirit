@@ -1400,6 +1400,11 @@ export class Station {
     else if ((f = this._floorAt(W.x, nz, W.floor)) !== null) { W.z = nz; W.vx *= .5; }
     else { W.vx = W.vz = 0; f = W.floor; }
     W.floor = f; W.y += (f - W.y) * Math.min(1, dt * 11); // (up and down steps smoothly)
+    // walking out of an open door onto the platform takes you back there (cb.exit, as "Back to the platform" does): you
+    // can't step down off the train, so pushing on toward the platform in a doorway for a moment is the way out
+    const T = this.trip, ci = this.cars.findIndex(cr => Math.abs(W.x - cr.position.x) < DOOR_W / 2 - .12);
+    if (ci >= 0 && W.z > 1.1 && mz > .5 && T.phase === 'seat' && this.doors[ci].open > .9 && !T.exiting) { W.out = (W.out || 0) + dt; if (W.out > .15) { T.exiting = true; T.cb.exit && T.cb.exit(); } }
+    else W.out = 0;
     const sp = Math.min(1, Math.hypot(W.vx, W.vz) / 1.6); W.bob += Math.hypot(W.vx, W.vz) * dt * 5.2;
     c.position.set(tp.x + W.x, tp.y + W.y + EYE + Math.sin(W.bob) * .016 * sp + Math.sin(t * 13) * .004 * mv, W.z);
     const cp = Math.cos(W.pitch); this.look.set(c.position.x + Math.cos(W.yaw) * cp, c.position.y + Math.sin(W.pitch), c.position.z + Math.sin(W.yaw) * cp);

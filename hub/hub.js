@@ -312,6 +312,7 @@ function startDrive() {
   [...box.children].forEach(b => widths.delete(b));
   station.drive({
     seated: () => showDest(true),
+    exit: () => leaveDrive(), // (walked out of an open door)
     horn: () => audio.depart(),
     tunnel: () => audio.tunnel(),
     swap: (id, skipped) => { audio.ambience(id); if (!skipped) audio.arrive(6.5, { bells: false }); },
