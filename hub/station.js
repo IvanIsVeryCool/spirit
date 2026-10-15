@@ -420,7 +420,7 @@ export class Station {
     side(new THREE.BoxGeometry(2.1, .6, .04), M.dark, 0, 3.08, .005);
     side(new THREE.PlaneGeometry(2, .5), ledMat, 0, 3.08, .03);
     const plateMat = new THREE.MeshBasicMaterial({ map: this._plate(String(i + 1).padStart(2, '0')), transparent: true });
-    side(new THREE.PlaneGeometry(.5, .25), plateMat, CAR_L / 2 - .55, 3.3, .005);
+    side(new THREE.PlaneGeometry(.5, .25), plateMat, CAR_L / 2 - .55, 3.3, .014); // (clear of the window glass behind its lower edge)
     // the vestibule, stairs and seats behind the door, lit by baked light
     const scene = this.data[i].scene, inside = buildInterior(car, { ledMat, plateMat, idx: i, cab: i === this.count - 1, free: scene === 'newsletter', screen: scene === 'events' ? this.stops.mat : null, bikes: i === 2 }); // (the third car is the bike car)
     const spill = new THREE.Mesh(new THREE.PlaneGeometry(1.7, 2.6), new THREE.MeshBasicMaterial({ color: COL.warm, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, map: this._spillTex() }));
@@ -480,7 +480,7 @@ export class Station {
   // choose where the train goes (biomes.js; Drive in hub.js).
   _cabRoom(car, front = false) {
     const g = new THREE.Group(); g.position.x = (front ? -1 : 1) * CAR_L / 2; g.scale.x = front ? 1 : -1; car.add(g); // nose-local, mirrored like the nose (the front one isn't)
-    const geo = noseLiningGeometry(.07), pos = geo.attributes.position, col = new Float32Array(pos.count * 3);
+    const geo = noseLiningGeometry(.07, .22), pos = geo.attributes.position, col = new Float32Array(pos.count * 3);
     for (let k = 0; k < pos.count; k++) { const y = pos.getY(k), x = -pos.getX(k), lit = .55 + .32 * Math.min(1, Math.max(0, (y - .3) / 3.2)) + .12 * Math.max(0, 1 - Math.abs(x - .7) / 1.2) * Math.min(1, Math.max(0, (y - 2.2) / 1.2)); col.set([lit, lit, lit * 1.02], k * 3); }
     geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
     // the walls, painted round the section like the saloon's: charcoal below the windows, the Spirit red line at the sill,

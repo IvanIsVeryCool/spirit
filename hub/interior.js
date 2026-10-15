@@ -196,7 +196,7 @@ export function buildInterior(car, { ledMat, plateMat, idx = 0, cab = false, fre
     return { z: p[0] - nz * IN, y: p[1] - ny * IN, n: V(0, -ny, -nz), sz: p[0], sy: p[1], t: V(0, ty / l, tz / l) };
   });
   const holes = [], xs = new Set([-END, END]);
-  const hole = (x0, x1, ya, yb, sd, kind) => { const a = pin(ya, sd), b = pin(yb, sd); holes.push({ x0, x1, j0: Math.min(a, b), j1: Math.max(a, b), kind }); xs.add(x0); xs.add(x1); };
+  const hole = (x0, x1, ya, yb, sd, kind) => { const a = pin(ya, sd), b = pin(yb, sd); holes.push({ x0, x1, j0: Math.min(a, b), j1: Math.max(a, b), kind }); [x0, x1].forEach(x => xs.add(Math.max(-END, Math.min(END, x)))); }; // (the lining stops at the end walls: windows near the ends reached past them, and in the end cars it fought the cab's own lining)
   [1, -1].forEach(sd => hole(-DOOR_W / 2, DOOR_W / 2, FLOOR, FLOOR + DOOR_H, sd, 'door'));
   windowSlots().forEach(w => [1, -1].forEach(sd => hole(w.x - w.w / 2, w.x + w.w / 2, w.y - w.h / 2, w.y + w.h / 2, sd, 'win')));
   let X = [...xs].sort((a, b) => a - b); const filled = [];
@@ -224,11 +224,12 @@ export function buildInterior(car, { ledMat, plateMat, idx = 0, cab = false, fre
     const js = keep.filter(j => j >= h.j0 && j <= h.j1);
     for (let k = 0; k < js.length - 1; k++) {
       const j = js[k], j2 = js[k + 1];
-      [[h.x0, V(1, 0, 0)], [h.x1, V(-1, 0, 0)]].forEach(([x, n]) => quad(lp(x, j), lp(x, j2), sp(x, j2), sp(x, j), n, paint));
+      [[h.x0, V(1, 0, 0)], [h.x1, V(-1, 0, 0)]].forEach(([x, n]) => { if (Math.abs(x) <= END) quad(lp(x, j), lp(x, j2), sp(x, j2), sp(x, j), n, paint); });
     }
     [[h.j0, 1], [h.j1, -1]].forEach(([j, s]) => {
       if (h.kind === 'door' && ring[j].sy < 1) return; // the floor covers the sill
-      quad(lp(h.x0, j), lp(h.x1, j), sp(h.x1, j), sp(h.x0, j), ring[j].t.clone().multiplyScalar(s), paint);
+      const x0 = Math.max(-END, h.x0), x1 = Math.min(END, h.x1); // (clipped to the end walls, like the lining)
+      quad(lp(x0, j), lp(x1, j), sp(x1, j), sp(x0, j), ring[j].t.clone().multiplyScalar(s), paint);
     });
   });
   // end walls
@@ -238,9 +239,10 @@ export function buildInterior(car, { ledMat, plateMat, idx = 0, cab = false, fre
     const g = new THREE.ShapeGeometry(sh, 2);
     A.add(g, new THREE.Matrix4().makeRotationY(sd > 0 ? -Math.PI / 2 : Math.PI / 2).premultiply(M4.makeTranslation(sd * END, 0, 0)).multiply(sd > 0 ? I4 : new THREE.Matrix4().makeScale(-1, 1, 1)), P.wall.clone().multiplyScalar(.5), { lit: false });
     // and its outside, facing the passage between the cars in the passage's colour (without it you saw through the wall from
-    // there), or facing a cab (the first car's front, the last car's back) in a warm grey, the cab's back wall
+    // there), or facing a cab (the first car's front, the last car's back) in a warm grey, the cab's back wall; 4 mm out,
+    // clear of the floors and decks that end at the wall (on its plane, their ends fought it)
     const toCab = (sd < 0 && idx === 0) || (sd > 0 && cab);
-    A.add(g, new THREE.Matrix4().makeRotationY(sd > 0 ? Math.PI / 2 : -Math.PI / 2).premultiply(M4.makeTranslation(sd * END, 0, 0)).multiply(sd > 0 ? new THREE.Matrix4().makeScale(-1, 1, 1) : I4), toCab ? P.wall.clone().multiplyScalar(.62) : C(0x3c3f46), { lit: false, uvs: 0 });
+    A.add(g, new THREE.Matrix4().makeRotationY(sd > 0 ? Math.PI / 2 : -Math.PI / 2).premultiply(M4.makeTranslation(sd * (END + .004), 0, 0)).multiply(sd > 0 ? new THREE.Matrix4().makeScale(-1, 1, 1) : I4), toCab ? P.wall.clone().multiplyScalar(.62) : C(0x3c3f46), { lit: false, uvs: 0 });
   });
   // the end doors (and, on the last car, the one into the cab): a frame round each opening, and a leaf of its own that slides
   // aside into the wall as you come up to it (station.js); a window in it, both sides
@@ -251,7 +253,7 @@ export function buildInterior(car, { ledMat, plateMat, idx = 0, cab = false, fre
     box(A, fx, [D.y1, D.y1 + .05], [D.z0 - .05, D.z1 + .05], P.gasket, { lit: false });
     [D.z0 - .05, D.z1].forEach(z => box(A, fx, [D.y0, D.y1], [z, z + .05], P.gasket, { lit: false }));
     const leaf = put(new THREE.BoxGeometry(.03, D.y1 - D.y0, D.z1 - D.z0), leafMat, x + sd * .035, (D.y0 + D.y1) / 2, (D.z0 + D.z1) / 2);
-    [-1, 1].forEach(f => { const win = new THREE.Mesh(new THREE.PlaneGeometry(.26, .5), winMat); win.position.set(f * .017, .32, 0); win.rotation.y = f * Math.PI / 2; leaf.add(win); });
+    [-1, 1].forEach(f => { const win = new THREE.Mesh(new THREE.PlaneGeometry(.26, .5), winMat); win.position.set(f * .022, .32, 0); win.rotation.y = f * Math.PI / 2; leaf.add(win); });
     leaf.userData.keep = true;
     return { leaf, sd, D, z: (D.z0 + D.z1) / 2, slide: -sd * (D.z1 - D.z0 + .06), open: 0 }; // (the right one slides toward the far side, the left toward the near)
   });
@@ -269,9 +271,9 @@ export function buildInterior(car, { ledMat, plateMat, idx = 0, cab = false, fre
   box(A, [-END, -XV], [.36, LOWER], [ZW, 1.27], P.floor, floorOpt);                      // lower saloon, left
   box(A, [-END, XTOP], [LOWER, LTOP], [ZW - .05, ZW], P.part);                          // its far wall, under the upper deck
   box(A, [XV + .05, END], [UPR - .012, UPR], [-1.38, 1.38], P.floor, floorOpt);          // upper deck floor, right (a skin on the ceiling's slab, not on its top face)
-  box(A, [-.65, .65], [VEST - .02, VEST + .003], [ZIN - .1, 1.47], P.riser, { uvs: 4 }); // threshold plate
+  box(A, [-.66, .66], [VEST - .02, VEST + .008], [ZIN - .1, 1.47], P.riser, { uvs: 4 }); // threshold plate (clearly proud of the floor, its ends inside the reveals: flush, they flickered)
   box(A, [-.65, .65], [VEST, VEST + .012], [1.38, 1.43], P.yellow);
-  box(A, [-.66, .66], [VEST, VEST + .012], [-ZIN, -ZIN + .06], P.yellow);              // far door threshold
+  box(A, [-.655, .655], [VEST, VEST + .012], [-ZIN, -ZIN + .06], P.yellow);              // far door threshold
   box(A, [XV - .06, XV + .006], [VEST, VEST + .012], [-ZIN, ZW], P.yellow);                    // the step down
   box(A, [-XV, XV], [CEIL, CEIL + .06], [-1.38, 1.38], P.ceil);                         // vestibule ceiling
   box(A, [XV + .05, END], [LCEIL, UPR - .012], [-1.38, 1.38], P.ceil);                        // lower deck ceiling
@@ -279,7 +281,7 @@ export function buildInterior(car, { ledMat, plateMat, idx = 0, cab = false, fre
   /* ---- stairs up (far side, left) ---- */
   for (let k = 1; k < STEPS; k++) {
     const x1 = -XV - (k - 1) * RUN, x0 = x1 - RUN, top = VEST + k * RISE;
-    box(A, [x0, x1], [VEST - .1, top], [-1.36, ZW - .025], (p, n) => n.y > .5 ? P.tread : P.riser, { uvs: 2.2 });
+    box(A, [x0, x1], [VEST - .1, top], [-1.36, ZW - .05], (p, n) => n.y > .5 ? P.tread : P.riser, { uvs: 2.2 }); // (up to the well's wall: past it, the first riser shared the partition's face)
     box(A, [x1 - .05, x1 + .008], [top, top + .012], [-1.34, ZW - .03], P.yellow); // (clear of the tread and riser, or it flickers)
   }
   box(A, [XTOP - .05, XTOP + .008], [UPPER, UPPER + .012], [-1.34, ZW - .03], P.yellow);
@@ -301,9 +303,9 @@ export function buildInterior(car, { ledMat, plateMat, idx = 0, cab = false, fre
     if (screen && sd > 0) { // the next-stops screen: a dark bezel, the panel, a mounting bar up to the ceiling's edge
       const S = SCREEN;
       box(A, [S.x - .04, XV], [S.y - S.h / 2 - .035, S.y + S.h / 2 + .035], [S.z - S.w / 2 - .035, S.z + S.w / 2 + .035], P.dark, { lit: false });
-      put(new THREE.PlaneGeometry(S.w, S.h), screen, S.x - .041, S.y, S.z, m => { m.rotation.y = -Math.PI / 2; m.userData.keep = true; });
+      put(new THREE.PlaneGeometry(S.w, S.h), screen, S.x - .047, S.y, S.z, m => { m.rotation.y = -Math.PI / 2; m.userData.keep = true; });
     }
-    if (plateMat) put(new THREE.PlaneGeometry(.44, .22), plateMat, sd * (XV - .004), 2.3, .72, m => { m.rotation.y = -sd * Math.PI / 2; m.userData.noShadow = false; });
+    if (plateMat) put(new THREE.PlaneGeometry(.44, .22), plateMat, sd * (XV - .008), 2.3, .72, m => { m.rotation.y = -sd * Math.PI / 2; m.userData.noShadow = false; });
   });
   // handrails up the stairs
   const s0 = V(-XV - .1, VEST + .92, 0), s1 = V(XTOP - .05, UPPER + .92, 0);
@@ -329,7 +331,7 @@ export function buildInterior(car, { ledMat, plateMat, idx = 0, cab = false, fre
   });
   box(A, [-.012, .012], [VEST, FLOOR + DOOR_H], [ZF, ZF + .015], P.gasket);
   box(A, [-.5, .5], [2.69, 2.93], [-1.38, -1.3], P.dark);
-  if (ledMat) put(new THREE.PlaneGeometry(.88, .2), ledMat, 0, 2.81, -1.296, m => { m.userData.noShadow = false; });
+  if (ledMat) put(new THREE.PlaneGeometry(.88, .2), ledMat, 0, 2.81, -1.29, m => { m.userData.noShadow = false; });
 
   /* ---- light panels ---- */
   const glowBox = (x0, x1, y, z, w) => put(new THREE.BoxGeometry(x1 - x0, .02, w), mats.glow, (x0 + x1) / 2, y, z);
@@ -399,7 +401,7 @@ export function buildInterior(car, { ledMat, plateMat, idx = 0, cab = false, fre
   // a bike sign on the partition
   if (bikes) {
     const zr = wallZ(LOWER + 1) - .05;
-    box(A, [1.75, 3.7], [LOWER + .82, LOWER + .94], [zr - .1, zr], P.dark); box(A, [1.75, 3.7], [LOWER + .28, LOWER + .36], [zr - .08, zr], P.dark);
+    box(A, [1.75, 3.64], [LOWER + .82, LOWER + .94], [zr - .1, zr], P.dark); box(A, [1.75, 3.64], [LOWER + .28, LOWER + .36], [zr - .08, zr], P.dark);
     const tyre = new THREE.TorusGeometry(.27, .03, 6, 18), cols = [0xc9272c, 0x2c5a8a, 0xe8b923, 0x2f6b4a, 0xe8e4da, 0x1d1f26], frame = (a, b, r = .022) => { const v = new THREE.Vector3().subVectors(b, a), m = new THREE.Matrix4().compose(a.clone().addScaledVector(v, .5), new THREE.Quaternion().setFromUnitVectors(V(0, 1, 0), v.clone().normalize()), V(1, 1, 1)); return [new THREE.CylinderGeometry(r, r, v.length(), 6), m]; };
     for (let i = 0; i < 5; i++) {
       const bx = 1.95 + i * .42, lean = (i % 2 ? 1 : -1) * .04, col = C(cols[i]), base = new THREE.Matrix4().compose(V(bx, LOWER, 0), new THREE.Quaternion().setFromEuler(new THREE.Euler(0, 0, lean)), V(1, 1, 1));
@@ -423,7 +425,7 @@ export function buildInterior(car, { ledMat, plateMat, idx = 0, cab = false, fre
     box(A, [x - .07, x + .07], [1.38, 1.6], [zw - .04, zw], sd > 0 ? P.yellow : P.red); box(A, [x - .045, x + .045], [1.44, 1.54], [zw - .05, zw - .04], P.dark); });
   // a display hung at the top of the stairs (the car's own destination sign), facing you as you come up
   if (ledMat) { box(A, [XTOP - .19, XTOP - .17], [ROOF - .3, ROOF - .02], [-.78, -.72], P.dark); box(A, [XTOP - .2, XTOP - .15], [ROOF - .46, ROOF - .3], [-1.05, -.45], P.dark);
-    put(new THREE.PlaneGeometry(.56, .112), ledMat, XTOP - .145, ROOF - .38, -.75, m => { m.rotation.y = Math.PI / 2; m.userData.noShadow = false; }); }
+    put(new THREE.PlaneGeometry(.56, .112), ledMat, XTOP - .138, ROOF - .38, -.75, m => { m.rotation.y = Math.PI / 2; m.userData.noShadow = false; }); }
 
   /* ---- passengers, baked in with the rest: Mini Characters posed seated, mostly by the platform-side windows ---- */
   let seed = 7 + idx * 131; const r = () => (seed = (seed * 16807) % 2147483647) / 2147483647;

@@ -129,8 +129,13 @@ export function posedGeometry(kind, pose, t = .3) {
   p.model.rotation.y = 0; p.root.scale.setScalar(1); p.root.updateMatrixWorld(true);
   const mesh = p.mesh, g = mesh.geometry, n = g.attributes.position.count, pos = new Float32Array(n * 3), col = new Float32Array(n * 3), v = new THREE.Vector3();
   const { palette } = LIB, uv = g.attributes.uv, c = new THREE.Color();
+  // seated, the hands rest exactly on the thighs: faces on the same plane, which flickered between the two colours as you
+  // walked past, so each arm (hand and all) is lifted a few millimetres up, forward and out, clear of the legs
+  const si = g.attributes.skinIndex, sw = g.attributes.skinWeight, arms = new Set(mesh.skeleton.bones.map((b, i) => /^arm-/.test(b.name) ? i : -1).filter(i => i >= 0));
   for (let k = 0; k < n; k++) {
-    mesh.getVertexPosition(k, v); v.applyMatrix4(mesh.matrixWorld); pos.set([v.x, v.y, v.z], k * 3);
+    mesh.getVertexPosition(k, v);
+    if (arms.has(si.getX(k)) && sw.getX(k) > .5) v.add(new THREE.Vector3(Math.sign(v.x) * .002, .004, .002));
+    v.applyMatrix4(mesh.matrixWorld); pos.set([v.x, v.y, v.z], k * 3);
     // glTF uvs run top-down, like the image rows
     const px = Math.min(palette.width - 1, Math.max(0, Math.floor(uv.getX(k) * palette.width))), py = Math.min(palette.height - 1, Math.max(0, Math.floor(uv.getY(k) * palette.height))), o = (py * palette.width + px) * 4;
     c.setRGB(palette.data[o] / 255, palette.data[o + 1] / 255, palette.data[o + 2] / 255, THREE.SRGBColorSpace); col.set([c.r, c.g, c.b], k * 3);
