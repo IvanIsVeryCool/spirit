@@ -8,6 +8,7 @@ README.md
 netlify.toml
 wrangler.jsonc
 worker
+tools
 *.log
 node_modules
 .wrangler

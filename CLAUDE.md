@@ -46,6 +46,90 @@ The README covers the owner-facing basics: how to add a car and how to update sc
   Delete that key to see the ticket and cutscene again, or use the "Replay intro" button.
 - Fonts: Archivo (display), Public Sans (text) and DotGothic16 (LED and dot-matrix text), all from Google Fonts.
 
+## Auditing the site (a full check, step by step)
+When the owner asks for "checks", an audit, or "make everything efficient, clean and aesthetic", or before a big push, do this. Every step has a script in `tools/audit/` (repo-only: `tools` is in `.assetsignore` and `_redirects`); each prints what it found and where its screenshots went. The whole run takes about two and a half hours headless, so run the scripts in the background and keep working (docs, reading code) while they go. The last full audit (2026-10-19) is the baseline quoted below.
+
+### 0. Before you start
+- Serve the repo root: `python3 -m http.server 8770` (from the repo root; check with `curl -s -o /dev/null -w '%{http_code}' http://localhost:8770/`, the server dies when the container resets).
+- Env for the scripts: `SITE` (default `http://localhost:8770`), `OUT` (screenshots, default `/tmp/spirit-audit`; use the scratchpad), `PLAYWRIGHT` (default `/opt/node22/lib/node_modules/playwright/index.mjs`, where this sandbox has it).
+- **One heavy script at a time.** Two software-WebGL browsers at once starve each other and screenshots time out (180 s). Chain them: `(node a.mjs > a.log 2>&1; node b.mjs > b.log 2>&1) &`, then wait on the logs with an `until grep -q ...; do sleep 15; done` loop (foreground `sleep` is blocked). Give each a `timeout`. A `pgrep -f "node x"` in the same command as `node x` matches itself; match `node x[.]mjs` instead.
+- What the sandbox can't do, so don't chase it: Google Fonts and the Google Sheet are unreachable (fonts fall back, Spirit Points says it couldn't load the scores; `points.mjs` seeds the cache instead), `/api/` only exists under Wrangler (`worker.sh`), `*.workers.dev` is blocked (the owner checks the live site), CSS transitions never start once the 3D runs (`noTransitions()`), real pointer lock and mouse movement can't be done (dispatch `MouseEvent('mousemove', { movementX })` and call `document.exitPointerLock()` by hand), sound is off.
+- Writing a new check: functions given to `page.evaluate()` / `waitForFunction()` are sent to the page as text, without their closures; pass every value they use as the argument (`p.evaluate(i => ..., i)`). Use the helpers in `tools/audit/lib.mjs` (`launch`, `page`, `hub`, `seat`, `standAt`, `stepClock`, `noTransitions`, `shot`).
+- The software renderer runs at 1–5 fps, slower the bigger the window and the more of a car interior is in view. Scripts step the scene clock a fixed amount per frame (`stepClock()`), so timelines are the same at any speed; for a slow moment (the cab) step more per frame rather than wait longer.
+
+### 1. Code scan: `python3 tools/audit/static.py` (seconds)
+- **syntax**: `node --check` on every file. Must be clean.
+- **comment**: code, then a `//` comment that holds what looks like more code: the bug that swallowed six statements here (see "Watch for"). It only flags lines where code comes first and the comment ends like a statement; it was checked by planting `const qq = 1; // the grass; scene.add(grass);`. Any hit: move the comment to the end of the line, or split the line.
+- **per-frame**: `new THREE.*` inside functions that run every frame (the list is `FRAME` in the script; add new per-frame functions to it). Not failures: a few small objects a frame are fine. Do convert the ones that run on *every* frame regardless of what's on screen (the label placers, head looks) to module-level scratch objects (`_tag`, `_hd`, `_hq` in `station.js`); leave the ones inside one-off trips.
+- **unused**: an export nothing imports and its own file never uses. Remove it (and its mention here).
+- **debug**: `console.log`, `debugger`, `TODO`. Must be clean (`console.warn` in a `catch` is fine).
+- Also by eye: event listeners attached inside a function that runs more than once (`grep -n "^\s\{2,\}.*addEventListener"`): fine on elements the function creates, or guarded; a leak otherwise.
+
+### 2. Every page at both sizes: `node tools/audit/pages.mjs` (~10 min)
+- Per page (hub, `/points/`, `/gallery/`, `/review/`) at 1280×800 and 390×844: console errors and warnings, failed requests (sandbox noise filtered by `NOISE` in `lib.mjs`), duplicate ids, controls with no accessible name, images without `alt`, sideways scrolling (and the elements that stick out), and the head (`title`, `lang`, description, theme colour, `og:image`, icon). Baseline: all clean; `/review/` has no description or `og:image` on purpose (it's `noindex`).
+- Then look at every screenshot (`OUT/pages-*.png`): labels overlapping (the Events bar and "Back to the platform" did), text cut off, controls under the phone's stick or the HUD, anything from an older version of the site (stale renders, old wording).
+- `og:image` must be an absolute URL (`https://spirit.ivancui211.workers.dev/share.jpg`): iMessage and Facebook ignore relative ones.
+
+### 3. The main journeys: `node tools/audit/regress.mjs` (~25 min)
+- A first visit: the ticket, "Board without sound", the whole opening, then each car (Photo Gallery, Weekly Newsletter, Events, Meet the Cabinet) and the officer's billboard, Escape back after each. Must end with `errors: none`. Look at `OUT/regress-*.png`: the crew's name tags, the newspaper filling the view, the events screen framed, the board over the billboard.
+
+### 4. Driving: `node tools/audit/drive.mjs` (~15 min)
+- The second desk button picks `snow` (the desk's buttons sit on a `keep`ed desk: merging it away loses them); Skip in the tunnel and Skip while pulling in both land in the new place with the train at 0, the doors open and the Skip button hidden; walking fires footsteps (`onStep`) and end-door slides (`onEndDoor`). Every line should say ok.
+
+### 5. Walk the whole train: `node tools/audit/route.mjs` (~25 min)
+- The real walking code and collision, steered through the whole train by an autopilot (cab steps, every car, both end doors, the passages, the stairs, the upper deck, the back cab). Must end `route: clean`. A `STUCK at x,z (floor f) heading for ...` line means a gap in the walk map or a box in the way: compare the spot with `walkRegions()` (`interior.js`, car-local) and `_walkMap()` (`station.js`: the cabs, the passages). Typical causes: a region placed with the wrong sign, a new seat or wall inside a region, a step taller than 0.47 m, two regions not overlapping by a few centimetres. After fixing, run it again.
+
+### 6. Look at the inside: `node tools/audit/walkthrough.mjs [WxH] [label]` (~1 min a spot)
+- Stands at each spot in `tools/audit/spots.json` (vestibule, lower deck, bays, stairs, upper deck, the lower saloon, end doors, the passage, the bike car, both cabs) and saves a shot. `NO FLOOR` before a label means the spot is outside the walk map (fix the spot, or the map). Add spots for anything new. Run it again at 390x844 for phones.
+- Look at **every** shot, full size, for what has gone wrong here before:
+  - dirt or noise on surfaces (the old speckle texture read as dirt; keep the grain barely there);
+  - anything showing through a wall from the other side (seat backs and headrests through the end walls, a passenger's fist through the stair well, the gangway's ribs across the passage);
+  - surfaces you can see through that should be solid (an end wall had no outside face), or solid things where you should see through (the passage was blocked by the gangway's core box and the car's end plate);
+  - thin outlines along edges (planes poking a few centimetres through a wall show as a line);
+  - passengers sitting where you walk; floating specks (the outdoor air motes indoors);
+  - colours tinted by the sky (shiny steel turned purple); seams and gaps at corners.
+- To find what something is, `node tools/audit/inspect.mjs '<spot>' '[[u,v],...]'` lists what each screen point hits (object, material, vertex colour, normal, position). That's how the brown band in the passage was found to be a headrest 1 cm through the wall.
+
+### 7. Flicker (z-fighting): `node tools/audit/coplanar.mjs` (~5 min)
+- Lists, per car and the passage after it, overlapping faces on the same plane facing the same way: **FIGHTING** (exactly coplanar, `SAME`, or under 1 mm apart, `gap0.x mm`), which flicker wherever they're seen (the owner's "colours switching" or "layers switching" as the camera moves), and a count of **close** pairs (1–6 mm; `VERBOSE=1` lists them), which the 24-bit depth buffer separates up close but which have flickered here as trim at 2–4 mm, so look at any big or far-seen one.
+- Baseline FIGHTING lines, all hidden: pole caps on the floors and ceilings (`MeshStandard#c9ccd1` at y 0.555 and 2.95), the gangway's core and ribs above the passage ceiling (`#34373e` vs `#2a2a31` at y 2.04, x ≈ −4.51), the front cab's floor block ending inside the end wall (x −3.78), seat-box insides, and a few single triangles inside the luggage-rack brackets.
+- Read each new line's position (car-local) and decide: hidden (an underside, the inside of a seat box, a pole's cap on the floor, an end face buried in a wall) is fine; anything you can see must go. Fixes, in order of preference: end one part *at* the other's face rather than on its plane (or inside it); move trim ≥ 6 mm proud with its ends not flush; clip one surface to where the other starts (the lining and window reveals now stop at ±`END`); lift an attached part a few millimetres (the baked passengers' arms). Re-run until only hidden pairs are left, then look at the spot in a walk-through shot.
+- It doesn't check skinned meshes (the animated people) or non-axis-aligned faces (the nose, the curved lining); for those, look while moving the camera.
+
+### 8. Draw calls: `node tools/audit/drawcalls.mjs` (~15 min)
+- One whole frame (shadow pass and bloom included) on the platform, in the driver's seat and inside a car, at both sizes. Baseline (2026-10-19): desktop 410 / 201 / 307, phone 138 / 97 / 180; about 470k triangles on the desktop platform. A jump of more than ~10 means something new isn't merging.
+- What stops merging: a material made per mesh (`new MeshBasicMaterial` inside a helper called many times: share one per colour, like `flatMat` and `_gangMats`), `userData.keep` on things that don't need it, meshes added after `mergeStatic()` runs, `Array` materials. What must not merge: anything animated or picked (doors, buttons, hit boxes, heads), and anything with children that must survive (a merged parent takes its children with it: that's why the driving desk is `keep` and only its own small parts are merged with `mergeStatic(desk)`).
+- To see where calls come from, count visible meshes in the camera's frustum grouped by their top-level named object (`window.__st` properties and the cars); a group with dozens of meshes is the place to look.
+
+### 9. Per-frame and loading cost
+- Per frame: the `per-frame` lines from step 1; `_adapt()` lowers resolution on slow machines, so slowness hides as blur rather than stutter. Anything in the render loop that forces a layout (reading `offsetWidth` etc.) is a bug (see "Per-frame HTML over the 3D").
+- Weight: `git ls-files | xargs du -k | sort -n | tail -25`. Today: the headphone song (two mp3s, 9 MB, the owner's own; don't re-encode it without asking), the people models (~250 KB each), three.js (650 KB). Only what the first view needs may hold up the loading screen (the song loads half now, half later: `loadTrack`/`loadRest`); new big files go in `_headers` (one rule per folder: Cloudflare joins overlapping rules).
+- Fonts: request only the axes and weights used (`grep -rn "font-stretch\|font-weight"`); Archivo's width axis is requested 100–125.
+
+### 10. The photo Worker: `bash tools/audit/worker.sh` (~2 min, from the repo root)
+- Runs `wrangler dev` with local KV and checks submit, no consent (400), not a photo (415), too big (413), wrong password (401), waiting, hidden before approval, approve, listed, image served, remove, gone, the site still served, the cache headers (vendor a month, scripts revalidated), repo files hidden. Every line `ok`.
+- Read `worker/index.js` too, with the free plan in mind: KV allows 100,000 reads but only 1,000 lists, 1,000 writes and 1,000 deletes a day, so nothing a visitor does may list or write (the gallery reads `index:approved`); KV lists lag a few seconds behind writes; the Cache API doesn't work on `*.workers.dev`. Don't test a fake `Content-Length` with curl: Wrangler waits for the body and the script hangs.
+
+### 11. The static version: `node tools/audit/static-version.mjs` (1 min)
+- Reduced motion (the same page as no WebGL): `body.static`, no sideways scrolling, no clipped departures rows, the Leaderboard button shown, the Drive plate hidden. Both sizes ok.
+
+### 12. Spirit Points: `node tools/audit/points.mjs` (~3 min)
+- Seeds three events (with a tie for first) and skips the ride: the board must open at both sizes with "Seniors and Juniors tied at 120" and four rows. The warm cover can take 10–20 s to lift headless; that's the renderer, not a hang.
+
+### 13. Phones, by hand
+- The 390×844 shots from steps 2, 6 and 11, plus: in the driver's seat (`seat()` at 390×844) all four desk buttons and their labels fit, the stick (`#joy`) sits clear of "Back to the platform", the walking hint says "Drag to look" without key caps; the departures board shows full names; the officer's label and the sound button don't cover each other.
+
+### 14. Design pass
+- Against "Design rules": one family of controls (corners, shadow, type), back buttons with a chevron, station-plate labels, no glows, pills or bouncing; only the necessary text.
+- Freshness: do the gallery's placeholder photos, the newsletter's photos and `share.jpg` still show the current train, cab and cabinet? If not, `node tools/audit/renders.mjs [names]` re-renders them into `OUT` (same names and sizes), then compress into place: `ffmpeg -v error -y -i OUT/spirit-line-X.jpg -q:v 4 assets/gallery/spirit-line-X.jpg`. For the preview: crop and add the logo, `ffmpeg -i OUT/share-raw.png -i assets/logo.png -filter_complex "[0]crop=2200:1155:100:0,scale=1200:630:flags=lanczos[bg];[1]scale=-1:58[lg];[lg]split[l1][l2];[l2]colorchannelmixer=rr=0:gg=0:bb=0:aa=0.35,boxblur=6[sh];[bg][sh]overlay=W-w-46:46[b2];[b2][l1]overlay=W-w-48:42" -q:v 3 share.jpg`. Look at each before replacing.
+- Improve what you'd want as a visitor (the last audit added footsteps and the end doors' sound), but try anything risky against a screenshot first and undo it if it's worse: the cab's larger windscreen opening cut through its side walls and was reverted.
+
+### 15. Fix, verify, write down, push
+- **Test the tests.** When you add or change a check, plant the bug once and watch it fail: the static version's clipping check first measured the rows (which never overflow) and passed a board that cut names off; the comment scan was checked with a planted `// the grass; scene.add(grass);`.
+- Fix in small steps; after each, re-run the script that found it (and `static.py`), not just the one you hope covers it. A fix in shared code (materials, merging, the walk map, the lining) needs `regress.mjs`, `drive.mjs` and a walk-through again.
+- Update this file: the baselines (draw calls, sizes), any new rule learned, and the "Files" table for new files. Then commit (with the attribution lines) and push to `main` and the work branch.
+- Tell the owner in plain words: what was wrong, what changed, what was checked and found fine, anything tried and undone, and what they should check live (what the sandbox couldn't: the real site, sound, a real mouse, their phone).
+
 ## Files
 | File | What it does |
 |---|---|
@@ -76,6 +160,7 @@ The README covers the owner-facing basics: how to add a car and how to update sc
 | `points/js/data.js` | `CONFIG`: `sheetId` `1cFKxVMGLDuZeS974UUVzH-Oa57sHUe9tHMFCUkwM0r0`, `schoolName` `Nueva`, `refreshSeconds`. Data comes from the sheet's gviz CSV endpoint. Columns: Date, Challenge, Seniors, Juniors, Sophomores, Freshmen. The classes' graduation years (`GRADES`, shown as '27, '28…) and `season()` follow the school year (it turns over in July), so they move on by themselves. |
 | `assets/logo.png` | The white logo on a transparent background, used as a CSS mask (`--logo`) and as a texture. |
 | `share.jpg` | The link preview (`og:image`, an absolute URL, as iMessage and Facebook need): a 1200 × 630 render of the platform at golden hour with the white logo top right. Re-render it if the scene changes a lot. |
+| `tools/audit/` | The audit scripts (repo-only, not on the site): see "Auditing the site". `lib.mjs` holds the shared helpers (launch, page sizes, `hub()`, `seat()`, `standAt()`, `stepClock()`), `spots.json` the walk-through's spots. |
 | `_headers` | Browser caching for the big files that don't change (see "Caching" below). |
 
 ## How the hub works (things that are easy to break)
