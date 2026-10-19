@@ -246,7 +246,8 @@ refreshScores();
 // his arm over and the full board opens on its face (the owner wanted this rather than his sign with the standings first)
 let talking = false;
 function talkToCop() {
-  if (!station || !station.cop || boarding || !entered || introPlaying || !$('notice').hidden) return;
+  if (!station) { location.href = '/points/'; return; } // (the static version: the standings' own page)
+  if (!station.cop || boarding || !entered || introPlaying || !$('notice').hidden) return;
   boarding = true; talking = true; document.body.classList.add('boarding'); audio.beep();
   station.talkToCop(); openBoard();
 }
@@ -533,9 +534,9 @@ async function boot() {
     if (reduce) return;
     try {
       const [{ Station }, { loadPeople }, { loadCity }] = await Promise.all([import('./station.js'), import('./people.js'), import('./city.js')]);
-      await Promise.all([loadPeople(), loadCity(), audio.loadTrack('/assets/audio/headphones.mp3', '/assets/audio/headphones_loop.mp3')]); // the Mini Characters before the scene that uses them; your headphone song if there is one
+      await Promise.all([loadPeople(), loadCity(), audio.loadTrack('/assets/audio/headphones.mp3', '/assets/audio/headphones_loop.mp3', { first: firstToday })]); // the Mini Characters before the scene that uses them; your headphone song if there is one
       const logo = new Image(); logo.src = '/assets/logo.png'; await logo.decode().catch(() => {});
-      station = new Station($('station'), { mobile, doors: DOORS, logo: logo.naturalWidth ? logo : null }); if (location.hash === '#debug') { window.__st = station; window.__audio = audio; } station.onFlyby = (dur, mid) => audio.plane(dur, mid); station.render();
+      station = new Station($('station'), { mobile, doors: DOORS, logo: logo.naturalWidth ? logo : null }); if (location.hash === '#debug') { window.__st = station; window.__audio = audio; } station.onStep = run => audio.step(run); station.onEndDoor = () => audio.endDoor(); station.onFlyby = (dur, mid) => audio.plane(dur, mid); station.render();
     }
     catch (e) { console.warn(e); station = null; }
   })().then(() => done++);
@@ -545,6 +546,7 @@ async function boot() {
     await new Promise(r => setTimeout(r, 50));
     try { await station.warm(ticketCanvas()); } catch (e) { console.warn(e); }
   }
+  audio.loadRest(); // (the other half of your headphone song, in the background now the station's up)
   done++;
   $('tk-status').classList.add('done'); $('load-label').textContent = 'Ready to board';
   if (!station) { document.body.classList.add('static'); enter(false); return; }

@@ -13,6 +13,8 @@ const MAX_BYTES = 4 * 1024 * 1024; // the gallery shrinks photos to 2000 px befo
 const MAX_WAITING = 60; // past this many waiting for review, submissions pause until some are reviewed
 const PER_HOUR = 6; // submissions from one address in an hour
 const KEY = 'photo:';
+const INDEX = 'index:approved'; // the approved photos' details as one value, so the gallery's request is a cheap read, not a list
+// (the free plan allows 1,000 lists a day, but 100,000 reads); it's rebuilt when a photo is approved or removed
 
 export default {
   async fetch(req, env) {
@@ -44,8 +46,14 @@ async function all(env) {
   return out.map(k => ({ id: k.name.slice(KEY.length), ...(k.metadata || {}) }));
 }
 const pub = p => ({ id: p.id, caption: p.c || '', album: p.a || '', by: p.n || '', date: p.d || '', w: p.w || 0, h: p.h || 0, t: p.t || 0 });
+// change: the photo just approved or removed, applied here as well (a list can lag a few seconds behind a write)
+async function reindex(env, change) {
+  let ps = await all(env); if (change) ps = ps.filter(p => p.id !== change.id).concat(change.meta ? [{ id: change.id, ...change.meta }] : []);
+  const list = ps.filter(p => p.s === 'approved').sort((a, b) => (b.at || b.t) - (a.at || a.t)).map(pub);
+  await env.PHOTOS.put(INDEX, JSON.stringify(list)); return list;
+}
 async function listApproved(env) {
-  const list = (await all(env)).filter(p => p.s === 'approved').sort((a, b) => (b.at || b.t) - (a.at || a.t)).map(pub);
+  const list = (await env.PHOTOS.get(INDEX, { type: 'json', cacheTtl: 60 })) || await reindex(env);
   return json(list, 200, { 'cache-control': 'public, max-age=60' });
 }
 async function image(req, env, id) {
@@ -66,6 +74,7 @@ function kind(b) { // what the file really is, from its first bytes (not its nam
   return null;
 }
 async function submit(req, env) {
+  if (+req.headers.get('content-length') > MAX_BYTES + 65536) return json({ error: 'too-big' }, 413); // (before reading it all)
   const ip = req.headers.get('cf-connecting-ip') || 'local', rk = 'rate:' + ip;
   const used = +(await env.PHOTOS.get(rk)) || 0; if (used >= PER_HOUR) return json({ error: 'too-many' }, 429);
   let form; try { form = await req.formData(); } catch (e) { return json({ error: 'bad-form' }, 400); }
@@ -102,10 +111,11 @@ async function review(req, env, id) {
   if (!/^[a-f0-9]{16}$/.test(id)) return json({ error: 'not-found' }, 404);
   let body; try { body = await req.json(); } catch (e) { return json({ error: 'bad-request' }, 400); }
   const key = KEY + id;
-  if (body.action === 'reject' || body.action === 'remove') { await env.PHOTOS.delete(key); return json({ ok: true }); }
+  if (body.action === 'reject' || body.action === 'remove') { await env.PHOTOS.delete(key); if (body.action === 'remove') await reindex(env, { id }); return json({ ok: true }); }
   if (body.action === 'approve') {
     const { value, metadata } = await env.PHOTOS.getWithMetadata(key, 'arrayBuffer'); if (!value) return json({ error: 'not-found' }, 404);
-    await env.PHOTOS.put(key, value, { metadata: { ...metadata, s: 'approved', at: Date.now() } }); return json({ ok: true });
+    const meta = { ...metadata, s: 'approved', at: Date.now() };
+    await env.PHOTOS.put(key, value, { metadata: meta }); await reindex(env, { id, meta }); return json({ ok: true });
   }
   return json({ error: 'bad-request' }, 400);
 }

@@ -215,4 +215,3 @@ function openSub() {
 }
 function closeSub() { if (!sub) return; sub.classList.remove('open'); sub.setAttribute('aria-hidden', 'true'); if (subFrom) subFrom.focus({ preventScroll: true }); }
 if ($('gal-submit')) $('gal-submit').addEventListener('click', openSub);
-export const submitOpen = () => !!(sub && sub.classList.contains('open'));

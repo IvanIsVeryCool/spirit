@@ -112,7 +112,7 @@ Settings for the points page (sheet ID, school name, refresh rate) are at the to
 - `points/`: the Spirit Points page and its scripts; `board.js` and `board.css` are the board itself, which the platform's billboard uses too.
 - `gallery/`: the photo gallery (`photos.js` lists the photos, which live in `assets/gallery/`); the platform opens it inside car 1.
 - `vendor/`: three.js r160 and its bloom/environment add-ons (MIT license, see `vendor/THREE-LICENSE.txt`).
-- `assets/logo.png`, icons and `share.png`: shared by both pages.
+- `assets/logo.png`, icons and `share.jpg` (the link preview, a render of the platform): shared by the pages.
 
 All sound is synthesized live in the browser; the only audio files are your own headphone song, if you add one.
 People with "reduce motion" turned on, or browsers without WebGL, get simple static versions.

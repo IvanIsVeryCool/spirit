@@ -10,7 +10,7 @@
 <meta property="og:description" content="Photos, the weekly newsletter, events and the Spirit Points standings. All aboard.">
 <meta property="og:type" content="website">
 <meta name="twitter:card" content="summary_large_image">
-<meta property="og:image" content="/share.png">
+<meta property="og:image" content="https://spirit.ivancui211.workers.dev/share.jpg"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="630">
 <link rel="icon" type="image/png" href="/favicon-64.png">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <script type="importmap">{"imports":{"three":"/vendor/three.module.min.js"}}</script>
@@ -39,7 +39,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="/gallery/gallery.css">
 <link rel="stylesheet" href="/points/board.css">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..900&family=Public+Sans:wght@400;500;600;700&family=DotGothic16&family=Newsreader:ital,wght@0,400;0,600;0,700;0,800;1,400&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@100..125,400..900&family=Public+Sans:wght@400;500;600;700&family=DotGothic16&family=Newsreader:ital,wght@0,400;0,600;0,700;0,800;1,400&display=swap">
 <style>
 /* Layout: a golden-hour 3D platform fills the screen; a white station sign sits top-left, the LED departure board (the menu) bottom-left, and the train's doors are the sections. */
 :root{
@@ -338,8 +338,12 @@ body.boarding .hud,body.boarding .board{opacity:0;transform:translateY(10px);tra
 /* Without WebGL or with reduced motion: the board becomes the page */
 body.static{overflow:auto}
 body.static #station,body.static .vignette{display:none}
-body.static #title{position:relative;width:auto;height:auto;margin:0 auto;clip:auto;overflow:visible;white-space:normal;padding:110px 20px 0;max-width:640px;color:#fff;font-family:var(--display);font-stretch:125%;font-weight:900;text-transform:uppercase;font-size:clamp(26px,6vw,48px);line-height:.95}
-body.static .board{position:relative;left:auto;bottom:auto;opacity:1;transform:none;margin:24px auto 40px;width:min(560px,calc(100% - 32px))}
+body.static #title{position:relative;width:min(612px,calc(100% - 24px));height:auto;margin:0 auto;clip:auto;overflow:visible;white-space:normal;padding:110px 0 0;color:#fff;font-family:var(--display);font-stretch:125%;font-weight:900;text-transform:uppercase;font-size:clamp(26px,6vw,48px);line-height:.95}
+body.static .board{position:relative;left:auto;right:auto;bottom:auto;opacity:1;transform:none;margin:24px auto 20px;width:min(612px,calc(100% - 24px))}
+/* (the same width as on the platform, so the names fit; the officer's label becomes the way to the standings) */
+body.static .cop-tag{position:relative;margin:0 auto 48px;opacity:1;pointer-events:auto;transform:none!important;padding:10px 16px 10px 14px}
+body.static .cop-tag::after{display:none}
+body.static .drive-tag{display:none}
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
 </style>
 </head>

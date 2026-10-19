@@ -161,12 +161,17 @@ export class StationAudio {
   // Your own song for the headphones: if assets/audio/headphones.mp3 is on the site, it's decoded while the page
   // loads and music() plays it instead of the built-in loop. If headphones_loop.mp3 is there too, the song plays
   // through once and then that loop repeats, seamlessly. No files, no change.
-  async loadTrack(url, loopUrl) {
+  // Only the file needed first holds up the loading screen (first: the song from the top, for the opening; otherwise the
+  // loop, which later visits play); loadRest() fetches the other once the station is up (together they're about 9 MB).
+  async loadTrack(url, loopUrl, { first = true } = {}) {
     const AC = window.OfflineAudioContext || window.webkitOfflineAudioContext; if (!AC) return;
     const get = async u => { try { const r = await fetch(u); if (!r.ok) return null; return await new AC(2, 1, 44100).decodeAudioData(await r.arrayBuffer()); } catch (e) { return null; } };
-    const [track, loop] = await Promise.all([get(url), loopUrl ? get(loopUrl) : null]);
-    this.track = track; this.trackLoop = loop;
+    const useLoop = !first && loopUrl, buf = await get(useLoop ? loopUrl : url);
+    if (!buf) return;
+    if (useLoop) this.trackLoop = buf; else this.track = buf;
+    this._rest = useLoop ? () => get(url).then(b => { this.track = b; }) : loopUrl ? () => get(loopUrl).then(b => { this.trackLoop = b; }) : null;
   }
+  loadRest() { const f = this._rest; this._rest = null; return f ? f() : Promise.resolve(); }
   // where the sound in a decoded mp3 really starts and ends (encoders pad both ends with silence), so loops don't gap
   _span(buf) {
     const d = buf.getChannelData(0), n = d.length, lim = Math.min(n, buf.sampleRate * .2), th = 1e-4;
@@ -187,9 +192,9 @@ export class StationAudio {
   }
   _playTrack(background) {
     const ctx = this.ctx, out = this._songOut(.24, background), t = ctx.currentTime + .05, srcs = []; // a finished recording is loud: keep it under the station
-    const loopBuf = this.trackLoop || this.track, [l0, l1] = this._span(loopBuf);
+    const loopBuf = this.trackLoop || this.track, [l0, l1] = this._span(loopBuf); // (if the loop file hasn't arrived yet, the song loops itself)
     const loop = ctx.createBufferSource(); loop.buffer = loopBuf; loop.loop = true; loop.loopStart = l0; loop.loopEnd = l1; loop.connect(out.bus); srcs.push(loop);
-    if (this.trackLoop && !background) { // the song once, from the top, then straight into the loop
+    if (this.track && this.trackLoop && !background) { // the song once, from the top, then straight into the loop
       const [a, b] = this._span(this.track), first = ctx.createBufferSource(); first.buffer = this.track; first.connect(out.bus); srcs.push(first);
       first.start(t, a, b - a); loop.start(t + (b - a), l0);
     } else loop.start(t, background && this.trackLoop ? l0 : 0);
@@ -202,7 +207,7 @@ export class StationAudio {
   // the opening. background: start already ducked (later visits, a skipped opening). Returns { duck(fade), stop(fade) }.
   music({ background = false } = {}) {
     if (!this.ctx) return { stop() {}, duck() {} };
-    if (this.track) return this._playTrack(background);
+    if (this.track || this.trackLoop) return this._playTrack(background);
     const ctx = this.ctx, bus = ctx.createGain(), out = this._songOut(.17, background), BEAT = 60 / 84;
     bus.connect(out.bus);
     // a dotted-eighth echo for the guitar, like a delay pedal
@@ -343,6 +348,18 @@ export class StationAudio {
     g.gain.setValueAtTime(.0001, t + .35); g.gain.exponentialRampToValueAtTime(.05, t + .4); g.gain.exponentialRampToValueAtTime(.0001, t + .75);
     o.connect(g).connect(this.outDry); o.start(t + .35); o.stop(t + .8);
     this._click(t + .38, .2);
+  }
+  // walking the train: a soft step on the rubber floor (a little heavier when you hurry), and the end doors' slide
+  step(run = false) {
+    if (!this.live) return;
+    const t = this.ctx.currentTime, pan = (Math.random() - .5) * .2;
+    this._noise(t, .09, 'lowpass', run ? 520 : 420, 160, .9, run ? .075 : .05, .006, pan);
+    this._noise(t + .012, .05, 'bandpass', 1800, 900, 1.4, run ? .02 : .013, .004, pan);
+  }
+  endDoor() {
+    if (!this.live) return;
+    const t = this.ctx.currentTime;
+    this._noise(t, .45, 'bandpass', 2000, 900, 1.2, .035, .05, 0); this._noise(t + .05, .5, 'lowpass', 420, 160, .8, .05, .08, 0);
   }
   paper() {
     if (!this.live) return;

@@ -1,0 +1,19 @@
+# Browser caching (read by Cloudflare's static assets). Pages and scripts keep the default (checked on every visit),
+# so a push shows straight away. The models and three.js never change: kept a month. The gallery's photos and the
+# headphone song: a day, then refreshed in the background. (No two rules may match one file: Cloudflare would join them.)
+/vendor/*
+  Cache-Control: public, max-age=2592000
+/assets/people/*
+  Cache-Control: public, max-age=2592000
+/assets/city/*
+  Cache-Control: public, max-age=2592000
+/assets/commercial/*
+  Cache-Control: public, max-age=2592000
+/assets/nature/*
+  Cache-Control: public, max-age=2592000
+/assets/cars/*
+  Cache-Control: public, max-age=2592000
+/assets/gallery/*
+  Cache-Control: public, max-age=86400, stale-while-revalidate=604800
+/assets/audio/*
+  Cache-Control: public, max-age=86400, stale-while-revalidate=604800
