@@ -107,16 +107,8 @@ Leave a class blank for 0. The sheet must be shared as "Anyone with the link: Vi
 Settings for the points page (sheet ID, school name, refresh rate) are at the top of
 `points/js/data.js`.
 
-## NPDI odds (Spirit Markets)
-`/markets/` is a play-money prediction market on the NPDI teams. Each visitor starts with $1,000 of play money
-(kept in their own browser), and every trade moves the price. To put in the real field, edit `markets/data.js`:
-one line per team in `TEAMS` (`school`, `team` letter, `p` = its starting chance to win, `seed` = its chance to be
-top seed; they don't have to add up to 100), and the Yes/No questions in `MARKETS` (`title`, `p` = starting chance
-in %, `rules`). Changing the teams restarts those markets for everyone.
-
 ## Files
 - `index.html`, `hub/`: the train station (`station.js` 3D scene, `audio.js` sounds, `hub.js` page logic and departure board, `doors.js` the cars, `biomes.js` the places you can drive to).
-- `markets/`: Spirit Markets, the NPDI odds page (`data.js` is the part to edit).
 - `points/`: the Spirit Points page and its scripts; `board.js` and `board.css` are the board itself, which the platform's billboard uses too.
 - `gallery/`: the photo gallery (`photos.js` lists the photos, which live in `assets/gallery/`); the platform opens it inside car 1.
 - `vendor/`: three.js r160 and its bloom/environment add-ons (MIT license, see `vendor/THREE-LICENSE.txt`).

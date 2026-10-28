@@ -3,7 +3,7 @@
 // `node tools/audit/pages.mjs` (about 10 minutes). The sandbox's own failures (fonts, the sheet, /api/) are filtered out.
 import { launch, page, hub, SITE, SIZES, NOISE, shot, log } from './lib.mjs';
 const b = await launch();
-for (const [size, wh] of Object.entries(SIZES)) for (const [path, name] of [['/', 'hub'], ['/points/', 'points'], ['/gallery/', 'gallery'], ['/review/', 'review'], ['/markets/', 'markets']]) {
+for (const [size, wh] of Object.entries(SIZES)) for (const [path, name] of [['/', 'hub'], ['/points/', 'points'], ['/gallery/', 'gallery'], ['/review/', 'review']]) {
   const p = await page(b, wh), fails = [];
   p.on('response', r => { if (r.status() >= 400 && !NOISE.test(r.url())) fails.push(r.status() + ' ' + r.url().replace(SITE, '')); });
   p.on('requestfailed', r => { if (!NOISE.test(r.url())) fails.push((r.failure() || {}).errorText + ' ' + r.url().replace(SITE, '')); });
